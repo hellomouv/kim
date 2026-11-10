@@ -3897,7 +3897,17 @@ impl Host {
         let pc0 = t.active_pane().id.clone();
         let wc0 = t.windows[t.active_window].id.clone();
         let (gone, old, resized) = t
-            .join_pane(&pane_id, &wid, &of, dir, before, amount, select)
+            .join_pane(
+                &pane_id,
+                &wid,
+                &session::SplitAt {
+                    of: &of,
+                    dir,
+                    before,
+                    amount,
+                },
+                select,
+            )
             .map_err(|e| layout_refused(&e, "join the pane"))?;
         let t = st.reg.get(&tid).expect("resolved above");
         let (wc, pc) = (

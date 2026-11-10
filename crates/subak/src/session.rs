@@ -687,12 +687,10 @@ impl Terminal {
         &mut self,
         pane_id: &str,
         to: &str,
-        of: &str,
-        dir: Dir,
-        before: bool,
-        amount: Option<Amount>,
+        at: &SplitAt<'_>,
         select: bool,
     ) -> Result<(bool, String, Resized), Refused> {
+        let (of, dir, before, amount) = (at.of, at.dir, at.before, at.amount);
         let ti = self.window_pos(to).ok_or(Refused::NoPane)?;
         if self.windows[ti].panes.iter().any(|p| p.id == pane_id) {
             return Err(Refused::NoPane);
@@ -715,6 +713,16 @@ impl Terminal {
         }
         Ok((removal.window_removed, removal.window_id, resized))
     }
+}
+
+/// Where a moved pane goes in its new window (Step 24, [`Terminal::join_pane`]): a split of
+/// pane `of`.
+#[derive(Debug, Clone, Copy)]
+pub struct SplitAt<'a> {
+    pub of: &'a str,
+    pub dir: Dir,
+    pub before: bool,
+    pub amount: Option<Amount>,
 }
 
 /// What taking a pane out of a Terminal changed ([`Terminal::remove_pane`]).

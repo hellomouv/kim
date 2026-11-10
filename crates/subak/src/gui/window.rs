@@ -926,7 +926,7 @@ impl App {
             .leader()
             .map_or_else(|| "(off)".to_string(), ToString::to_string);
         if let Some(info) = self.info_lines.clone() {
-            self.show_lines(info, from);
+            self.show_lines(&info, from);
             return;
         }
         let mut lines: Vec<String> = Vec::new();
@@ -965,12 +965,12 @@ impl App {
         }
         lines.push(String::new());
         lines.push("Esc closes · Up/Down/PageUp/PageDown scroll".into());
-        self.show_lines(lines, from);
+        self.show_lines(&lines, from);
     }
 
     /// Draws `lines` in the pane's place from line `from` (the help view; Step 24 also shows
     /// command answers in it).
-    fn show_lines(&mut self, lines: Vec<String>, from: usize) {
+    fn show_lines(&mut self, lines: &[String], from: usize) {
         let (cols, rows) = self.grid;
         let max = lines.len().saturating_sub(usize::from(rows));
         let from = from.min(max);
