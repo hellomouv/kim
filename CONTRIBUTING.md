@@ -104,11 +104,12 @@ together in a dedicated change, at most once per Rust release cycle, after `carg
 
 This repository does not use pull requests (see [AGENTS.md](AGENTS.md) §6).
 
-- Branch per issue; reference the issue (`Refs #N`) and requirement IDs in commits.
-- Push the branch. No CI runs on push: `cargo xtask ci` (fmt, clippy, tests, docs, schema,
-  design and deps checks) must pass locally on the branch, and again on the merged result.
+- One branch: work happens on `main`, one Step at a time (ADR 0055); reference the issue
+  (`Refs #N`) and requirement IDs in commits.
+- No CI runs on push: `cargo xtask ci` (fmt, clippy, tests, docs, schema, design and deps
+  checks) must pass locally before pushing.
   Run `cargo deny check advisories licenses bans sources` when dependencies change.
-- Merge into `main` locally with `git merge --no-ff`, then push `main`.
+- Push `main`; never force-push.
 - The `Daily` GitHub Actions workflow runs the e2e suite (Windows) and the dependency policy
   once a day (and on demand via `workflow_dispatch`). No Linux build or test for now
   (AGENTS.md §3).

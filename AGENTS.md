@@ -86,7 +86,7 @@ These rules come directly from the maintainer and are mandatory.
    the normal test command, on push, in pre-commit hooks, or in ad-hoc verification; a local
    run (`cargo xtask e2e --force`) needs a recorded justification in the ledger.
 5. **Keep the ledger.** [e2e/LEDGER.md](e2e/LEDGER.md) records every processed Step issue and
-   every e2e run. When a Step completes, append it. The master checks each daily run, records
+   every e2e run. When a Step completes, append it. The developer checks each daily run, records
    its result in the ledger, and fixes failures (or files them as issues) before the next Step
    starts.
 
@@ -98,18 +98,21 @@ These rules come directly from the maintainer and are mandatory.
 
 ## 6. Git and GitHub workflow
 
-- Branch per issue (`step-NN-short-name` or `issue-N-short-name`); the very first commit of the
-  repository is the only exception.
+- **One session, one folder, one branch, one Step at a time** (maintainer decision 2026-11-11,
+  [ADR 0055](docs/adr/0055-single-branch-sequential-development.md)). All work happens in the one
+  canonical checkout on `main`: no per-issue branches, no extra Git worktrees, no parallel coding
+  agents or subagents, no separate repositories per tool. Take the earliest unfinished Step (by the
+  number in the issue title) whose dependencies are met; record a blocked Step's exact blocker and
+  never close it.
 - Commit messages: imperative summary, then a body that references the issue
   (`Refs #N`) and the requirement IDs touched.
-- **No pull requests** (maintainer decision, 2026-11-04). Push the issue branch.
+- **No pull requests** (maintainer decision, 2026-11-04).
 - **No CI on push** (maintainer decision, 2026-11-04, to keep failure notifications low). The
-  gate is local: `cargo xtask ci` must pass on the branch and again on the merged result before
-  the master merges it into `main` with `git merge --no-ff` (a merge commit, so reported SHAs
-  stay valid) and pushes `main`. The `Daily` workflow (§4) adds e2e and the dependency policy
-  once a day; when dependencies change, also run `cargo deny` locally.
-  Parallel agents keep using their own branch and worktree; only the integrating agent (the
-  master) merges into `main`.
+  gate is local: `cargo xtask ci` must pass on `main` before the Step's commits are pushed; when
+  dependencies change, also run `cargo deny` locally. The `Daily` workflow (§4) adds e2e and the
+  dependency policy once a day. Never force-push.
+- Keep `DEV_CHECKPOINT.md` (repository root) current at every Step transition: current and last
+  completed Step, commit, blockers, verification done, next action.
 - After completing an issue, post a **Korean completion report** as a comment on that issue
   with the headings `구현 내용`, `설계 및 주요 결정`, `변경 파일`, `테스트 및 실제 결과`,
   `커밋 및 Push`, `남은 문제와 다음 Step`, giving concrete evidence (commands, outputs, SHAs).

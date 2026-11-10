@@ -58,6 +58,7 @@ the requirements it serves. ADRs are immutable once **Accepted**; a later ADR ma
 | [0052](0052-ddalgak-profiles-switch-versions-and-transfer.md) | Ddalgak profiles: an atomic switch in the hook, versions from the history and save points, inert and portable export, imports never activated | Accepted (Step 75; the visible profile browser pending the maintainer) |
 | [0053](0053-noeul-color-picker.md) | Noeul colour picker: one pixel of the frozen picture, copied as CSS text on an explicit key, `C` yields to typing, a selection is never lost | Accepted (Step 59; the on-screen check with real applications and an HDR display pending the maintainer) |
 | [0054](0054-subak-internal-windows-and-panes.md) | Subak internal windows and panes: Host-owned topology and selection, two-level end claims, no window or pane command that ends a Terminal | Accepted (Step 21; the visible window pending the maintainer) |
+| [0055](0055-single-branch-sequential-development.md) | Single-session, single-branch, sequential Step development on `main` replaces parallel worker branches and worktrees | Accepted (maintainer decision 2026-11-11) |
 
 "Accepted (validated in Step N)" means the decision is made, but the named Step must confirm it
 on real Windows; if validation fails, that Step writes a superseding ADR.
