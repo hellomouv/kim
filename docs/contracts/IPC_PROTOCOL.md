@@ -169,7 +169,10 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `pane.detach` | `{stream_id?}` | `{}` | cli, gui, mcp | **09**, **10** |
 | `client.detach` | `{target?, client_id?, dry_run?}` (at least one of `target`, `client_id`) | `{detached: [attachment], terminal}` or `{dry_run: true, would_detach, terminal}` | cli, gui, mcp* | **12** |
 | `pane.resize` | `{cols, rows, stream_id?}` (Step 22: the size of the pane's window) | `{cols, rows, stream_id, window_size}` (the pane's share) | cli, gui | **09**, **10**, **22** |
-| `pane.send_keys` | `{target, keys: [string], literal}` | `{}` | cli, gui, mcp* | 24 (not in Step 12: the CLI writes input through an attach) |
+| `pane.send_keys` | `{target (any level: its active pane), keys: [string], literal?, dry_run?}` | `result_input` | cli, gui, mcp* | **24** |
+| `pane.break` | `{target (pane), name?, select?, dry_run?}` | `result_move_pane` | cli, gui, mcp* | **24** |
+| `pane.join` | `{source (pane), target (pane or window), direction?, before?, cells? \| percent?, select?, dry_run?}` | `result_move_pane` | cli, gui, mcp* | **24** |
+| `buffer.set` / `.list` / `.get` / `.delete` / `.paste` | `{name?, data, append?}` / `{}` / `{name?}` / `{name?}` / `{target, name?, delete?}` (`dry_run?` on set, delete, paste) | `result_buffer_set` / `_list` / `_get` / `_delete`, `result_input` | cli, gui, mcp* | **24** |
 | `pane.capture` | `{target?, start?, end?, format?: "text" \| "vt", join?, redact?}` | `{terminal_id, pane_id, format, join, redact, redacted, start, end, truncated, lines, screen, history}` | cli, gui, mcp* | **13** |
 | `pane.clear_history` | `{target?, dry_run?}` | `{terminal_id, pane_id, cleared_lines, cleared_bytes, history}` or `{dry_run: true, would_clear}` | cli, gui, mcp* | **13** |
 | `claude.report` | `{pane_id, session_id, event, at, reason?}` | `{}` | **hook only** | 27 |
@@ -392,6 +395,25 @@ Semantics are in [SESSION_MODEL.md](../SESSION_MODEL.md) §3 and
   selecting another pane, a split or a border move unzooms.
 - **`window.layout`** (topic `terminals`) carries the same data after every change of a window with
   more than one pane: a split, a border move, a swap, a zoom, a pane gone, a client's new size.
+
+### 4.6 Keys, moving panes and paste buffers (Step 24)
+
+Semantics in [ADR 0058](../adr/0058-subak-tmux-commands-copy-mode-and-buffers.md); feature
+`terminal.buffers`.
+
+- **`pane.send_keys`** writes tmux key names (`Enter`, `C-c`, `M-x`, `Up`, `F5`, `PPage`, …; any
+  other word as its text) or, with `literal`, the words as text, to a running pane as input (at
+  most 1 MiB; counted as input; never logged or echoed in results).
+- **`pane.break`** moves a pane of a window with other panes into a new window (the lowest free
+  index; named `name` or after its program) at the old window's size; `pane.join` moves a pane into
+  another window of the **same Terminal** as a split of the target pane (a window target: its
+  active pane); a window losing its last pane goes (`window.removed`, reason `joined`). The
+  process, screen and stream are unchanged; both windows are laid out again (`window.layout`).
+- **Buffers** are kept in the Host's memory only (`persisted: false`): newest first, at most 50 (the
+  oldest automatic `bufferN` goes; named ones stay), 1 MiB each, names of 1–64 visible characters.
+  `buffer.list` gives names, sizes, line counts and a redacted first line; `buffer.get` the text;
+  `buffer.paste` types it into a running pane with line ends as carriage returns. A missing buffer
+  is `target_not_found`.
 
 ## 5. Events (v1)
 

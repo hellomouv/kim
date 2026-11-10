@@ -522,6 +522,66 @@
         "requires_yes": false,
         "summary": "Arrange a window's panes evenly side by side, stacked or tiled (tmux select-layout)",
         "usage": "subak window layout <terminal | terminal:window | w-id> <even-horizontal | even-vertical | tiled> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "command",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Run tmux command lines (split-window, select-pane, send-keys, break-pane, join-pane, set-buffer, list-panes, …) on a Terminal; kill-* need --yes",
+        "usage": "subak command [--target <target>] [--yes] [--dry-run] [--json] '<tmux command>[; <tmux command>]…' (also `subak tmux`, or the words after --)"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "buffer.ls",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The Host's paste buffers (tmux list-buffers): names, sizes and a redacted first line",
+        "usage": "subak buffer ls [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "buffer.show",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "One paste buffer's text, the newest without a name (tmux show-buffer)",
+        "usage": "subak buffer show [<name>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "buffer.set",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Put text in a paste buffer of the Host (tmux set-buffer); memory only, never written",
+        "usage": "subak buffer set <text> [--name <name>] [--append] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "buffer.delete",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Delete a paste buffer, the newest without a name (tmux delete-buffer)",
+        "usage": "subak buffer delete [<name>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "buffer.paste",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Type a paste buffer into a pane as input (tmux paste-buffer)",
+        "usage": "subak buffer paste <pane> [--name <name>] [--delete] [--dry-run] [--json]"
       }
     ],
     "implementation": "implemented",

@@ -208,7 +208,14 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "pane.swap",
             "pane.zoom",
             "window.rotate",
-            "window.layout"
+            "window.layout",
+            // Step 24: tmux command lines and paste buffers.
+            "command",
+            "buffer.ls",
+            "buffer.show",
+            "buffer.set",
+            "buffer.delete",
+            "buffer.paste"
         ],
         "only commands that really exist"
     );

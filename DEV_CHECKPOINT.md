@@ -8,14 +8,17 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 24** (#24) — tmux core commands and copy mode
-- Last fully completed Step: Step 23 (#23, prefix and key binding engine, ADR 0057)
+- Current Step: **Step 25** (#25) — advanced tmux behaviors
+- Last fully completed Step: Step 24 (#24, tmux commands, copy mode, buffers, ADR 0058)
 - Uncommitted changes: none expected between Steps
-- Next action: read #24; copy mode (`copy.*` actions of the final hotkey manifest, the
-  `copy-mode` context), `pane.send_keys`, the command prompt; `Ctrl+B [`/`]`, describe-key
+- Next action: read #25; many rows of TMUX_COMPATIBILITY moved to Step 25 with a rationale
+  (layout presets, last-window/last-pane, marked panes, key tables, formats, copy-mode extras,
+  bracketed paste) — pick what #25 asks for and keep the rest honest
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 24 — tmuxcmd unit tests, tmux_commands 2/2, gui prompt/copy-mode test, e2e
+  step24 2/2 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 23 — keys unit tests, gui prefix test, CLI detach keys test, e2e step23
   2/2 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 22 — `cargo xtask ci` green (after fixing hotkey scenario 13); pane_layout 5/5,
@@ -26,7 +29,7 @@ checkpoint."*
 ## Queue (Step number in the issue title; reconstruct with
 `gh issue list --repo hellomouv/kim --state open --limit 200`)
 
-1. Subak: 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43
+1. Subak: 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43
    (Windows part), 44
 2. Noeul: 60, 61, 62, 63
 3. Ddalgak: 76, 77, 78, 79, 80, 81, 82

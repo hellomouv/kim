@@ -2561,3 +2561,111 @@ fn the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only() {
         "EVIDENCE gui prefix: Ctrl+B c, p, n, 0, ',', %, z, Ctrl+B, Ctrl+T pass-through, an unbound key, F1 and d on the shown Terminal; tabs unchanged"
     );
 }
+
+/// Step 24 (ADR 0058): the command prompt (`Ctrl+B :`) runs tmux commands on the shown Terminal
+/// and shows their answers; copy mode (`Ctrl+B [`) browses with the vi keys, sends nothing to the
+/// program, and copies a selection into a paste buffer of the Host that `Ctrl+B ]` pastes.
+#[test]
+fn the_command_prompt_and_copy_mode_work_on_the_shown_terminal() {
+    let host = Host::start("gui-cmd", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "work");
+    let mut gui = Gui::start(&ep, Some("work"), &sandbox("cmd"));
+    gui.state("attached");
+    let pane0 = gui.dump()["pane_id"].as_str().unwrap().to_string();
+    gui.type_text("echo alpha-beta-gam^ma\r");
+    wait_for("the output", || {
+        capture(&ep, &pane0).contains("alpha-beta-gamma\n")
+    });
+    let prefix = |g: &Gui| g.press(u64::from(b'B'), true, false);
+    let typed = |g: &Gui, vk: u64, shift: bool, ch: &str| {
+        g.cmd(&json!({"cmd": "key", "vk": vk, "shift": shift, "char": ch}))
+    };
+    let prompt = |g: &Gui, line: &str| {
+        prefix(g);
+        typed(g, 0xBA, true, ":");
+        g.until("the prompt", |d| d["prompt"] == "");
+        g.typed(line);
+        g.press(0x0D, false, false)
+    };
+    // A command line: two commands, the second's answer shown in the pane's place.
+    prompt(&gui, "split-window -h; select-pane -L");
+    gui.until("split, left active", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+            && d["active_slot"] == pane0.as_str()
+    });
+    prompt(&gui, "list-panes");
+    let d = gui.until("the answer", |d| !d["help"].is_null());
+    assert!(
+        screen_text(&d).contains("list-panes:") && screen_text(&d).contains("PANE"),
+        "{}",
+        screen_text(&d)
+    );
+    gui.press(0x1B, false, false);
+    gui.until("closed", |d| d["help"].is_null());
+    let d = prompt(&gui, "splt-window");
+    assert!(
+        d["notice"]
+            .as_str()
+            .is_some_and(|n| n.contains("unknown command")),
+        "{}",
+        d["notice"]
+    );
+    // Copy mode: keys browse, nothing reaches the program.
+    prefix(&gui);
+    typed(&gui, 0xDB, false, "[");
+    gui.until("copy mode", |d| d["copy_mode"] == true);
+    let before = capture(&ep, &pane0);
+    typed(&gui, u64::from(b'X'), false, "x");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(capture(&ep, &pane0), before, "copy mode sends nothing");
+    // Up to the output line, 0, Space, $, Enter: the line is copied into a paste buffer.
+    let d = gui.dump();
+    // The output line (not the echoed command line).
+    let row = d["screen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rposition(|l| l.as_str().unwrap().trim() == "alpha-beta-gamma")
+        .unwrap();
+    let cursor_row = d["view_cursor"][1].as_u64().unwrap() as usize;
+    for _ in row..cursor_row {
+        typed(&gui, u64::from(b'K'), false, "k");
+    }
+    typed(&gui, u64::from(b'0'), false, "0");
+    gui.press(0x20, false, false); // Space: begin selection
+    typed(&gui, u64::from(b'4'), true, "$");
+    let d = gui.dump();
+    assert_eq!(
+        d["selected_text"].as_str().map(str::trim),
+        Some("alpha-beta-gamma"),
+        "{d}"
+    );
+    gui.press(0x0D, false, false);
+    gui.until("left copy mode", |d| d["copy_mode"] == false);
+    let (code, doc) = sub(&ep, &["buffer", "show"]);
+    assert_eq!(code, 0, "{doc}");
+    assert_eq!(
+        doc["data"]["data"].as_str().map(str::trim),
+        Some("alpha-beta-gamma")
+    );
+    // Ctrl+B ]: the buffer is typed into the program.
+    prefix(&gui);
+    typed(&gui, 0xDD, false, "]");
+    // The output line, and now the pasted text at the prompt.
+    wait_for("pasted", || {
+        capture(&ep, &pane0).matches("alpha-beta-gamma").count() >= 2
+    });
+    // q leaves copy mode without copying.
+    prefix(&gui);
+    typed(&gui, 0xDB, false, "[");
+    gui.until("copy mode again", |d| d["copy_mode"] == true);
+    typed(&gui, u64::from(b'Q'), false, "q");
+    gui.until("left", |d| d["copy_mode"] == false);
+    assert_eq!(gui.close(), 0);
+    println!(
+        "EVIDENCE gui command prompt and copy mode: split-window, select-pane, list-panes, an unknown command, copy mode keys, a copied line pasted with Ctrl+B ]"
+    );
+}

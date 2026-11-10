@@ -37,6 +37,9 @@ pub const TERMINAL_CONTEXT: &str = "terminal";
 /// The context of the Terminal manager (Step 18).
 pub const MANAGER_CONTEXT: &str = "manager";
 
+/// The context of the window's copy mode (Step 24).
+pub const COPY_CONTEXT: &str = "copy-mode";
+
 /// The actions this build implements, in manifest order.
 pub const IMPLEMENTED: &[&str] = &[
     "terminal.new",
@@ -88,6 +91,13 @@ pub const IMPLEMENTED: &[&str] = &[
     "pane.resize-left-5",
     "pane.resize-right-5",
     "view.refresh",
+    "command.prompt",
+    "copy.enter",
+    "buffer.paste",
+    "pane.break",
+    "buffer.list",
+    "buffer.delete",
+    "copy.page-up",
     "client.detach",
     "terminal.rename",
     "clipboard.copy",
@@ -107,6 +117,9 @@ pub const IMPLEMENTED: &[&str] = &[
     "scroll.line-down",
     "scroll.top",
     "scroll.bottom",
+    "copy.exit",
+    "copy.begin-selection",
+    "copy.copy-selection",
     "manager.open",
     "manager.new",
     "manager.rename",

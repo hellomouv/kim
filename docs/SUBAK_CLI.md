@@ -471,6 +471,41 @@ moved the border by 10 cell(s) in window w-db5581297310 (81x24); every process k
   pane 1* p-6d709b67a392  30x24@51,0
 ```
 
+### 3.16 tmux command lines and paste buffers (`subak command`, `subak buffer`)
+
+Step 24 ([ADR 0058](adr/0058-subak-tmux-commands-copy-mode-and-buffers.md)).
+
+**`subak command '<line>'`** (also `subak tmux`, or the words after `--`) runs tmux commands:
+`new-session`, `kill-session`, `rename-session`, `list-sessions`, `new-window`, `kill-window`,
+`rename-window`, `select-window`, `next-window`, `previous-window`, `list-windows`,
+`split-window`, `kill-pane`, `select-pane`, `list-panes`, `resize-pane`, `swap-pane`,
+`rotate-window`, `select-layout`, `break-pane`, `join-pane` (`move-pane`), `send-keys`,
+`capture-pane`, `set-buffer`, `show-buffer`, `list-buffers`, `delete-buffer`, `paste-buffer`, with
+their short aliases (`splitw`, `selectp`, `lsp`, …). Quoting is tmux's (`'…'`, `"…"`, `\`); `;`
+separates commands; a line stops at the first refusal. Targets are Subak's (`work`, `work:1`,
+`work:1.0`, ids); tmux's relative forms (`{last}`, `:+`, `%3`) are refused with a hint. Without
+`-t` a command acts on `--target`, else on the pane `subak command` runs in (`SUBAK_PANE_ID`, set
+in every pane). `kill-*` need `--yes`; `--dry-run` parses and plans only; `copy-mode` and
+`detach-client` belong to the window. `--json` answers each command's method and result.
+
+```text
+> subak command --target work 'split-window -h -l 30%; select-pane -L; list-panes'
+> subak command -- send-keys -t work:0.1 'cargo test' Enter
+> subak command --target work:1.0 'break-pane -n logs'; subak command 'join-pane -h -s work:1.0 -t work:0.0'
+```
+
+Errors are `usage` (exit 2) with `details` `kind: unknown_command | unknown_flag |
+unsupported_flag | conflicting_flags | bad_value | bad_target | missing_value | missing_argument |
+extra_argument | no_target | syntax`, `confirmation_required` (exit 7) for kills without `--yes`,
+and the Host's errors (`target_not_found`, `invalid_state`, …) for the command that failed.
+
+**`subak buffer ls|show [name]|set <text> [--name n] [--append]|delete [name]|paste <pane> [--name
+n] [--delete]`**: tmux's paste buffers, kept by the Host **in memory only** (never written or
+logged; gone with the Host), newest first, at most 50 (the oldest automatic one goes; named ones
+stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the text. `paste`
+types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
+`--dry-run`.
+
 ## 4. Typical sessions
 
 ```console

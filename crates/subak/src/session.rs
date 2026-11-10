@@ -589,6 +589,12 @@ impl Terminal {
     /// The pane indexes of its window are renumbered (tmux); when the active pane or window goes,
     /// its neighbour (the next one, else the previous one) becomes active.
     pub fn remove_pane(&mut self, pane_id: &str) -> Option<Removal> {
+        self.take_pane(pane_id).map(|(_, r)| r)
+    }
+
+    /// Takes a pane out of the model as [`Terminal::remove_pane`] does, and hands it back (Step
+    /// 24: `break-pane` and `join-pane` move it; its process is untouched).
+    pub fn take_pane(&mut self, pane_id: &str) -> Option<(Pane, Removal)> {
         if self.panes().count() < 2 {
             return None;
         }
@@ -603,7 +609,7 @@ impl Terminal {
         let window_id = self.windows[wi].id.clone();
         let w = &mut self.windows[wi];
         let pi = w.panes.iter().position(|p| p.id == pane_id)?;
-        w.panes.remove(pi);
+        let taken = w.panes.remove(pi);
         let window_removed = w.panes.is_empty();
         let mut resized = Vec::new();
         if !window_removed && let Some(l) = &mut w.layout {
@@ -630,14 +636,84 @@ impl Terminal {
                 (w.id != after_window).then(|| w.panes[w.active_pane].id.clone())
             })
             .flatten();
-        Some(Removal {
-            window_id,
-            window_removed,
-            resized,
-            window_changed: before.0 != after_window,
-            pane_changed: before.1 != after_pane,
-            window_pane,
-        })
+        Some((
+            taken,
+            Removal {
+                window_id,
+                window_removed,
+                resized,
+                window_changed: before.0 != after_window,
+                pane_changed: before.1 != after_pane,
+                window_pane,
+            },
+        ))
+    }
+
+    /// Step 24 (`break-pane`): moves pane `pane_id` out of its window into a new window `w`
+    /// (index, name and id given) at the old window's size. The old window must keep a pane.
+    /// Returns the new window's position, the old window's id and its resized panes.
+    pub fn break_pane(
+        &mut self,
+        pane_id: &str,
+        mut w: Window,
+        select: bool,
+    ) -> Result<(usize, String, Resized), &'static str> {
+        let wi = self
+            .windows
+            .iter()
+            .position(|x| x.panes.iter().any(|p| p.id == pane_id))
+            .ok_or("the pane is not in this Terminal")?;
+        if self.windows[wi].panes.len() < 2 {
+            return Err("the pane is its window's only pane");
+        }
+        let size = self.windows[wi].layout().size();
+        let (pane, removal) = self.take_pane(pane_id).ok_or("the pane cannot be moved")?;
+        w.panes.clear();
+        w.layout = None;
+        let new = self.insert_window(w);
+        self.push_pane(new, pane);
+        let mut resized = self.windows[new].resize(size);
+        resized.extend(removal.resized);
+        if select {
+            self.select_pane(new, 0);
+        }
+        Ok((new, removal.window_id, resized))
+    }
+
+    /// Step 24 (`join-pane`): moves pane `pane_id` into window `to` as a split of pane `of`
+    /// there. Its old window goes when it was that window's last pane. Nothing moves when the
+    /// split has no room. Returns whether the old window went, its id and every resized pane.
+    pub fn join_pane(
+        &mut self,
+        pane_id: &str,
+        to: &str,
+        of: &str,
+        dir: Dir,
+        before: bool,
+        amount: Option<Amount>,
+        select: bool,
+    ) -> Result<(bool, String, Resized), Refused> {
+        let ti = self.window_pos(to).ok_or(Refused::NoPane)?;
+        if self.windows[ti].panes.iter().any(|p| p.id == pane_id) {
+            return Err(Refused::NoPane);
+        }
+        // Plan on a copy first: a refused split changes nothing.
+        let mut probe = self.windows[ti].layout().clone();
+        probe.split(of, pane_id, dir, before, amount)?;
+        let (pane, removal) = self.take_pane(pane_id).ok_or(Refused::NoPane)?;
+        let ti = self.window_pos(to).ok_or(Refused::NoPane)?;
+        let (pi, mut resized) = self.windows[ti].split(of, pane, dir, before, amount)?;
+        resized.extend(removal.resized);
+        // The moved pane takes its new share even when its size happens to be the same.
+        if !resized.iter().any(|(id, _)| id == pane_id)
+            && let Some(p) = self.windows[ti].panes.iter().find(|p| p.id == pane_id)
+        {
+            resized.push((p.id.clone(), p.size));
+        }
+        if select {
+            self.select_pane(ti, pi);
+        }
+        Ok((removal.window_removed, removal.window_id, resized))
     }
 }
 

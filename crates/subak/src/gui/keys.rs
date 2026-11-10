@@ -100,11 +100,22 @@ pub enum Action {
     PaneResizeLeft5,
     PaneResizeRight5,
     Refresh,
+    /// Step 24: the command prompt, copy mode and paste buffers.
+    CommandPrompt,
+    CopyEnter,
+    BufferPaste,
+    CopyExit,
+    CopyBeginSelection,
+    CopyCopySelection,
+    PaneBreak,
+    BufferList,
+    BufferDelete,
+    CopyPageUp,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 75] = [
+    pub const ALL: [(Action, &'static str); 85] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -154,6 +165,13 @@ impl Action {
         (Action::PaneResizeLeft5, "pane.resize-left-5"),
         (Action::PaneResizeRight5, "pane.resize-right-5"),
         (Action::Refresh, "view.refresh"),
+        (Action::CommandPrompt, "command.prompt"),
+        (Action::CopyEnter, "copy.enter"),
+        (Action::BufferPaste, "buffer.paste"),
+        (Action::PaneBreak, "pane.break"),
+        (Action::BufferList, "buffer.list"),
+        (Action::BufferDelete, "buffer.delete"),
+        (Action::CopyPageUp, "copy.page-up"),
         (Action::ClientDetach, "client.detach"),
         (Action::RenameTerminal, "terminal.rename"),
         (Action::Copy, "clipboard.copy"),
@@ -173,6 +191,9 @@ impl Action {
         (Action::ScrollLineDown, "scroll.line-down"),
         (Action::ScrollTop, "scroll.top"),
         (Action::ScrollBottom, "scroll.bottom"),
+        (Action::CopyExit, "copy.exit"),
+        (Action::CopyBeginSelection, "copy.begin-selection"),
+        (Action::CopyCopySelection, "copy.copy-selection"),
         (Action::ManagerOpen, "manager.open"),
         (Action::ManagerNew, "manager.new"),
         (Action::ManagerRename, "manager.rename"),
@@ -260,7 +281,9 @@ impl Surface {
     fn takes(self, scope: &Scope) -> bool {
         match self {
             Self::Window => {
-                matches!(scope, Scope::App) || *scope == Scope::Context(sh::TERMINAL_CONTEXT.into())
+                matches!(scope, Scope::App)
+                    || *scope == Scope::Context(sh::TERMINAL_CONTEXT.into())
+                    || *scope == Scope::Context(sh::COPY_CONTEXT.into())
             }
             Self::Manager => *scope == Scope::Context(sh::MANAGER_CONTEXT.into()),
         }
@@ -296,6 +319,8 @@ pub struct Matcher {
     repeat_ms: u64,
     /// Step 23: until when the repeatable prefix bindings fire without the prefix.
     repeating: Option<std::time::Instant>,
+    /// Step 24: the window is in copy mode: its `copy-mode` bindings are active and win.
+    copy_mode: bool,
 }
 
 /// The contract's name of a virtual key (§5.2), if it has one.
@@ -465,6 +490,7 @@ impl Matcher {
             leader: None,
             repeat_ms: REPEAT_MS,
             repeating: None,
+            copy_mode: false,
         };
         m.rebuild();
         m
@@ -494,6 +520,12 @@ impl Matcher {
     pub fn set_repeat_time(&mut self, ms: u64) {
         self.repeat_ms = ms;
         self.repeating = None;
+    }
+
+    /// Step 24: copy mode on or off (its `copy-mode` bindings are active only then).
+    pub fn set_copy_mode(&mut self, on: bool) {
+        self.copy_mode = on;
+        self.pending = None;
     }
 
     /// Step 23: the prefix leader's chord now, if it is enabled.
@@ -668,10 +700,21 @@ impl Matcher {
             }
             None => (0, (0..self.active.len()).collect()),
         };
+        let copy = Scope::Context(sh::COPY_CONTEXT.into());
         let matched: Vec<usize> = pool
             .into_iter()
+            .filter(|i| self.copy_mode || self.active[*i].scope != copy)
             .filter(|i| self.active[*i].steps.get(step).is_some_and(|s| hits(p, s)))
             .collect();
+        // Step 24: in copy mode its own keys win over everything else.
+        let matched = if self.copy_mode && matched.iter().any(|i| self.active[*i].scope == copy) {
+            matched
+                .into_iter()
+                .filter(|i| self.active[*i].scope == copy)
+                .collect()
+        } else {
+            matched
+        };
         // The innermost context wins over `app` bindings with the same keys (§9.1).
         let terminal = Scope::Context(self.surface.context().into());
         let matched = if matched.iter().any(|i| self.active[*i].scope == terminal) {

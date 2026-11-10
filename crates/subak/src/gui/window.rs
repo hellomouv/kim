@@ -481,6 +481,24 @@ struct App {
     /// Step 23: the keyboard help (`F1`, `Ctrl+B ?`) is shown instead of the pane, from this
     /// line on.
     help: Option<usize>,
+    /// Step 24: what the help view shows instead of the keys (a command's answer).
+    info_lines: Option<Vec<String>>,
+    /// Step 24: the command prompt (`Ctrl+B :`) while it is open, and the lines run before.
+    prompt: Option<PromptUi>,
+    prompt_history: Vec<String>,
+    /// Step 24: copy mode (`Ctrl+B [`), and whether a selection has begun (Space).
+    copy_mode: bool,
+    copy_selecting: bool,
+}
+
+/// The command prompt's line (Step 24).
+#[derive(Debug, Clone, Default)]
+struct PromptUi {
+    text: String,
+    /// The caret, in characters.
+    cursor: usize,
+    /// The history entry shown (Up/Down), if any.
+    recall: Option<usize>,
 }
 
 /// A visible pane other than the active one (Step 22): drawn, never typed into.
@@ -902,13 +920,16 @@ impl App {
     /// grouped as the manifest lists them, drawn in the pane's place. Up/Down/PageUp/PageDown
     /// scroll it; Esc, Enter, `q` or `F1` close it. It reads the bindings, so rebinds show.
     fn show_help(&mut self, from: usize) {
-        let (cols, rows) = self.grid;
         let m = crate::hotkeys::manifest();
-        let mut lines: Vec<String> = Vec::new();
         let prefix = self
             .matcher
             .leader()
             .map_or_else(|| "(off)".to_string(), ToString::to_string);
+        if let Some(info) = self.info_lines.clone() {
+            self.show_lines(info, from);
+            return;
+        }
+        let mut lines: Vec<String> = Vec::new();
         lines.push(format!(
             "Subak keys — prefix {prefix}; after it, an unbound key is ignored and the keys of a tab"
         ));
@@ -944,6 +965,13 @@ impl App {
         }
         lines.push(String::new());
         lines.push("Esc closes · Up/Down/PageUp/PageDown scroll".into());
+        self.show_lines(lines, from);
+    }
+
+    /// Draws `lines` in the pane's place from line `from` (the help view; Step 24 also shows
+    /// command answers in it).
+    fn show_lines(&mut self, lines: Vec<String>, from: usize) {
+        let (cols, rows) = self.grid;
         let max = lines.len().saturating_sub(usize::from(rows));
         let from = from.min(max);
         self.help = Some(from);
@@ -970,6 +998,7 @@ impl App {
     }
 
     fn close_help(&mut self) {
+        self.info_lines = None;
         if self.help.take().is_some() {
             self.event(&json!({"event": "help", "open": false}));
             self.rebuild_state();
@@ -1013,6 +1042,326 @@ impl App {
             return;
         }
         self.input(&bytes);
+    }
+
+    /// Step 24: copy mode (`Ctrl+B [`, `copy-mode`): the pane's screen and history are browsed
+    /// with the keyboard (no input reaches the program meanwhile); Space begins a selection,
+    /// Enter copies it into a paste buffer of the Host and the clipboard, q or Esc leave.
+    fn enter_copy_mode(&mut self) {
+        if !matches!(self.model.phase, Phase::Attached { .. }) || self.copy_mode {
+            return;
+        }
+        self.copy_mode = true;
+        self.copy_selecting = false;
+        self.pane.clear_selection();
+        self.pane.mark_begin();
+        self.matcher.set_copy_mode(true);
+        self.notice = Some(
+            "Copy mode: arrows or h j k l move, Space selects, Enter copies, / searches, q leaves"
+                .into(),
+        );
+        self.event(&json!({"event": "copy_mode", "on": true}));
+        self.rebuild_banner();
+        self.redraw();
+    }
+
+    fn leave_copy_mode(&mut self) {
+        if !self.copy_mode {
+            return;
+        }
+        self.copy_mode = false;
+        self.copy_selecting = false;
+        self.pane.mark_end(false);
+        self.pane.scroll_to_bottom();
+        self.matcher.set_copy_mode(false);
+        self.notice = None;
+        self.event(&json!({"event": "copy_mode", "on": false}));
+        self.rebuild_banner();
+        self.redraw();
+    }
+
+    /// Enter in copy mode: the selection into a new paste buffer (and the clipboard).
+    fn copy_selection(&mut self) {
+        if let Some(text) = self.pane.selected_text().filter(|t| !t.is_empty()) {
+            self.copy(false);
+            let fx = self
+                .model
+                .host_op("buffer.set", json!({"data": text}), false);
+            self.apply(fx);
+            self.event(&json!({"event": "copied_to_buffer", "chars": text.chars().count()}));
+        }
+        self.leave_copy_mode();
+    }
+
+    /// The movement keys of copy mode (tmux's vi keys and the arrows); every other key is
+    /// swallowed so nothing reaches the program while copy mode is on.
+    fn copy_nav(&mut self, code: u32, m: Mods, ch: Option<char>) -> bool {
+        let plain = !m.ctrl && !m.alt;
+        let motion = match (code, ch) {
+            (vk::LEFT, _) => Some(if m.ctrl {
+                Motion::WordLeft
+            } else {
+                Motion::Left
+            }),
+            (vk::RIGHT, _) => Some(if m.ctrl {
+                Motion::WordRight
+            } else {
+                Motion::Right
+            }),
+            (vk::UP, _) => Some(Motion::Up),
+            (vk::DOWN, _) => Some(Motion::Down),
+            (vk::HOME, _) => Some(if m.ctrl {
+                Motion::Top
+            } else {
+                Motion::LineStart
+            }),
+            (vk::END, _) => Some(if m.ctrl {
+                Motion::Bottom
+            } else {
+                Motion::LineEnd
+            }),
+            (vk::PRIOR, _) => Some(Motion::PageUp),
+            (vk::NEXT, _) => Some(Motion::PageDown),
+            _ if m.ctrl && code == u32::from(b'U') => Some(Motion::PageUp),
+            _ if m.ctrl && code == u32::from(b'D') => Some(Motion::PageDown),
+            (_, Some('h')) if plain => Some(Motion::Left),
+            (_, Some('l')) if plain => Some(Motion::Right),
+            (_, Some('k')) if plain => Some(Motion::Up),
+            (_, Some('j')) if plain => Some(Motion::Down),
+            (_, Some('w')) if plain => Some(Motion::WordRight),
+            (_, Some('b')) if plain => Some(Motion::WordLeft),
+            (_, Some('0' | '^')) if plain => Some(Motion::LineStart),
+            (_, Some('$')) if plain => Some(Motion::LineEnd),
+            (_, Some('g')) if plain => Some(Motion::Top),
+            (_, Some('G')) if plain => Some(Motion::Bottom),
+            _ => None,
+        };
+        if let Some(mo) = motion {
+            self.pane.mark_move(mo, self.copy_selecting);
+            self.redraw();
+            return true;
+        }
+        match ch {
+            Some('/' | '?') if plain => self.open_find(),
+            Some('n') if plain => self.find_step(true),
+            Some('N') if plain => self.find_step(false),
+            _ if m.ctrl && code == u32::from(b'C') => self.leave_copy_mode(),
+            _ => {}
+        }
+        true
+    }
+
+    /// Step 24: the command prompt (`Ctrl+B :`): a tmux command line for the shown Terminal.
+    fn open_prompt(&mut self) {
+        if !matches!(self.model.phase, Phase::Attached { .. }) {
+            self.notice = Some("The command prompt needs a running Terminal".into());
+            self.rebuild_banner();
+            return;
+        }
+        self.matcher.cancel();
+        self.prompt = Some(PromptUi::default());
+        self.event(&json!({"event": "prompt", "open": true}));
+        self.rebuild_banner();
+    }
+
+    fn prompt_key(&mut self, code: u32, m: Mods) -> bool {
+        let Some(p) = &mut self.prompt else {
+            return false;
+        };
+        let n = p.text.chars().count();
+        let at = |p: &PromptUi, i: usize| {
+            p.text
+                .char_indices()
+                .nth(i)
+                .map_or(p.text.len(), |(b, _)| b)
+        };
+        match code {
+            vk::RETURN => {
+                let line = p.text.trim().to_string();
+                self.prompt = None;
+                self.event(&json!({"event": "prompt", "open": false, "line": line}));
+                if !line.is_empty() {
+                    self.prompt_history.retain(|h| *h != line);
+                    self.prompt_history.push(line.clone());
+                    self.run_prompt(&line);
+                }
+            }
+            vk::ESCAPE => {
+                self.prompt = None;
+                self.event(&json!({"event": "prompt", "open": false}));
+            }
+            vk::BACK if p.cursor > 0 => {
+                let (a, b) = (at(p, p.cursor - 1), at(p, p.cursor));
+                p.text.replace_range(a..b, "");
+                p.cursor -= 1;
+            }
+            vk::DELETE if p.cursor < n => {
+                let (a, b) = (at(p, p.cursor), at(p, p.cursor + 1));
+                p.text.replace_range(a..b, "");
+            }
+            vk::LEFT => p.cursor = p.cursor.saturating_sub(1),
+            vk::RIGHT => p.cursor = (p.cursor + 1).min(n),
+            vk::HOME => p.cursor = 0,
+            vk::END => p.cursor = n,
+            vk::UP | vk::DOWN => {
+                let len = self.prompt_history.len();
+                if len > 0 {
+                    let i = match (p.recall, code == vk::UP) {
+                        (None, true) => Some(len - 1),
+                        (Some(i), true) => Some(i.saturating_sub(1)),
+                        (Some(i), false) if i + 1 < len => Some(i + 1),
+                        _ => None,
+                    };
+                    p.recall = i;
+                    p.text = i.map_or_else(String::new, |i| self.prompt_history[i].clone());
+                    p.cursor = p.text.chars().count();
+                }
+            }
+            vk::BACK | vk::DELETE | vk::TAB | vk::PRIOR | vk::NEXT => {}
+            _ if m.ctrl || m.alt || keys::special_key(code).is_some() => {}
+            // A character: its WM_CHAR goes into the line.
+            _ => return false,
+        }
+        self.rebuild_banner();
+        true
+    }
+
+    fn prompt_char(&mut self, c: char) {
+        if let Some(p) = &mut self.prompt
+            && !c.is_control()
+        {
+            let at = p
+                .text
+                .char_indices()
+                .nth(p.cursor)
+                .map_or(p.text.len(), |(b, _)| b);
+            p.text.insert(at, c);
+            p.cursor += 1;
+            self.rebuild_banner();
+        }
+    }
+
+    /// Runs a command line of the prompt on the shown Terminal (its active window and pane when
+    /// a command has no `-t`). Kill commands ask first when the Host says the target is busy.
+    fn run_prompt(&mut self, line: &str) {
+        use crate::tmuxcmd::{self, Context, Plan};
+        let cmds = match tmuxcmd::parse(line) {
+            Ok(c) => c,
+            Err(e) => {
+                self.notice = Some(match e.hint {
+                    Some(h) => format!("{} — {h}", e.message),
+                    None => e.message,
+                });
+                self.rebuild_banner();
+                return;
+            }
+        };
+        let t = self.model.terminal().cloned();
+        let pane = match &self.model.phase {
+            Phase::Attached { pane_id, .. } => Some(pane_id.clone()),
+            _ => None,
+        };
+        // tmux: a command without -t acts on the *current* pane when it runs, so later commands
+        // of a line follow earlier ones (`split-window; select-pane -L`). The Terminal as the
+        // target means just that: the Host resolves it to its active pane at that moment.
+        let tid = t.as_ref().map(|t| t.id.clone());
+        let ctx = Context {
+            terminal: tid.clone(),
+            window: t.as_ref().and_then(|t| t.active_window.clone()),
+            pane: tid.clone(),
+            yes: true,
+        };
+        for c in &cmds {
+            match tmuxcmd::plan(c, &ctx) {
+                Err(e) => {
+                    self.notice = Some(format!("{}: {}", c.name(), e.message));
+                    self.rebuild_banner();
+                    return;
+                }
+                Ok(Plan::Local("copy-mode")) => self.enter_copy_mode(),
+                Ok(Plan::Local(_)) => {
+                    // SAFETY: posts the close message (a detach) to our own window.
+                    unsafe { PostMessageW(self.hwnd, WM_CLOSE, 0, 0) };
+                }
+                Ok(Plan::Relative { delta, .. }) => self.window_action(if delta > 0 {
+                    Action::WindowNext
+                } else {
+                    Action::WindowPrevious
+                }),
+                Ok(Plan::Request { method, mut params }) => {
+                    // Methods that take exactly a pane get the shown pane for "current".
+                    if matches!(method, "pane.kill" | "pane.break")
+                        && params["target"].as_str() == tid.as_deref()
+                    {
+                        params["target"] = json!(pane);
+                    }
+                    if method.ends_with(".kill") {
+                        // The Host's busy rule decides; the window asks before `force`.
+                        params["force"] = json!(false);
+                    }
+                    let show = matches!(
+                        method,
+                        "pane.list"
+                            | "window.list"
+                            | "terminal.list"
+                            | "buffer.list"
+                            | "buffer.get"
+                            | "pane.capture"
+                    );
+                    let fx = self.model.host_op(method, params, show);
+                    self.apply(fx);
+                }
+            }
+        }
+    }
+
+    /// Step 24: a command's answer in the help view.
+    fn show_answer(&mut self, method: &str, r: &Value) {
+        let name = match method {
+            "pane.list" => "list-panes",
+            "window.list" => "list-windows",
+            "terminal.list" => "list-sessions",
+            "buffer.list" => "list-buffers",
+            "buffer.get" => "show-buffer",
+            "pane.capture" => "capture-pane",
+            other => other,
+        };
+        let mut lines: Vec<String> = vec![format!("{name}:"), String::new()];
+        let text = match method {
+            "pane.list" | "window.list" => crate::topology_table(r, method == "pane.list"),
+            "buffer.list" => crate::buffer_table(r).trim_start().to_string(),
+            "buffer.get" => r["data"].as_str().unwrap_or("").to_string(),
+            "pane.capture" => r["lines"]
+                .as_array()
+                .map(|l| {
+                    l.iter()
+                        .map(|x| x.as_str().unwrap_or(""))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default(),
+            _ => r["terminals"]
+                .as_array()
+                .map(|ts| {
+                    ts.iter()
+                        .map(|t| {
+                            format!(
+                                "{} ({}) {}",
+                                t["name"].as_str().unwrap_or(""),
+                                t["id"].as_str().unwrap_or(""),
+                                t["state"].as_str().unwrap_or("")
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default(),
+        };
+        lines.extend(text.lines().map(String::from));
+        lines.push(String::new());
+        lines.push("Esc closes".into());
+        self.info_lines = Some(lines);
+        self.show_help(0);
     }
 
     /// Step 23: the prefix table's window keys, for the shown Terminal's internal windows.
@@ -1128,6 +1477,11 @@ impl App {
 
     /// Rebuilds the state screen for the current phase and grid.
     fn rebuild_state(&mut self) {
+        // Step 23/24: the help or an answer stays on screen until it is closed.
+        if let Some(from) = self.help {
+            self.show_help(from);
+            return;
+        }
         let (cols, rows) = self.grid;
         let mut v = TermView::new(cols, rows, 0);
         if let Some(vt) =
@@ -1292,6 +1646,18 @@ impl App {
             Some((screens::Tone::Warning, Content::Ask))
         } else if self.find.is_some() {
             Some((screens::Tone::Info, Content::Find))
+        } else if let Some(p) = &self.prompt {
+            let (before, after): (String, String) = (
+                p.text.chars().take(p.cursor).collect(),
+                p.text.chars().skip(p.cursor).collect(),
+            );
+            Some((
+                screens::Tone::Info,
+                Content::Text(Banner {
+                    tone: screens::Tone::Info,
+                    text: format!(":{before}\u{258f}{after}   (Enter runs, Esc cancels)"),
+                }),
+            ))
         } else if let Some(keys) = self.matcher.pending_keys() {
             Some((
                 screens::Tone::Info,
@@ -2270,6 +2636,7 @@ impl App {
                     tabs = true;
                 }
                 Effect::Views => self.sync_side(),
+                Effect::Show { method, result } => self.show_answer(method, &result),
                 Effect::Renamed(r) => {
                     self.event(&json!({"event": "renamed", "ok": r.is_ok(),
                         "error": r.as_ref().err()}));
@@ -2579,6 +2946,10 @@ impl App {
         if !self.composition.is_empty() || code == vk::PROCESSKEY {
             return false;
         }
+        // Step 24: the command prompt takes the keys while it is open.
+        if self.prompt.is_some() {
+            return self.prompt_key(code, m);
+        }
         // Step 23: the keyboard help takes the keys while it is shown.
         if let Some(from) = self.help {
             match code {
@@ -2633,6 +3004,7 @@ impl App {
             return handled;
         }
         if self.pane.marking()
+            && !self.copy_mode
             && let Some(handled) = self.mark_key(code, m)
         {
             return handled;
@@ -2669,6 +3041,10 @@ impl App {
                 return true;
             }
             Outcome::Ignored => {}
+        }
+        // Step 24: in copy mode the movement keys browse; nothing else reaches the program.
+        if self.copy_mode && self.find.is_none() {
+            return self.copy_nav(code, m, p.ch);
         }
         // The context-menu key opens the shown tab's menu (reserved navigation, §3.5).
         if code == vk::APPS && m == Mods::NONE {
@@ -2932,6 +3308,15 @@ impl App {
             }
             return;
         }
+        if self.prompt.is_some() {
+            if !alt {
+                self.prompt_char(c);
+            }
+            return;
+        }
+        if self.copy_mode || self.help.is_some() {
+            return;
+        }
         if !matches!(self.model.phase, Phase::Attached { .. }) {
             return;
         }
@@ -3055,6 +3440,42 @@ impl App {
                 }
             }
             Action::SendPrefix => self.send_prefix(),
+            Action::CommandPrompt => self.open_prompt(),
+            Action::CopyEnter => self.enter_copy_mode(),
+            Action::CopyExit => self.leave_copy_mode(),
+            Action::CopyBeginSelection => {
+                if self.copy_mode {
+                    // The anchor is the caret now; the next moves extend from it.
+                    self.pane.mark_move(Motion::Right, false);
+                    self.pane.mark_move(Motion::Left, false);
+                    self.copy_selecting = true;
+                    self.event(&json!({"event": "copy_selecting"}));
+                }
+            }
+            Action::CopyCopySelection => self.copy_selection(),
+            Action::BufferPaste => {
+                let fx = self.model.pane_op("buffer.paste", json!({}));
+                self.apply(fx);
+            }
+            Action::PaneBreak => {
+                let fx = self.model.pane_op("pane.break", json!({}));
+                self.apply(fx);
+            }
+            Action::BufferList => {
+                let fx = self.model.host_op("buffer.list", json!({}), true);
+                self.apply(fx);
+            }
+            Action::BufferDelete => {
+                let fx = self.model.host_op("buffer.delete", json!({}), false);
+                self.apply(fx);
+            }
+            Action::CopyPageUp => {
+                self.enter_copy_mode();
+                if self.copy_mode {
+                    self.pane.mark_move(Motion::PageUp, false);
+                    self.redraw();
+                }
+            }
             // tmux `detach-client`: the window lets go of every Terminal; nothing ends.
             // SAFETY: posts the close message (a detach) to our own window.
             Action::ClientDetach => unsafe {
@@ -4474,6 +4895,10 @@ impl App {
         dump["split_frame"] = json!(self.split_frame.as_ref().map(|f| [f.width, f.height]));
         // Step 23: the keyboard help and the pending prefix.
         dump["help"] = json!(self.help);
+        dump["copy_mode"] = json!(self.copy_mode);
+        dump["view_cursor"] = json!(self.pane.cursor_in_view());
+        dump["prompt"] = json!(self.prompt.as_ref().map(|p| p.text.clone()));
+        dump["selected_text"] = json!(self.pane.selected_text());
         dump["pending_keys"] = json!(self.matcher.pending_keys());
         dump["prefix"] = json!(self.matcher.leader().map(ToString::to_string));
         if let (Some(d), Value::Object(more)) = (dump.as_object_mut(), self.step19_json()) {
@@ -5815,6 +6240,11 @@ pub fn run(o: Options) -> ExitCode {
         split_frame: None,
         border_drag: None,
         help: None,
+        info_lines: None,
+        prompt: None,
+        prompt_history: Vec::new(),
+        copy_mode: false,
+        copy_selecting: false,
     };
     if let Some(m) = &migration {
         app.event(m);

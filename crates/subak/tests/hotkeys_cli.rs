@@ -181,8 +181,8 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| !a["id"].as_str().unwrap().starts_with("copy.")),
-        "only what this build implements is listed (copy mode is Step 24)"
+            .all(|a| a["id"] != "gui.show"),
+        "only what this build implements is listed (gui.show is not shipped)"
     );
     // --scope filters.
     let (_, ctx) = p.json(&["list", "--scope", "context"]);
@@ -191,7 +191,9 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| a["scope"] == "context:terminal" || a["scope"] == "context:manager")
+            .all(|a| a["scope"] == "context:terminal"
+                || a["scope"] == "context:manager"
+                || a["scope"] == "context:copy-mode")
     );
     // Step 18: the Terminal manager's keys, a context of their own.
     for (id, want) in [
@@ -213,7 +215,7 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
         show["data"]["conflicts"][0]["code"], "shadows_terminal_input",
         "programs do not receive Ctrl+W: an info with the pass-through hint"
     );
-    let (code, missing) = p.json(&["show", "copy.exit"]);
+    let (code, missing) = p.json(&["show", "gui.show"]);
     assert_eq!(code, 3);
     assert_eq!(missing["error"]["code"], "action_not_found");
     // check: no error or warning; the shadowed terminal keys (Ctrl+T, Ctrl+W and, since Step 23,
@@ -352,7 +354,7 @@ fn refused_changes_write_nothing_and_name_the_way_out() {
         (code, e["error"]["code"].as_str()),
         (2, Some("hotkey_invalid"))
     );
-    let (code, e) = p.json(&["set", "copy.begin-selection", "Ctrl+Shift+5"]);
+    let (code, e) = p.json(&["set", "gui.show", "Ctrl+Shift+5"]);
     assert_eq!(
         (code, e["error"]["code"].as_str()),
         (3, Some("action_not_found"))

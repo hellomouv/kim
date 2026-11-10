@@ -342,6 +342,8 @@ pub enum Effect {
     Renamed(Result<(), String>),
     /// Step 22: the read-only pane views changed (added, attached, gone).
     Views,
+    /// Step 24: the answer of a command-prompt query (`list-panes`, `show-buffer`, …) to show.
+    Show { method: &'static str, result: Value },
 }
 
 /// What a data frame is for.
@@ -394,6 +396,8 @@ enum Pending {
     /// Step 22: a layout request (`pane.split`, `pane.select`, …) from a key or a click, and
     /// its target pane.
     PaneOp(&'static str, String),
+    /// Step 24: a command-prompt query whose answer is shown.
+    Query(&'static str),
 }
 
 /// Retry delays after a disconnect: 0.5, 1, 2, 4, 8 s, then every 10 s.
@@ -1101,6 +1105,23 @@ impl Model {
         }
     }
 
+    /// Step 24: a request of the command prompt as planned (`params` complete); a query's answer
+    /// comes back as [`Effect::Show`].
+    pub fn host_op(&mut self, method: &'static str, params: Value, show: bool) -> Vec<Effect> {
+        if !self.connected {
+            return vec![Effect::Notice(
+                "Not connected to the Subak Host; nothing was run".into(),
+            )];
+        }
+        let target = params["target"].as_str().unwrap_or("").to_string();
+        let p = if show {
+            Pending::Query(method)
+        } else {
+            Pending::PaneOp(method, target)
+        };
+        vec![self.request(method, params, p)]
+    }
+
     /// Step 22: a layout request for the active pane (or `target`), from a key or a click:
     /// `pane.split`, `pane.select`, `pane.adjust`, `pane.zoom`, `pane.kill`. A refusal is a
     /// notice; the result arrives as the next layout.
@@ -1265,6 +1286,10 @@ impl Model {
                     }
                 }
             }
+            Pending::Query(method) => out.push(Effect::Show {
+                method,
+                result: r.clone(),
+            }),
             Pending::PaneOp(..) | Pending::Subscribe | Pending::Resize | Pending::Detach => {}
         }
         out
@@ -1364,6 +1389,9 @@ impl Model {
                     pane: Some(target),
                 }));
             }
+            Pending::Query(method) => {
+                out.push(Effect::Notice(format!("{method}: {message} ({code})")));
+            }
             Pending::PaneOp(method, _) => {
                 let what = match method {
                     "pane.split" => "The pane was not split",
@@ -1374,6 +1402,11 @@ impl Model {
                     "window.select" => "The window was not selected",
                     "window.rename" => "The window was not renamed",
                     "window.kill" => "The window was not closed",
+                    "buffer.set" => "The buffer was not saved",
+                    "buffer.paste" => "Nothing was pasted",
+                    "pane.break" => "The pane was not moved to a window of its own",
+                    "pane.join" => "The pane was not joined",
+                    "pane.send_keys" => "No keys were sent",
                     _ => "The pane was not changed",
                 };
                 let busy = if code == "busy" {

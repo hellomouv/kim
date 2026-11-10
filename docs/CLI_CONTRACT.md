@@ -255,6 +255,10 @@ split|resize|swap|zoom` and `subak window rotate|layout` (tmux aliases `split-wi
 `pane.new`) and `result_layout` of `pane.adjust`, `pane.swap`, `pane.zoom`, `window.rotate` and
 `window.select_layout`; all take `--dry-run` and add no error code (a pane too small to split is
 `invalid_state`, exit 7).
+Step 24 ([ADR 0058](adr/0058-subak-tmux-commands-copy-mode-and-buffers.md)) adds `subak command`
+(alias `subak tmux`; data `{results: [{command, method, result}]}` or a dry-run plan) and `subak
+buffer ls|show|set|delete|paste` (`buffer.*` results). Parse errors are `usage` with a stable
+`details` `kind`; kills need `--yes` (`confirmation_required`); no error code is added.
 `capture`, `history` and `clear-history` (Step 13, [SCROLLBACK.md](SCROLLBACK.md)) answer
 `pane.capture` (all pages joined, plus `name` and `requests`), its counters with the Terminal's
 `name` and `state`, and `pane.clear_history` plus `name`; `capture` redacts secret-looking

@@ -83,6 +83,13 @@ pub enum Cmd {
     PaneZoom,
     WindowRotate,
     WindowLayout,
+    // Step 24: tmux command lines and paste buffers.
+    Command,
+    BufferLs,
+    BufferShow,
+    BufferSet,
+    BufferDelete,
+    BufferPaste,
 }
 
 impl Cmd {
@@ -142,6 +149,12 @@ impl Cmd {
             Self::PaneZoom => "pane.zoom",
             Self::WindowRotate => "window.rotate",
             Self::WindowLayout => "window.layout",
+            Self::Command => "command",
+            Self::BufferLs => "buffer.ls",
+            Self::BufferShow => "buffer.show",
+            Self::BufferSet => "buffer.set",
+            Self::BufferDelete => "buffer.delete",
+            Self::BufferPaste => "buffer.paste",
         }
     }
 
@@ -219,6 +232,10 @@ impl Cmd {
             Self::PaneSwap => (&["pane", "other pane, next or previous"], 2),
             Self::PaneZoom => (&["pane", "on or off"], 1),
             Self::WindowRotate => (&["window or terminal", "up or down"], 1),
+            Self::Command => (&["tmux command line"], 0),
+            Self::BufferShow | Self::BufferDelete => (&["buffer"], 0),
+            Self::BufferSet => (&["text"], 1),
+            Self::BufferPaste => (&["pane"], 1),
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -226,7 +243,7 @@ impl Cmd {
 
     /// Whether the last positional argument repeats (`hotkeys set <action> <keys>...`).
     fn variadic(&self) -> bool {
-        *self == Self::HotkeysSet
+        matches!(self, Self::HotkeysSet | Self::Command)
     }
 
     /// Options (beyond the global ones) this command accepts.
@@ -349,6 +366,11 @@ impl Cmd {
             | Self::PaneZoom
             | Self::WindowRotate
             | Self::WindowLayout => &["--endpoint", "--dry-run"],
+            Self::Command => &["--endpoint", "--target", "--yes", "--dry-run"],
+            Self::BufferLs | Self::BufferShow => &["--endpoint"],
+            Self::BufferDelete => &["--endpoint", "--dry-run"],
+            Self::BufferSet => &["--endpoint", "--name", "--append", "--dry-run"],
+            Self::BufferPaste => &["--endpoint", "--name", "--delete", "--dry-run"],
         };
         if *self == Self::PaneNew && opt == "--name" {
             return false;
@@ -442,6 +464,10 @@ pub struct Args {
     pub split: Option<bool>,
     /// `pane split --before`: the new pane goes left of or above the split one.
     pub before: bool,
+    /// Step 24: `buffer set --append`, `buffer paste --delete`, `command --target <target>`.
+    pub append: bool,
+    pub delete: bool,
+    pub target: Option<String>,
     /// `pane split --cells <n>` / `--percent <n>`: the new pane's size.
     pub cells: Option<u64>,
     pub percent: Option<u64>,
@@ -570,6 +596,20 @@ fn terminal_verb(word: &str) -> Option<Cmd> {
         "swap-pane" => Cmd::PaneSwap,
         "rotate-window" => Cmd::WindowRotate,
         "select-layout" => Cmd::WindowLayout,
+        // Step 24.
+        "command" | "tmux" => Cmd::Command,
+        _ => return None,
+    })
+}
+
+/// The `subak buffer <verb>` commands (Step 24, tmux paste buffers).
+fn buffer_verb(word: &str) -> Option<Cmd> {
+    Some(match word {
+        "ls" | "list" => Cmd::BufferLs,
+        "show" => Cmd::BufferShow,
+        "set" => Cmd::BufferSet,
+        "delete" | "rm" => Cmd::BufferDelete,
+        "paste" => Cmd::BufferPaste,
         _ => return None,
     })
 }
@@ -925,6 +965,20 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.before = true;
                 opts.push("--before");
             }
+            "--append" => {
+                a.append = true;
+                opts.push("--append");
+            }
+            "--delete" => {
+                a.delete = true;
+                opts.push("--delete");
+            }
+            "--target" => {
+                opts.push("--target");
+                if let Some(v) = value("--target") {
+                    a.target = Some(v);
+                }
+            }
             "--cells" | "--percent" => {
                 let name = if flag == "--cells" {
                     "--cells"
@@ -1118,6 +1172,20 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "health", ..] => (Cmd::HostHealth, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
+        ["buffer", sub, ..] if buffer_verb(sub).is_some() => {
+            (buffer_verb(sub).expect("checked above"), 2)
+        }
+        ["buffer", ..] => {
+            return Err((
+                "buffer".into(),
+                CliError::usage(if words.len() == 1 {
+                    "`subak buffer` needs a command".to_string()
+                } else {
+                    format!("unknown command `{}`", words.join(" "))
+                })
+                .hint("buffer commands: ls, show, set, delete, paste (see `subak --help`)"),
+            ));
+        }
         ["hotkeys", sub, ..] if hotkeys_verb(sub).is_some() => {
             (hotkeys_verb(sub).expect("checked above"), 2)
         }
@@ -1220,7 +1288,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
             return Err((
                 "subak".into(),
                 CliError::usage(format!("unknown command `{}`", words.join(" "))).hint(
-                    "commands: new, ls, info, status, attach, detach, rename, stop, kill, rm, capture, history, clear-history, window, pane, host, hotkeys, config, profile, capabilities (see `subak --help`)",
+                    "commands: new, ls, info, status, attach, detach, rename, stop, kill, rm, capture, history, clear-history, window, pane, buffer, command, host, hotkeys, config, profile, capabilities (see `subak --help`)",
                 ),
             ));
         }
@@ -1257,7 +1325,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
     if dashdash
         && !matches!(
             cmd,
-            Cmd::New | Cmd::WindowNew | Cmd::PaneNew | Cmd::PaneSplit
+            Cmd::New | Cmd::WindowNew | Cmd::PaneNew | Cmd::PaneSplit | Cmd::Command
         )
     {
         return fail(CliError::usage(

@@ -72,7 +72,7 @@ verbs above and the Step 13 verbs `subak capture`, `subak history` and `subak cl
 | --- | --- | --- | --- | --- | --- |
 | Run a command against the running server | `tmux <command> [flags]` | `subak <verb>` CLI with human and `--json` output (KIM-FR-010). *Partial:* `subak new\|ls\|info\|status\|attach\|detach\|rename\|stop\|kill\|rm` ([SUBAK_CLI](SUBAK_CLI.md)); a tmux-syntax entry point later (Steps 24–25) | partial | 12 | `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Run the default command when none is given | `tmux` (no args) → `default-client-command` (`new-session`) | *Rationale:* nothing starts implicitly (ADR 0027 §2): bare `subak` prints help; `subak new --attach` is the explicit equivalent | unsupported | — | — |
-| Shortest unambiguous command prefix | e.g. `tmux list-se` | Accepted by the tmux-syntax parser (prompt, `source-file`) | planned | 24 | — |
+| Shortest unambiguous command prefix | e.g. `tmux list-se` | Accepted by the tmux-syntax parser (prompt, `source-file`) *Rationale for the move:* Subak takes full names and tmux aliases only; prefixes would guess. | planned | 25 | — |
 | Force 256 colours | `-2` | Always full colour in the GUI; no flag needed | planned | 12 | — |
 | UTF-8 output | `-u` | Always UTF-8 (KIM-NFR-013); no flag needed. *Partial:* the CLI's output and `--json` are UTF-8, and `attach` switches its console to code page 65001 and restores it; the GUI later | partial | 12 | `crates/subak/tests/subak_cli.rs::console_attach_restores_the_console_on_every_exit_path_it_survives` (2026-11-04) |
 | Control mode | `-C`, `-CC` | *Rationale:* control mode is deferred (§19); Subak's own IPC and `--json` CLI serve integrations | deferred | post-26 | — |
@@ -103,7 +103,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Kill the server and every session | `kill-server` | Kill every Terminal (explicit, confirmed when busy; SUBAK-FR-014); the Host then exits (SUBAK-FR-002). CLI verb TBD | planned | 25 | — |
 | Kill a session | `kill-session` | Host delete op; `subak kill <terminal>` with `--dry-run` and `--force` (SUBAK-FR-014). *Partial:* `terminal.kill` and `subak kill <terminal>` (`--dry-run`, consent or `--yes`; busy Terminals need it); GUI `Ctrl+W` (Step 17: by id, asks when busy); `-a`, `-C` not yet | partial | 10, 12, 17 | `crates/subak/tests/session_lifecycle.rs::stop_kill_and_rm_have_distinct_explicit_guarded_meanings`, `crates/subak/tests/subak_cli.rs::a_user_creates_attaches_detaches_lists_renames_and_kills_with_the_cli_only` (2026-11-04), `crates/subak/tests/gui_window.rs::ctrl_t_creates_and_ctrl_w_closes_asking_first_when_busy_never_hitting_another_terminal` (Step 17) |
 | List clients | `list-clients` (`lsc`) | `subak host status` lists attached clients. *Partial:* `subak status` and `subak host status` list every client with its id, kind, pid and attachments; `-F`/`-t` not yet | partial | 12 | `crates/subak/tests/subak_cli.rs::a_user_creates_attaches_detaches_lists_renames_and_kills_with_the_cli_only` (2026-11-04) |
-| List commands | `list-commands` (`lscm`) | List supported tmux-syntax commands with usage | planned | 24 | — |
+| List commands | `list-commands` (`lscm`) | List supported tmux-syntax commands with usage *Rationale for the move:* with the help of Step 25. | planned | 25 | — |
 | List sessions | `list-sessions` (`ls`) | `subak ls` (human and `--json`; SUBAK-FR-012). *Partial:* `subak ls` (human and `--json`); Claude status (Step 28) and `-F`/`-f` not yet | partial | 12 | `crates/subak/tests/session_lifecycle.rs::zero_one_and_many_terminals_have_isolated_process_trees`, `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Lock a client | `lock-client` (`lockc`) | *Rationale:* the OS lock screen protects the desktop; Subak never locks a session | unsupported | — | — |
 | Lock the server | `lock-server` (`lock`) | *Rationale:* as `lock-client` | unsupported | — | — |
@@ -122,8 +122,8 @@ Grouped by the manual page section that documents them. `set-window-option` and
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Enter copy mode | `copy-mode` | Copy mode with vi and emacs tables (§7) | planned | 24 | — |
-| Break a pane out into a new window | `break-pane` (`breakp`) | Move a Pane into a new internal Window | planned | 24 | — |
+| Enter copy mode | `copy-mode` | Copy mode with vi and emacs tables (§7) *Partial:* `copy-mode` in the prompt and `Ctrl+B [`; its flags are Step 25. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Break a pane out into a new window | `break-pane` (`breakp`) | Move a Pane into a new internal Window *Partial:* `break-pane [-d] [-n name] [-s pane]` / IPC `pane.break`, `Ctrl+B !`; `-a`/`-b`/`-P`/`-F` later. | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Capture pane contents | `capture-pane` (`capturep`) | `subak capture`: screen/scrollback as text or JSON (SUBAK-FR-012, ADR 0030). *Partial:* `subak capture [<target>]` and IPC `pane.capture` (screen, history ranges, text or VT, joined rows, redaction by default; also of a stopped Terminal, [SCROLLBACK §4](SCROLLBACK.md)); buffers (`-b`) and the GUI later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Choose a client from a list | `choose-client` | Client chooser overlay | planned | 25 | — |
 | Choose a session, window or pane from a tree | `choose-tree` | Tree chooser overlay; the GUI session manager covers Terminals (SUBAK-FR-032) | planned | 25 | — |
@@ -131,7 +131,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Fuzzy session/window switcher (new in 3.8) | `switch-mode` | Fuzzy Terminal/Window switcher overlay | planned | 25 | — |
 | Show pane numbers | `display-panes` (`displayp`) | Pane-number overlay; typing a number focuses that Pane | planned | 25 | — |
 | Find a window by name, title or content | `find-window` (`findw`) | Search Windows by name, title or content | planned | 25 | — |
-| Join a pane into another window | `join-pane` (`joinp`) | Move a Pane into another Window as a split | planned | 24 | — |
+| Join a pane into another window | `join-pane` (`joinp`) | Move a Pane into another Window as a split *Partial:* `join-pane [-bdhv] [-l size] -s pane [-t pane]` / IPC `pane.join`, within one Terminal. | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Kill a pane | `kill-pane` (`killp`) | Close the Pane and end its process tree (SUBAK-FR-016). *Partial:* `subak pane kill <pane>` / IPC `pane.kill` ends only that pane's job, asks (or `--yes`) and acts by id, needs `force` for a busy pane; **deviation:** the last running pane of a Terminal is refused (`subak kill` ends a Terminal); `-a` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
 | Kill a window | `kill-window` (`killw`) | Close the Window and end its Panes' processes. *Partial:* `subak window kill <window>` / IPC `window.kill`, as `kill-pane`; the last running window is refused; `-a` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
 | Select the previous pane | `last-pane` (`lastp`) | Focus the previously active Pane *Rationale for the move:* needs the previous selection kept by the Host. | planned | 25 | — |
@@ -139,7 +139,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Link a window into another session | `link-window` (`linkw`) | Show one Window in several Terminals | planned | 25 | — |
 | List panes | `list-panes` (`lsp`) | Host op and CLI listing with stable IDs (SUBAK-FR-010). *Partial:* `subak pane ls <terminal|window>` (also `list-panes`) / IPC `pane.list` with ids, indexes, pids and the active pane; `-a`, `-s`, `-F`, `-f` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | List windows | `list-windows` (`lsw`) | Host op and CLI listing with stable IDs. *Partial:* `subak window ls <terminal>` (also `list-windows`) / IPC `window.list`; `-a`, `-F`, `-f` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
-| Move a pane | `move-pane` (`movep`) | Move a Pane between Windows (like `join-pane`); floating-pane positions (`-P`, `-M`, `-X`, `-Y`) deferred with `new-pane` | planned | 24 | — |
+| Move a pane | `move-pane` (`movep`) | Move a Pane between Windows (like `join-pane`); floating-pane positions (`-P`, `-M`, `-X`, `-Y`) deferred with `new-pane` *Partial:* `move-pane` is an alias of `join-pane`. | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Move or renumber a window | `move-window` (`movew`) | Reorder or move a Window; `-r` renumbers | planned | 25 | — |
 | Create a window | `new-window` (`neww`) | New internal Window in the current Terminal (not a GUI tab). *Partial:* `subak window new <terminal>` (also `new-window`) / IPC `window.create`: lowest free index, `-n` as `--name`, `-d` as `--no-select`, `-c`/`-e` as `--cwd`/`--env`, a program as argv or `--command-line`; `-a`, `-b`, `-k`, `-S`, `-P` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Create a floating pane (new in 3.8) | `new-pane` (`newp`) | *Rationale:* floating and modal panes are new in tmux 3.8; the GUI overlay design needs an ADR; tiled panes come first | deferred | post-26 | — |
@@ -168,7 +168,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | --- | --- | --- | --- | --- | --- |
 | Bind a key | `bind-key` (`bind`) | Key-binding engine: `-T` table, `-n` root table, `-r` repeatable, `-N` note *Partial:* `subak hotkeys set <action> <keys>` binds actions (with `@prefix` sequences, `repeat` = `-r`) in `hotkeys.json`; arbitrary commands and `-T`/`-n` tables later. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11) |
 | List key bindings | `list-keys` (`lsk`) | List bindings and notes (`-N`, `-T`, `-1`, `-a`, `-P`) *Partial:* `subak hotkeys list` and the window's keyboard help (`F1`, `Ctrl+B ?`). | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
-| Send keys to a pane | `send-keys` (`send`) | Host send-input op (SUBAK-FR-013) with tmux key names; `-l`, `-H`, `-N`, `-R`; `-X` copy-mode commands in 24; `-M` mouse in 25 *Rationale for the move:* with `pane.send_keys` (Step 24). | planned | 24 | — |
+| Send keys to a pane | `send-keys` (`send`) | Host send-input op (SUBAK-FR-013) with tmux key names; `-l`, `-H`, `-N`, `-R`; `-X` copy-mode commands in 24; `-M` mouse in 25 *Rationale for the move:* with `pane.send_keys` (Step 24). *Partial:* `send-keys [-l] [-t pane] keys…` / IPC `pane.send_keys` with tmux key names; `-X`, `-N`, `-H`, `-R`, `-M` later. | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Send the prefix key | `send-prefix` | Send `Ctrl+B` (or `prefix2` with `-2`) to the Pane *Partial:* `Ctrl+B Ctrl+B` in the window and the console client; no `send-prefix` command, no `prefix2`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
 | Unbind a key | `unbind-key` (`unbind`) | Remove a binding (`-a` all, `-n`, `-T`, `-q`) *Partial:* `subak hotkeys disable <action>` / `reset`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11) |
 
@@ -189,27 +189,27 @@ Grouped by the manual page section that documents them. `set-window-option` and
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Clear prompt history | `clear-prompt-history` (`clearphist`) | Clear command-prompt history (per type with `-T`) | planned | 24 | — |
-| Command prompt | `command-prompt` | `Ctrl+B :` prompt for tmux-syntax commands; `-I`, `-p`, `-1`, `-k`, `-N`, `-T` | planned | 24 | — |
-| Confirm before running a command | `confirm-before` (`confirm`) | Confirmation prompt (`-p`, `-y`, `-c`); the `x`/`&` confirmation exists from Step 23 | planned | 24 | — |
+| Clear prompt history | `clear-prompt-history` (`clearphist`) | Clear command-prompt history (per type with `-T`) *Rationale for the move:* prompt history commands with Step 25. | planned | 25 | — |
+| Command prompt | `command-prompt` | `Ctrl+B :` prompt for tmux-syntax commands; `-I`, `-p`, `-1`, `-k`, `-N`, `-T` *Partial:* `Ctrl+B :` in the window (a line of tmux commands, history with Up/Down) and `subak command`; `-I`, `-p`, templates later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Confirm before running a command | `confirm-before` (`confirm`) | Confirmation prompt (`-p`, `-y`, `-c`); the `x`/`&` confirmation exists from Step 23 *Rationale for the move:* kill keys ask through the Host's busy rule (ADR 0057); a general `confirm-before` with Step 25. | planned | 25 | — |
 | Show a menu | `display-menu` (`menu`) | *Rationale:* GUI context menus are designed natively first; tmux menu definitions later | deferred | post-26 | — |
 | Show a message or print a format | `display-message` (`display`) | Message line; `-p` prints an expanded format to stdout | planned | 25 | — |
 | Show a popup | `display-popup` (`popup`) | *Rationale:* a popup overlay needs a GUI design and ADR | deferred | post-26 | — |
-| Show prompt history | `show-prompt-history` (`showphist`) | Show command-prompt history | planned | 24 | — |
+| Show prompt history | `show-prompt-history` (`showphist`) | Show command-prompt history *Rationale for the move:* prompt history commands with Step 25. | planned | 25 | — |
 
 ### 2.6 Buffers
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Choose a paste buffer | `choose-buffer` | Buffer chooser overlay | planned | 24 | — |
+| Choose a paste buffer | `choose-buffer` | Buffer chooser overlay *Rationale for the move:* tree modes are Step 25. | planned | 25 | — |
 | Clear pane history | `clear-history` (`clearhist`) | Clear the Pane's scrollback; `-H` also clears hyperlinks. *Partial:* `subak clear-history [<target>]` (asks or `--yes`, `--dry-run`) and IPC `pane.clear_history`; the screen stays; hyperlinks are kept in the history since Step 15 and go with its lines; `-H` alone (hyperlinks only) is not offered yet | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request` (2026-11-04) |
-| Delete a paste buffer | `delete-buffer` (`deleteb`) | Delete a buffer | planned | 24 | — |
-| List paste buffers | `list-buffers` (`lsb`) | List buffers (`-F`, `-f`, `-O`) | planned | 24 | — |
-| Load a buffer from a file | `load-buffer` (`loadb`) | Load a file or stdin (`-`); `-w` also sets the clipboard | planned | 24 | — |
-| Paste a buffer | `paste-buffer` (`pasteb`) | Paste into a Pane; `-p` bracketed, `-r`, `-s`, `-d` | planned | 24 | — |
-| Save a buffer to a file | `save-buffer` (`saveb`) | Write a buffer to a file or stdout; `-a` appends | planned | 24 | — |
-| Set a paste buffer | `set-buffer` (`setb`) | Set, append (`-a`) or rename (`-n`) a buffer; `-w` clipboard | planned | 24 | — |
-| Show a paste buffer | `show-buffer` (`showb`) | Print a buffer | planned | 24 | — |
+| Delete a paste buffer | `delete-buffer` (`deleteb`) | Delete a buffer `delete-buffer [-b name]`, `subak buffer delete`, `Ctrl+B -`. | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| List paste buffers | `list-buffers` (`lsb`) | List buffers (`-F`, `-f`, `-O`) *Partial:* `list-buffers`, `subak buffer ls`, `Ctrl+B #` (names, sizes, a redacted first line); no `-F` formats. | partial | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| Load a buffer from a file | `load-buffer` (`loadb`) | Load a file or stdin (`-`); `-w` also sets the clipboard *Rationale for the move:* file access for buffers is Step 25 (privacy review). | planned | 25 | — |
+| Paste a buffer | `paste-buffer` (`pasteb`) | Paste into a Pane; `-p` bracketed, `-r`, `-s`, `-d` *Partial:* `paste-buffer [-b name] [-d] [-t pane]`, `subak buffer paste`, `Ctrl+B ]`; `-p` (bracketed), `-r`, `-s` later. | partial | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11), `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Save a buffer to a file | `save-buffer` (`saveb`) | Write a buffer to a file or stdout; `-a` appends *Rationale for the move:* file access for buffers is Step 25 (privacy review). | planned | 25 | — |
+| Set a paste buffer | `set-buffer` (`setb`) | Set, append (`-a`) or rename (`-n`) a buffer; `-w` clipboard *Partial:* `set-buffer [-a] [-b name] data`, `subak buffer set`; `-n` (rename) and `-w` later. | partial | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| Show a paste buffer | `show-buffer` (`showb`) | Print a buffer `show-buffer [-b name]`, `subak buffer show`. | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
 
 ### 2.7 Miscellaneous
 
@@ -241,7 +241,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Split size, side and span | `split-window -l N`, `-l N%`, `-b`, `-f`, `-d` | Split options. *Partial:* `--cells N`, `--percent N`, `--before`, `--no-select`; `-f` (full width) later | partial | 22 | `crates/subak/tests/pane_layout.rs::directional_focus_minimum_sizes_dry_runs_and_refusals` (2026-11-11) |
 | Keep zoom while navigating | `-Z` on `select-pane`, `last-pane`, `swap-pane`, `rotate-window`, `split-window` | Zoom-preserving navigation. *Rationale for the move:* Step 22 unzooms on every such change, as tmux does without `-Z`; keeping the zoom is an option of Step 25 | planned | 25 | — |
 | Capture options | `capture-pane -p -e -J -N -S -E -a -b -C -M -P -q -T` | Text (`-p`), styles (`-e`), joined lines (`-J`), ranges (`-S`/`-E`), alternate screen (`-a`). *Partial:* `-p` (always), `-e` = `--vt`, `-J` = `--join`, `-S`/`-E` = `--start`/`--end` with the same numbering and `-`; `-N`, `-a`, `-b`, `-C`, `-M`, `-P`, `-q`, `-T` later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak/src/screen.rs::tests::capture_ranges_join_and_edges` (2026-11-04) |
-| Copy-mode entry options | `copy-mode -u -d -e -H -M -q -S -s -k` | Scroll on entry, exit at bottom, mouse entry, quit all modes | planned | 24 | — |
+| Copy-mode entry options | `copy-mode -u -d -e -H -M -q -S -s -k` | Scroll on entry, exit at bottom, mouse entry, quit all modes *Rationale for the move:* copy-mode flags with Step 25. | planned | 25 | — |
 | List filters and sort order | `list-* -f filter -O order -r` | CLI filter and sort; format filters in Step 25 | planned | 25 | — |
 | Send keys to a client's key table | `send-keys -K -c target-client` | Inject keys into a client's key handling *Rationale for the move:* with custom key tables (Step 25). | planned | 25 | — |
 
@@ -257,39 +257,39 @@ exists, so no key row targets a Step before 23.
 | Rotate panes forwards | `C-b C-o` → `rotate-window` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Suspend the client | `C-b C-z` → `suspend-client` | *Rationale:* no SIGTSTP on Windows; the key stays unbound | unsupported | — | — |
 | Next layout preset | `C-b Space` → `next-layout` | Same key | planned | 25 | — |
-| Break pane to a new window | `C-b !` → `break-pane` | Same key | planned | 24 | — |
+| Break pane to a new window | `C-b !` → `break-pane` | Same key Since Step 24. | implemented | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Split top/bottom | `C-b "` → `split-window` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
-| List paste buffers | `C-b #` → `list-buffers` | Same key | planned | 24 | — |
+| List paste buffers | `C-b #` → `list-buffers` | Same key Since Step 24 (the answer in the pane's place). | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
 | Rename the session | `C-b $` → `command-prompt -I'#S' { rename-session }` | Rename the Terminal (and its tab) (*basic*); full prompt in 24 *Partial:* `Ctrl+B $` opens the in-place rename of the tab (the prompt with Step 24). | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
 | Split left/right | `C-b %` → `split-window -h` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Kill the window (confirm) | `C-b &` → `confirm-before kill-window` | Same key with confirmation (*basic*; SUBAK_PHILOSOPHY §6.1) *Partial:* `Ctrl+B &` asks only when the window runs more than a shell (the Host's busy rule, as `Ctrl+W`); an idle window ends at once. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
-| Prompt for a window index | `C-b '` → `command-prompt -pindex` | Same key | planned | 24 | — |
+| Prompt for a window index | `C-b '` → `command-prompt -pindex` | Same key *Rationale for the move:* prompt templates with Step 25. | planned | 25 | — |
 | New floating pane | `C-b *` → `new-pane` | *Rationale:* floating panes deferred (see `new-pane`) | deferred | post-26 | — |
 | Toggle floating/tiled pane | `C-b @` → `join-pane` / `break-pane -W` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Previous session | `C-b (` → `switch-client -p` | Previous Terminal in the current client (GUI analogue: `Ctrl+Shift+Tab`) | planned | 25 | — |
 | Next session | `C-b )` → `switch-client -n` | Next Terminal (GUI analogue: `Ctrl+Tab`) | planned | 25 | — |
 | Rename the window | `C-b ,` → `command-prompt -I'#W' { rename-window }` | Rename the internal Window (*basic*); full prompt in 24 *Partial:* `Ctrl+B ,` renames the active internal window in the tab's place (the prompt with Step 24). | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
-| Delete the latest paste buffer | `C-b -` → `delete-buffer` | Same key | planned | 24 | — |
+| Delete the latest paste buffer | `C-b -` → `delete-buffer` | Same key | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
 | Move the window (prompt) | `C-b .` → `command-prompt { move-window }` | Same key | planned | 25 | — |
-| Describe a key binding | `C-b /` → `list-keys -1N` | Same key *Rationale for the move:* with the command prompt of Step 24. | planned | 24 | — |
+| Describe a key binding | `C-b /` → `list-keys -1N` | Same key *Rationale for the move:* with the command prompt of Step 24. *Rationale for the move:* with the help of Step 25 (`F1` lists every key now). | planned | 25 | — |
 | Select window 0–9 | `C-b 0` … `C-b 9` → `select-window -t:=N` | Same keys (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
-| Command prompt | `C-b :` → `command-prompt` | Same key | planned | 24 | — |
+| Command prompt | `C-b :` → `command-prompt` | Same key | implemented | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Previously active pane | `C-b ;` → `last-pane` | Same key *Rationale for the move:* the Host keeps no previous selection yet (Step 25). | planned | 25 | — |
-| Choose a paste buffer | `C-b =` → `choose-buffer -Z` | Same key | planned | 24 | — |
+| Choose a paste buffer | `C-b =` → `choose-buffer -Z` | Same key *Rationale for the move:* tree modes are Step 25. | planned | 25 | — |
 | List key bindings | `C-b ?` → `list-keys -N` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Choose a client to detach | `C-b D` → `choose-client -Z` | Same key | planned | 25 | — |
 | Spread panes out evenly | `C-b E` → `select-layout -E` | Same key *Rationale for the move:* `select-layout -E` moved to Step 25. | planned | 25 | — |
 | Last session | `C-b L` → `switch-client -l` | Same key | planned | 25 | — |
-| Clear the marked pane | `C-b M` → `select-pane -M` | Same key | planned | 24 | — |
-| Set the pane title | `C-b T` → `command-prompt -I'#T' { select-pane -T }` | Same key | planned | 24 | — |
-| Enter copy mode | `C-b [` → `copy-mode` | Same key | planned | 24 | — |
-| Paste the latest buffer | `C-b ]` → `paste-buffer -p` | Same key | planned | 24 | — |
+| Clear the marked pane | `C-b M` → `select-pane -M` | Same key *Rationale for the move:* marked panes are Step 25. | planned | 25 | — |
+| Set the pane title | `C-b T` → `command-prompt -I'#T' { select-pane -T }` | Same key *Rationale for the move:* pane titles are Step 25. | planned | 25 | — |
+| Enter copy mode | `C-b [` → `copy-mode` | Same key | implemented | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Paste the latest buffer | `C-b ]` → `paste-buffer -p` | Same key *Partial:* without bracketed paste (`-p`). | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | New window | `C-b c` → `new-window` | New internal Window, not a tab (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Detach the client | `C-b d` → `detach-client` | Same key; processes keep running (*basic*; SUBAK-FR-015) *Step 23:* `Ctrl+B d` closes the window (a detach); the console client follows the user's prefix and `client.detach`. | implemented | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11), `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` (2026-11-11) |
 | Find a window (prompt) | `C-b f` → `command-prompt { find-window -Z }` | Same key | planned | 25 | — |
 | Show window information | `C-b i` → `display-message` | Same key | planned | 25 | — |
 | Last window | `C-b l` → `last-window` | Same key *Rationale for the move:* the Host keeps no previous selection yet (Step 25). | planned | 25 | — |
-| Mark the pane | `C-b m` → `select-pane -m` | Same key | planned | 24 | — |
+| Mark the pane | `C-b m` → `select-pane -m` | Same key *Rationale for the move:* marked panes are Step 25. | planned | 25 | — |
 | Next window | `C-b n` → `next-window` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Next pane | `C-b o` → `select-pane -t:.+` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Customize options | `C-b C` → `customize-mode -Z` | *Rationale:* `customize-mode` deferred | deferred | post-26 | — |
@@ -306,7 +306,7 @@ exists, so no key row targets a Step before 23.
 | Swap with the previous pane | `C-b {` → `swap-pane -U` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Swap with the next pane | `C-b }` → `swap-pane -D` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Show messages | `C-b ~` → `show-messages` | Same key | planned | 25 | — |
-| Copy mode, one page up | `C-b PPage` → `copy-mode -u` | Same key | planned | 24 | — |
+| Copy mode, one page up | `C-b PPage` → `copy-mode -u` | Same key | implemented | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Select pane by direction (repeatable) | `C-b Up`, `Down`, `Left`, `Right` → `select-pane -U/-D/-L/-R` | Same keys (*basic*) *Partial:* `Ctrl+B Up/Down/Left/Right` (and `Alt+Arrow`); not repeatable without the prefix yet. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Even-horizontal layout | `C-b M-1` → `select-layout even-horizontal` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Even-vertical layout | `C-b M-2` → `select-layout even-vertical` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
@@ -334,11 +334,11 @@ when `mouse` is on.
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | Click focuses a pane; forwarded if the app uses the mouse | `MouseDown1Pane` → `select-pane -t=; send -M` | Click focuses the Pane; mouse reporting forwarded when the program requests it. *Partial:* the client view encodes the program's mouse reports for every tracking mode and encoding, and Shift keeps the mouse for selection ([TERMINAL_EMULATOR §4.3](TERMINAL_EMULATOR.md)); the window (Step 16) and focusing split panes (Step 22) are later | partial | 15, 22 | `crates/subak-term/tests/view.rs::the_view_routes_the_mouse_to_the_program_or_to_selection_and_scrolling` (2026-11-04) |
-| Drag selects text | `MouseDrag1Pane` → `copy-mode -M` (or `send -M`) | Drag selection in copy mode | planned | 24 | — |
+| Drag selects text | `MouseDrag1Pane` → `copy-mode -M` (or `send -M`) | Drag selection in copy mode *Partial:* a drag selects in the window (Step 19) without entering copy mode. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Ctrl-drag creates a floating pane | `C-MouseDrag1Pane`, `C-MouseDrag1Empty` → `new-pane -M` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Alt-drag moves a floating pane | `M-MouseDrag1Pane`, `M-MouseDrag1Border` → `move-pane -M` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Wheel up scrolls history | `WheelUpPane` → `copy-mode -e` (or `send -M`) | Wheel scrolls scrollback; forwarded in the alternate screen or when the program uses the mouse. *Partial:* the client view scrolls its viewport over the Host's history, forwards the wheel to programs that track the mouse and sends cursor keys on the alternate screen when the program enables alternate scroll (1007); the window that delivers the wheel is Step 16 | partial | 13, 15 | `crates/subak-term/tests/view.rs::the_view_routes_the_mouse_to_the_program_or_to_selection_and_scrolling` (2026-11-04) |
-| Middle-click pastes | `MouseDown2Pane` → `paste -p` | Middle-click pastes the latest buffer | planned | 24 | — |
+| Middle-click pastes | `MouseDown2Pane` → `paste -p` | Middle-click pastes the latest buffer *Partial:* `terminal.middle_click = "paste"` pastes the clipboard (Step 20), not a buffer. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Double-click copies a word | `DoubleClick1Pane` → `select-word; copy-pipe-and-cancel` | Same gesture. *Partial:* word selection and its copy text in the client view (Windows Terminal's word delimiters, wide characters once); the gesture and the clipboard are the GUI's (Step 16; plain text and, on request, HTML Format since Step 19), which copies on an explicit copy rather than on the click (copy-on-select is off, Step 20 adds the option) | partial | 15, 24 | `crates/subak-term/tests/view.rs::word_and_block_selection` (2026-11-04) |
 | Triple-click copies a line | `TripleClick1Pane` → `select-line; copy-pipe-and-cancel` | Same gesture. *Partial:* line selection (soft-wrapped rows as one line) and its copy text in the client view; the gesture and the clipboard are the GUI's (Steps 16, 19) | partial | 15, 24 | `crates/subak-term/tests/view.rs::copy_joins_soft_wrapped_rows_but_not_hard_line_breaks` (2026-11-04) |
 | Click a border selects the pane | `MouseDown1Border` → `select-pane -t=` | Same gesture. *Rationale for the move:* in Step 22 a press on a border starts a border drag; selecting the pane with it comes with the mouse options of Step 25 | planned | 25 | — |
@@ -359,7 +359,7 @@ when `mouse` is on.
 | --- | --- | --- | --- | --- | --- |
 | Prefix table | `prefix` (§4) | Subak prefix table behind `Ctrl+B` Since Step 23: the `prefix` leader of the hotkey contract, rebindable. | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Root table | `root` (§5) | Root bindings; GUI shortcuts (`Ctrl+T` etc.) are handled before it (§23) *Partial:* the window's single-chord shortcuts (`app`/`terminal` scopes) act as the root table; the mouse root bindings are §5. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
-| Copy-mode tables | `copy-mode` (emacs), `copy-mode-vi` (§7) | Both tables | planned | 24 | — |
+| Copy-mode tables | `copy-mode` (emacs), `copy-mode-vi` (§7) | Both tables *Partial:* one table of vi keys and arrows; `Space`, `Enter`, `q`/`Escape` are rebindable `copy-mode` actions; emacs keys later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Floating-pane move table | `move` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Custom key tables | `bind -T name`, `switch-client -T name`, `key-table` option | User-defined tables *Rationale for the move:* one leader table in Step 23; more tables with Step 25. | planned | 25 | — |
 | Key names | `C-`, `^`, `S-`, `M-`, `Up`, `BSpace`, `BTab`, `DC`, `End`, `Enter`, `Escape`, `F1`–`F12`, `Home`, `IC`, `NPage`/`PageDown`/`PgDn`, `PPage`/`PageUp`/`PgUp`, `Space`, `Tab` | Same names in bindings and `send-keys` *Partial:* the hotkey contract's names (`Ctrl+B`, `PageDown`, `char:%`); tmux spellings with `send-keys` (Step 24). | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
@@ -373,34 +373,34 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Choose vi or emacs keys | `mode-keys` option; default from `VISUAL`/`EDITOR` | Same option and default | planned | 24 | — |
-| Send a copy-mode command | `send-keys -X command`, `-N count` | Same | planned | 24 | — |
-| Exit copy mode | vi `q`, `C-c`; emacs `q`, `Escape`, `C-[`, `C-c` → `cancel` | Same keys | planned | 24 | — |
-| Cursor movement | vi `h` `j` `k` `l`, `BSpace`, `C-h`, arrows; emacs `C-b` `C-f` `C-p` `C-n`, arrows → `cursor-left`, `cursor-right`, `cursor-up`, `cursor-down`, `cursor-down-and-cancel` | Same keys | planned | 24 | — |
-| Word movement | vi `w` `b` `e` `W` `B` `E`; emacs `M-f` `M-b` → `next-word`, `next-word-end`, `previous-word`, `next-space`, `next-space-end`, `previous-space` | Same keys; `word-separators` honoured | planned | 24 | — |
-| Line positions | vi `0` `^` `$` `Home` `End`; emacs `C-a` `C-e` `M-m` `Home` `End` → `start-of-line`, `end-of-line`, `back-to-indentation` | Same keys | planned | 24 | — |
-| Screen positions | vi `H` `M` `L`; emacs `M-R` `M-r` `M-l` → `top-line`, `middle-line`, `bottom-line`, `cursor-centre-vertical`, `cursor-centre-horizontal` | Same keys | planned | 24 | — |
-| Paging | vi `C-b` `C-f` `PPage` `NPage`; emacs `M-v` `C-v` `Space` `PPage` `NPage` → `page-up`, `page-down`, `page-down-and-cancel` | Same keys | planned | 24 | — |
-| Half pages | vi `C-u` `C-d`; emacs `M-Up` `M-Down` → `halfpage-up`, `halfpage-down`, `halfpage-down-and-cancel` | Same keys | planned | 24 | — |
-| Line scrolling | vi `C-y` `C-e` `K` `J` `C-Up` `C-Down` `z`; emacs `C-Up` `C-Down` `C-l` → `scroll-up`, `scroll-down`, `scroll-down-and-cancel`, `scroll-middle`, `scroll-top`, `scroll-bottom`, `recentre-top-bottom` | Same keys | planned | 24 | — |
-| Exit when scrolled to the bottom | `scroll-exit-on`, `scroll-exit-off`, `scroll-exit-toggle`; `copy-mode -e` | Same | planned | 24 | — |
-| History top and bottom | vi `g` `G`; emacs `M-<` `M->` → `history-top`, `history-bottom` | Same keys | planned | 24 | — |
-| Paragraphs and brackets | vi `{` `}` `%`; emacs `M-{` `M-}` `C-M-f` `C-M-b` → `previous-paragraph`, `next-paragraph`, `next-matching-bracket`, `previous-matching-bracket` | Same keys | planned | 24 | — |
-| Jump to a character | vi and emacs `f` `F` `t` `T` `;` `,` → `jump-forward`, `jump-backward`, `jump-to-forward`, `jump-to-backward`, `jump-again`, `jump-reverse` | Same keys | planned | 24 | — |
-| Search | vi `/` `?` `n` `N`, `*` `#` (word under cursor); emacs `C-s` `C-r` `n` `N` → `search-forward`, `search-backward`, `search-forward-text`, `search-backward-text`, `search-forward-incremental`, `search-backward-incremental`, `search-again`, `search-reverse` | Same keys; regex and plain text; `wrap-search`. *Groundwork (Step 19):* the bounded, incremental search engine over the retained history (`subak_term::search`, ADR 0048), used today by the window's search bar (`Ctrl+Shift+F`, older/newer with wrap-around) | planned | 24 | — |
-| Go to a line | vi `:`; emacs `g` → `goto-line` | Same keys | planned | 24 | — |
-| Selection | vi `Space` `V` `o` `Escape`; emacs `C-Space` `C-g` → `begin-selection`, `select-line`, `select-word`, `other-end`, `clear-selection`, `stop-selection`, `selection-mode` | Same keys. *Groundwork (Step 19):* the view's keyboard selection (mark mode: caret, grow by cells, words, lines, pages) behind the window's `Ctrl+Shift+M` | planned | 24 | — |
-| Rectangle selection | vi `v` `C-v`; emacs `R` → `rectangle-toggle`, `rectangle-on`, `rectangle-off` | Same keys | planned | 24 | — |
-| Copy and append | vi `Enter` `C-j` `D` `A`; emacs `M-w` `C-w` `C-k` → `copy-selection`, `copy-selection-and-cancel`, `copy-selection-no-clear`, `copy-line`, `copy-line-and-cancel`, `copy-end-of-line`, `copy-end-of-line-and-cancel`, `append-selection`, `append-selection-and-cancel` | Same keys; copies to a paste buffer and the Windows clipboard (§16) | planned | 24 | — |
-| Copy through an external command | `copy-pipe`, `copy-pipe-and-cancel`, `copy-pipe-no-clear`, `copy-pipe-line`, `copy-pipe-line-and-cancel`, `copy-pipe-end-of-line`, `copy-pipe-end-of-line-and-cancel`, `pipe`, `pipe-and-cancel`, `pipe-no-clear`; `copy-command` option | Same commands; the command runs in the profile shell | planned | 24 | — |
-| Marks | vi and emacs `X`, `M-x` → `set-mark`, `jump-to-mark` | Same keys | planned | 24 | — |
-| Repeat count | vi `1`–`9`; emacs `M-1`–`M-9` | Same keys | planned | 24 | — |
-| Shell-prompt navigation (OSC 133) | emacs `M-C-Up` `M-C-Down` → `previous-prompt`, `next-prompt` (`-o`) | Same keys; needs OSC 133 marks from the shell | planned | 24 | — |
-| Line numbers | emacs `L` → `line-numbers-toggle`, `line-numbers-on`, `line-numbers-off`; `copy-mode-line-numbers` option | Same | planned | 24 | — |
-| Position indicator | `P` → `toggle-position`; `copy-mode-position-format` | Same | planned | 24 | — |
-| Refresh from the live pane | `r` → `refresh-now`; `refresh-on`, `refresh-off`, `refresh-toggle` | Same | planned | 24 | — |
-| Mouse in copy mode | `MouseDrag1Pane` (select), `MouseDragEnd1Pane` (copy), `WheelUpPane`/`WheelDownPane` (`send -N5 -X scroll-up/scroll-down`), double/triple click, `scroll-to-mouse` | Same gestures | planned | 24 | — |
-| View mode | Output of a command run from a key binding (e.g. `list-keys`) shown read-only | Read-only view of command output | planned | 24 | — |
+| Choose vi or emacs keys | `mode-keys` option; default from `VISUAL`/`EDITOR` | Same option and default *Rationale for the move:* the emacs table is Step 25. | planned | 25 | — |
+| Send a copy-mode command | `send-keys -X command`, `-N count` | Same *Rationale for the move:* with `send-keys -X`, Step 25. | planned | 25 | — |
+| Exit copy mode | vi `q`, `C-c`; emacs `q`, `Escape`, `C-[`, `C-c` → `cancel` | Same keys *Partial:* vi `q`, `Escape`, `C-c`; emacs keys later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Cursor movement | vi `h` `j` `k` `l`, `BSpace`, `C-h`, arrows; emacs `C-b` `C-f` `C-p` `C-n`, arrows → `cursor-left`, `cursor-right`, `cursor-up`, `cursor-down`, `cursor-down-and-cancel` | Same keys *Partial:* vi `h j k l` and arrows. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Word movement | vi `w` `b` `e` `W` `B` `E`; emacs `M-f` `M-b` → `next-word`, `next-word-end`, `previous-word`, `next-space`, `next-space-end`, `previous-space` | Same keys; `word-separators` honoured *Partial:* vi `w` `b` (and `Ctrl+Left/Right`), with `terminal.word_separators`. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Line positions | vi `0` `^` `$` `Home` `End`; emacs `C-a` `C-e` `M-m` `Home` `End` → `start-of-line`, `end-of-line`, `back-to-indentation` | Same keys *Partial:* vi `0` `^` `$` `Home` `End`. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Screen positions | vi `H` `M` `L`; emacs `M-R` `M-r` `M-l` → `top-line`, `middle-line`, `bottom-line`, `cursor-centre-vertical`, `cursor-centre-horizontal` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Paging | vi `C-b` `C-f` `PPage` `NPage`; emacs `M-v` `C-v` `Space` `PPage` `NPage` → `page-up`, `page-down`, `page-down-and-cancel` | Same keys *Partial:* `PPage` `NPage` (vi `C-b` is the prefix). | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Half pages | vi `C-u` `C-d`; emacs `M-Up` `M-Down` → `halfpage-up`, `halfpage-down`, `halfpage-down-and-cancel` | Same keys *Partial:* `C-u` `C-d` move a whole page. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Line scrolling | vi `C-y` `C-e` `K` `J` `C-Up` `C-Down` `z`; emacs `C-Up` `C-Down` `C-l` → `scroll-up`, `scroll-down`, `scroll-down-and-cancel`, `scroll-middle`, `scroll-top`, `scroll-bottom`, `recentre-top-bottom` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Exit when scrolled to the bottom | `scroll-exit-on`, `scroll-exit-off`, `scroll-exit-toggle`; `copy-mode -e` | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
+| History top and bottom | vi `g` `G`; emacs `M-<` `M->` → `history-top`, `history-bottom` | Same keys vi `g` `G`, `Ctrl+Home/End`. | implemented | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Paragraphs and brackets | vi `{` `}` `%`; emacs `M-{` `M-}` `C-M-f` `C-M-b` → `previous-paragraph`, `next-paragraph`, `next-matching-bracket`, `previous-matching-bracket` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Jump to a character | vi and emacs `f` `F` `t` `T` `;` `,` → `jump-forward`, `jump-backward`, `jump-to-forward`, `jump-to-backward`, `jump-again`, `jump-reverse` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Search | vi `/` `?` `n` `N`, `*` `#` (word under cursor); emacs `C-s` `C-r` `n` `N` → `search-forward`, `search-backward`, `search-forward-text`, `search-backward-text`, `search-forward-incremental`, `search-backward-incremental`, `search-again`, `search-reverse` | Same keys; regex and plain text; `wrap-search`. *Groundwork (Step 19):* the bounded, incremental search engine over the retained history (`subak_term::search`, ADR 0048), used today by the window's search bar (`Ctrl+Shift+F`, older/newer with wrap-around) *Partial:* `/` `?` open the search bar (Step 19), `n` `N` step through matches; `*` `#` later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Go to a line | vi `:`; emacs `g` → `goto-line` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Selection | vi `Space` `V` `o` `Escape`; emacs `C-Space` `C-g` → `begin-selection`, `select-line`, `select-word`, `other-end`, `clear-selection`, `stop-selection`, `selection-mode` | Same keys. *Groundwork (Step 19):* the view's keyboard selection (mark mode: caret, grow by cells, words, lines, pages) behind the window's `Ctrl+Shift+M` *Partial:* `Space` begins, moves extend, `Escape`/`q` clear and leave; `V`, `o` later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Rectangle selection | vi `v` `C-v`; emacs `R` → `rectangle-toggle`, `rectangle-on`, `rectangle-off` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Copy and append | vi `Enter` `C-j` `D` `A`; emacs `M-w` `C-w` `C-k` → `copy-selection`, `copy-selection-and-cancel`, `copy-selection-no-clear`, `copy-line`, `copy-line-and-cancel`, `copy-end-of-line`, `copy-end-of-line-and-cancel`, `append-selection`, `append-selection-and-cancel` | Same keys; copies to a paste buffer and the Windows clipboard (§16) *Partial:* `Enter` = copy-selection-and-cancel into a new buffer and the clipboard; `D`, `A` later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Copy through an external command | `copy-pipe`, `copy-pipe-and-cancel`, `copy-pipe-no-clear`, `copy-pipe-line`, `copy-pipe-line-and-cancel`, `copy-pipe-end-of-line`, `copy-pipe-end-of-line-and-cancel`, `pipe`, `pipe-and-cancel`, `pipe-no-clear`; `copy-command` option | Same commands; the command runs in the profile shell *Rationale for the move:* copy-pipe runs programs: Step 25 with a security review. | planned | 25 | — |
+| Marks | vi and emacs `X`, `M-x` → `set-mark`, `jump-to-mark` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Repeat count | vi `1`–`9`; emacs `M-1`–`M-9` | Same keys *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Shell-prompt navigation (OSC 133) | emacs `M-C-Up` `M-C-Down` → `previous-prompt`, `next-prompt` (`-o`) | Same keys; needs OSC 133 marks from the shell *Rationale for the move:* shell integration is Step 25. | planned | 25 | — |
+| Line numbers | emacs `L` → `line-numbers-toggle`, `line-numbers-on`, `line-numbers-off`; `copy-mode-line-numbers` option | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
+| Position indicator | `P` → `toggle-position`; `copy-mode-position-format` | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
+| Refresh from the live pane | `r` → `refresh-now`; `refresh-on`, `refresh-off`, `refresh-toggle` | Same *Rationale for the move:* copy-mode keys of Step 25. | planned | 25 | — |
+| Mouse in copy mode | `MouseDrag1Pane` (select), `MouseDragEnd1Pane` (copy), `WheelUpPane`/`WheelDownPane` (`send -N5 -X scroll-up/scroll-down`), double/triple click, `scroll-to-mouse` | Same gestures *Rationale for the move:* the window's drag selection (Step 19) works outside copy mode; inside, Step 25. | planned | 25 | — |
+| View mode | Output of a command run from a key binding (e.g. `list-keys`) shown read-only | Read-only view of command output *Partial:* the answers of `list-*`, `show-buffer`, `capture-pane` shown read-only in the pane's place. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Copy-mode appearance | `mode-style`, `copy-mode-*-style` options | Styles from the options engine | planned | 25 | — |
 
 ## 8. Other pane modes
@@ -410,7 +410,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Tree mode | `choose-tree` (`-s`, `-w`, `-Z`, `-f filter`, `-O order`, `-F`, `-G`) | Tree chooser overlay | planned | 25 | — |
 | Chooser keys | `Enter`, `Up`/`Down`, `x`/`X` kill, `t`/`T`/`C-t` tag, `f` filter, `O` sort, `r` reverse, `v` preview, `:` command, `q` exit | Same keys in all choosers | planned | 25 | — |
 | Client mode | `choose-client` | Client chooser | planned | 25 | — |
-| Buffer mode | `choose-buffer` (`e` edits with `editor`) | Buffer chooser; editing deferred with `editor` | planned | 24 | — |
+| Buffer mode | `choose-buffer` (`e` edits with `editor`) | Buffer chooser; editing deferred with `editor` *Rationale for the move:* tree modes are Step 25. | planned | 25 | — |
 | Switch mode | `switch-mode` (fuzzy match; `Enter`, `Up`, `Down`, `Escape`) | Fuzzy switcher | planned | 25 | — |
 | Customize mode | `customize-mode` | *Rationale:* see §2.2 | deferred | post-26 | — |
 | Clock mode | `clock-mode` | *Rationale:* see §2.7 | deferred | post-26 | — |
@@ -438,11 +438,11 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | Key sent for Backspace | `backspace` | Same *Rationale for the move:* a terminal option of Step 25. | planned | 25 | — |
-| Maximum automatic buffers | `buffer-limit` | Same | planned | 24 | — |
+| Maximum automatic buffers | `buffer-limit` | Same *Partial:* 50, fixed. | partial | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
 | Clear the outer terminal on attach | `clear-on-attach` | *Rationale:* no outer terminal; the GUI redraws from Host state | unsupported | — | — |
 | Unicode width overrides | `codepoint-widths`, `variation-selector-always-wide` | Same; important for Korean/CJK (KIM-NFR-013) | planned | 25 | — |
 | Custom command aliases | `command-alias` | Same | planned | 25 | — |
-| Command for copy-pipe | `copy-command` | Same; default is the Windows clipboard | planned | 24 | — |
+| Command for copy-pipe | `copy-command` | Same; default is the Windows clipboard *Rationale for the move:* with copy-pipe, Step 25. | planned | 25 | — |
 | Command run by a bare `tmux` | `default-client-command` | Bare `subak` prints help (Step 12, ADR 0027 §2); an option to change that, if any, later | planned | 25 | — |
 | `TERM` for new panes | `default-terminal` | `TERM` given to pane processes | planned | 25 | — |
 | Editor command | `editor` | *Rationale:* only used by buffer editing; revisit with buffer mode extras | deferred | post-26 | — |
@@ -451,8 +451,8 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Exit when no clients are attached | `exit-unattached` | *Rationale:* contradicts Subak's core promise that Terminals outlive clients (SUBAK-FR-003) | unsupported | — | — |
 | Extended keys to programs | `extended-keys`, `extended-keys-format` | *Rationale:* Subak sends xterm encoding or win32-input-mode (ADR 0009); CSI u extended keys revisited after Step 23 | deferred | post-26 | — |
 | Focus events to programs | `focus-events` | Same. *Partial:* the client view sends `CSI I`/`CSI O` once per change when the program enables 1004 (the inbox ConPTY passes 1004 through, measured on 19045); the window's focus changes are Step 16 | partial | 15, 25 | `crates/subak-term/tests/view.rs::focus_reports_and_hyperlink_hit_test` (2026-11-04) |
-| OSC 52 clipboard | `set-clipboard`, `get-clipboard` | Windows clipboard; reading is opt-in (privacy) | planned | 24 | — |
-| Prompt history file | `history-file`, `prompt-history-limit` | Same, stored in the user profile | planned | 24 | — |
+| OSC 52 clipboard | `set-clipboard`, `get-clipboard` | Windows clipboard; reading is opt-in (privacy) *Rationale for the move:* clipboard access by programs needs an opt-in (privacy), Step 25. | planned | 25 | — |
+| Prompt history file | `history-file`, `prompt-history-limit` | Same, stored in the user profile *Partial:* the prompt keeps its history in memory for the window's life; no file. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Escape-sequence size limit | `input-buffer-size` | Same | planned | 25 | — |
 | Message log size | `message-limit` | Same | planned | 25 | — |
 | Prefix timeout | `prefix-timeout` | Same *Partial:* like tmux's default (no timeout): the prefix waits for the next key, Esc or a click cancels (HOTKEY_CONTRACT §5.3, no timer); not configurable. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
@@ -480,14 +480,14 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Message and prompt look | `message-style`, `message-command-style`, `message-format`, `message-line` | Same | planned | 25 | — |
 | Mouse support | `mouse` | Same; the GUI always receives the mouse, the option controls tmux-style handling | planned | 25 | — |
 | Prefix keys | `prefix`, `prefix2` | Same; default `Ctrl+B` *Partial:* the `prefix` leader in `hotkeys.json` (`"leaders": {"prefix": "Ctrl+A"}`), in the window and the console client; no `prefix2`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11), `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` (2026-11-11) |
-| Prompt cursor | `prompt-cursor-colour`, `prompt-cursor-style`, `prompt-command-cursor-colour`, `prompt-command-cursor-style` | Same | planned | 24 | — |
+| Prompt cursor | `prompt-cursor-colour`, `prompt-cursor-style`, `prompt-command-cursor-colour`, `prompt-command-cursor-style` | Same *Rationale for the move:* prompt options of Step 25. | planned | 25 | — |
 | Renumber windows on close | `renumber-windows` | Same | planned | 25 | — |
 | Outer window title | `set-titles`, `set-titles-string` | GUI window/tab title | planned | 25 | — |
 | Status line | `status`, `status-bg`, `status-fg`, `status-format`, `status-interval`, `status-justify`, `status-left`, `status-left-length`, `status-left-style`, `status-position`, `status-right`, `status-right-length`, `status-right-style`, `status-style` | In-tab status line (§11) | planned | 25 | — |
-| Prompt key style | `status-keys` | vi or emacs editing in the prompt | planned | 24 | — |
+| Prompt key style | `status-keys` | vi or emacs editing in the prompt *Rationale for the move:* prompt options of Step 25. | planned | 25 | — |
 | Environment refreshed on attach | `update-environment` | Same (§15) | planned | 25 | — |
 | Visual alerts | `visual-activity`, `visual-bell`, `visual-silence` | GUI message and tab indicator | planned | 25 | — |
-| Word separators | `word-separators` | Same | planned | 24 | — |
+| Word separators | `word-separators` | Same `terminal.word_separators` (Step 20) for double-click, mark mode and copy mode. | implemented | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 
 ### 9.4 Window options
 
@@ -497,14 +497,14 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Automatic window names | `automatic-rename`, `automatic-rename-format` | Same | planned | 25 | — |
 | Clock appearance | `clock-mode-colour`, `clock-mode-style` | *Rationale:* `clock-mode` deferred | deferred | post-26 | — |
 | Copy-mode styles | `copy-mode-current-line-number-style`, `copy-mode-current-line-style`, `copy-mode-current-match-style`, `copy-mode-line-number-style`, `copy-mode-mark-style`, `copy-mode-match-style`, `copy-mode-position-style`, `copy-mode-selection-style`, `mode-style` | Same | planned | 25 | — |
-| Copy-mode line numbers | `copy-mode-line-numbers` | Same | planned | 24 | — |
+| Copy-mode line numbers | `copy-mode-line-numbers` | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
 | Pane-number overlay | `display-panes-active-colour`, `display-panes-border-style`, `display-panes-colour`, `display-panes-format`, `display-panes-time` | Same | planned | 25 | — |
 | Fill character outside a smaller window | `fill-character` | Same | planned | 25 | — |
 | Preset layout sizes | `main-pane-height`, `main-pane-width`, `other-pane-height`, `other-pane-width` | Same | planned | 25 | — |
 | Tiled layout columns | `tiled-layout-max-columns` | Same (Step 22 tiles with as many columns as the square root of the count, rounded up) | planned | 25 | — |
 | Menu appearance | `menu-border-lines`, `menu-border-style`, `menu-selected-style`, `menu-style` | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
 | Popup appearance | `popup-border-lines`, `popup-border-style`, `popup-style` | *Rationale:* `display-popup` deferred | deferred | post-26 | — |
-| Copy-mode key style | `mode-keys` | Same | planned | 24 | — |
+| Copy-mode key style | `mode-keys` | Same *Rationale for the move:* the emacs table is Step 25. | planned | 25 | — |
 | Alert monitoring | `monitor-activity`, `monitor-bell`, `monitor-silence` | Same | planned | 25 | — |
 | First pane index | `pane-base-index` | Same; panes are numbered from 0 (tmux's default) since Step 21, the option later | planned | 25 | — |
 | Active-pane border indicators | `pane-border-indicators` | Same. *Partial:* the active pane's border is drawn in the accent colour (fixed; the option later) | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
@@ -513,7 +513,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Tree-mode appearance | `tree-mode-border-style`, `tree-mode-preview-style`, `tree-mode-selection-style` | Same | planned | 25 | — |
 | Window size policy | `window-size` (`largest`, `smallest`, `manual`, `latest`) | Fixed `latest` first (ADR 0008); the other policies with the option | planned | 25 | — |
 | Window list entries | `window-status-format`, `window-status-current-format`, `window-status-separator`, `window-status-style`, `window-status-current-style`, `window-status-last-style`, `window-status-activity-style`, `window-status-bell-style` | Same | planned | 25 | — |
-| Search wrap-around | `wrap-search` | Same | planned | 24 | — |
+| Search wrap-around | `wrap-search` | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
 | xterm-style modified keys | `xterm-keys` | Same *Rationale for the move:* a terminal option of Step 25. | planned | 25 | — |
 
 ### 9.5 Pane options (window or pane scope)
@@ -524,7 +524,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Programs may rename the window | `allow-rename` | Same | planned | 25 | — |
 | Programs may set the pane title | `allow-set-title` | Same | planned | 25 | — |
 | Alternate screen | `alternate-screen` | Same | planned | 13 | — |
-| Copy-mode position text | `copy-mode-position-format` | Same | planned | 24 | — |
+| Copy-mode position text | `copy-mode-position-format` | Same *Rationale for the move:* copy-mode options of Step 25. | planned | 25 | — |
 | Cursor colour and style | `cursor-colour`, `cursor-style` | Same | planned | 25 | — |
 | Pane borders | `pane-border-style`, `pane-active-border-style`, `pane-border-lines` | Native dividers with equivalent styles. *Partial:* one-cell gaps with a thin divider from the theme (`border_subtle`, the active pane's `accent`); styles later | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Pane status lines | `pane-border-status`, `pane-border-format` | Same | planned | 25 | — |
@@ -585,12 +585,12 @@ a family is scheduled in detail.
 | Window variables (37) | `window_*` (e.g. `window_id`, `window_index`, `window_name`, `window_flags`, `window_layout`, `window_zoomed_flag`) | Window fields | planned | 25 | — |
 | Pane variables (62) | `pane_*` (e.g. `pane_id`, `pane_index`, `pane_title`, `pane_current_command`, `pane_current_path`, `pane_pid`, `pane_dead`, `pane_in_mode`, `pane_floating_flag`) | Pane fields; `pane_pid` is the Windows PID | planned | 25 | — |
 | Client variables (25) | `client_*` (e.g. `client_name`, `client_tty`, `client_session`, `client_readonly`, `client_width`) | Client fields; `client_tty` has no Windows meaning (empty) | planned | 25 | — |
-| Buffer variables (5) | `buffer_name`, `buffer_sample`, `buffer_size`, `buffer_created`, `buffer_full` | Same | planned | 24 | — |
-| Copy, selection and search variables | `copy_*`, `selection_*`, `search_*`, `scroll_position`, `rectangle_toggle` | Same | planned | 24 | — |
+| Buffer variables (5) | `buffer_name`, `buffer_sample`, `buffer_size`, `buffer_created`, `buffer_full` | Same *Rationale for the move:* formats are Step 25. | planned | 25 | — |
+| Copy, selection and search variables | `copy_*`, `selection_*`, `search_*`, `scroll_position`, `rectangle_toggle` | Same *Rationale for the move:* formats are Step 25. | planned | 25 | — |
 | Cursor and mouse variables | `cursor_*`, `mouse_*` | Same | planned | 25 | — |
 | History and screen state | `history_*`, `alternate_*`, `insert_flag`, `keypad_*`, `origin_flag`, `wrap_flag`, `scroll_region_*`, `bracket_paste_flag`, `synchronized_output_flag`, `sixel_support` | Same where the renderer tracks the state | planned | 25 | — |
 | Hook variables | `hook`, `hook_client`, `hook_pane`, `hook_session`, `hook_window`, `hook_*_name` | Same | planned | 25 | — |
-| Key and command-list variables | `key_*`, `command`, `command_list_*` | Same, for `list-keys -F` and `list-commands -F` | planned | 24 | — |
+| Key and command-list variables | `key_*`, `command`, `command_list_*` | Same, for `list-keys -F` and `list-commands -F` *Rationale for the move:* formats are Step 25. | planned | 25 | — |
 | Option variables (customize mode) | `option_*` | *Rationale:* used by `customize-mode`, deferred | deferred | post-26 | — |
 | Server and host variables | `host`, `host_short`, `pid`, `version`, `start_time`, `uid`, `user`, `config_files`, `current_file`, `server_sessions`, `next_session_id`, `line`, `loop_index`, `loop_last_flag` | Host fields; `pid` is the Host PID | planned | 25 | — |
 | Socket path | `socket_path` | *Rationale:* no tmux socket (SUBAK-SEC-010) | unsupported | — | — |
@@ -608,7 +608,7 @@ a family is scheduled in detail.
 | Refresh interval | `status-interval` | Same | planned | 25 | — |
 | Alignment and position | `status-justify`, `status-position` | Same | planned | 25 | — |
 | Message line | `display-message`, `message-line`, `display-time` | Same | planned | 25 | — |
-| Command prompt on the status line | `command-prompt`, `status-keys` | Prompt overlay | planned | 24 | — |
+| Command prompt on the status line | `command-prompt`, `status-keys` | Prompt overlay *Partial:* the prompt is the banner row of the window. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
 | Pane status lines | `pane-border-status`, `pane-border-format` | Same | planned | 25 | — |
 | Colours | names, `colour0`–`colour255`, `#RRGGBB`, `default`, `terminal` | Same | planned | 25 | — |
 | Attributes | `bold`, `dim`, `italics`, `underscore` (and double/curly/dotted/dashed), `blink`, `reverse`, `hidden`, `overline`, `strikethrough`, `noattr`, `none` | Same | planned | 25 | — |
@@ -684,28 +684,28 @@ a family is scheduled in detail.
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Target and source flags | `-t target`, `-s source`; client, session, window, pane target types | Same resolver for prompt, `source-file` and CLI | planned | 24 | — |
-| Client target | `target-client` (tty name, e.g. `/dev/ttyp1`) | Subak client ID (no tty on Windows) | planned | 24 | — |
-| Session by ID | `$1` | Terminal ID `t-` + 12 hex (ADR 0007); the prompt also maps tmux `$n` forms | planned | 24 | — |
-| Session by exact name, prefix or glob | `mysess`, `mysession`, `my*` | Same match order in the prompt; the headless CLI accepts exact names and IDs only (ADR 0007) | planned | 24 | — |
-| Exact-match prefix | `=mysess` | Same | planned | 24 | — |
-| Default session | omitted → current, else most recently used | Same | planned | 24 | — |
-| Window target | `session:window` | `terminal:window` | planned | 24 | — |
-| Window by index | `mysession:1` | Same | planned | 24 | — |
-| Window by ID | `@1` | Window ID `w-` + 12 hex; tmux `@n` mapped by the prompt | planned | 24 | — |
-| Window by exact name, prefix or glob | `:mywindow`, `=` exact | Same | planned | 24 | — |
-| Next free index | `session:` (empty) for `new-window`, `link-window` | Same | planned | 24 | — |
-| Window tokens | `{start}` `^`, `{end}` `$`, `{last}` `!`, `{next}` `+`, `{previous}` `-`, `{current}` `@` | Same | planned | 24 | — |
-| Offsets | `+2`, `-1` (e.g. `select-window -t:+2`) | Same | planned | 24 | — |
-| Pane target | `session:window.pane` | `terminal:window.pane` | planned | 24 | — |
-| Pane by ID | `%1` | Pane ID `p-` + 12 hex; tmux `%n` mapped by the prompt | planned | 24 | — |
-| Pane by index | `.1` | Same | planned | 24 | — |
-| Pane relative tokens | `{last}` `!`, `{next}` `+`, `{previous}` `-`, `{active}` `@` | Same | planned | 24 | — |
-| Pane position tokens | `{top}`, `{bottom}`, `{left}`, `{right}`, `{top-left}`, `{top-right}`, `{bottom-left}`, `{bottom-right}` | Same | planned | 24 | — |
-| Pane neighbour tokens | `{up-of}`, `{down-of}`, `{left-of}`, `{right-of}` | Same | planned | 24 | — |
-| Marked pane | `{marked}` `~` | Same | planned | 24 | — |
+| Target and source flags | `-t target`, `-s source`; client, session, window, pane target types | Same resolver for prompt, `source-file` and CLI *Partial:* `-t` and `-s` take Subak targets; tmux's client targets and relative forms are refused with a hint. | partial | 24 | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11), `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Client target | `target-client` (tty name, e.g. `/dev/ttyp1`) | Subak client ID (no tty on Windows) *Rationale for the move:* clients are not targets in Subak (Step 25 reviews `switch-client`). | planned | 25 | — |
+| Session by ID | `$1` | Terminal ID `t-` + 12 hex (ADR 0007); the prompt also maps tmux `$n` forms *Partial:* Subak ids (`t-…`); `$1` is refused with a hint. | partial | 24 | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11) |
+| Session by exact name, prefix or glob | `mysess`, `mysession`, `my*` | Same match order in the prompt; the headless CLI accepts exact names and IDs only (ADR 0007) *Partial:* exact names (case and composition ignored); no prefix or glob (never guessed). | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Exact-match prefix | `=mysess` | Same *Rationale for the move:* names already match exactly. | planned | 25 | — |
+| Default session | omitted → current, else most recently used | Same *Partial:* the context: the window's shown Terminal, `--target`, or the pane `subak command` runs in (`SUBAK_PANE_ID`). | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Window target | `session:window` | `terminal:window` | implemented | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Window by index | `mysession:1` | Same | implemented | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Window by ID | `@1` | Window ID `w-` + 12 hex; tmux `@n` mapped by the prompt *Partial:* Subak ids (`w-…`); `@1` is refused. | partial | 24 | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11) |
+| Window by exact name, prefix or glob | `:mywindow`, `=` exact | Same *Partial:* exact window names after the Terminal (`work:logs`). | partial | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Next free index | `session:` (empty) for `new-window`, `link-window` | Same *Rationale for the move:* refused with a hint; Step 25. | planned | 25 | — |
+| Window tokens | `{start}` `^`, `{end}` `$`, `{last}` `!`, `{next}` `+`, `{previous}` `-`, `{current}` `@` | Same *Rationale for the move:* relative targets are refused (ADR 0058); Step 25 with the selection history. | planned | 25 | — |
+| Offsets | `+2`, `-1` (e.g. `select-window -t:+2`) | Same *Rationale for the move:* relative targets are refused (ADR 0058); Step 25. | planned | 25 | — |
+| Pane target | `session:window.pane` | `terminal:window.pane` | implemented | 24 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
+| Pane by ID | `%1` | Pane ID `p-` + 12 hex; tmux `%n` mapped by the prompt *Partial:* Subak ids (`p-…`); `%1` is refused. | partial | 24 | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11) |
+| Pane by index | `.1` | Same *Rationale for the move:* a pane index needs its Terminal and window (`work:0.1`). | planned | 25 | — |
+| Pane relative tokens | `{last}` `!`, `{next}` `+`, `{previous}` `-`, `{active}` `@` | Same *Rationale for the move:* relative targets are refused (ADR 0058); Step 25. | planned | 25 | — |
+| Pane position tokens | `{top}`, `{bottom}`, `{left}`, `{right}`, `{top-left}`, `{top-right}`, `{bottom-left}`, `{bottom-right}` | Same *Rationale for the move:* Step 25. | planned | 25 | — |
+| Pane neighbour tokens | `{up-of}`, `{down-of}`, `{left-of}`, `{right-of}` | Same *Rationale for the move:* directions of `select-pane -L/-R/-U/-D` cover it; tokens with Step 25. | planned | 25 | — |
+| Marked pane | `{marked}` `~` | Same *Rationale for the move:* marked panes are Step 25. | planned | 25 | — |
 | Mouse target | `{mouse}` `=` | Same | planned | 25 | — |
-| Best-guess resolution of unqualified targets | e.g. `-t 1` as pane, window or session | Same heuristics | planned | 24 | — |
+| Best-guess resolution of unqualified targets | e.g. `-t 1` as pane, window or session | Same heuristics *Rationale:* Subak never guesses a target (ADR 0058); an ambiguous name is `ambiguous_target`. | unsupported | — | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11) |
 | IDs unique for the object's life | `$`, `@`, `%` IDs unique per server | Stronger: random IDs, never reused, kept across Host restarts and restore (SUBAK-FR-010, ADR 0007) | planned | 10 | — |
 | Pane ID in the pane environment | `TMUX_PANE` | `SUBAK_PANE_ID=p-…` and `SUBAK_TERMINAL_ID=t-…` in every pane (ADR 0010 §1); an override cannot change them | implemented | 11 | `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 
@@ -734,7 +734,7 @@ a family is scheduled in detail.
 | Show in shell syntax | `show-environment -s` | Bourne syntax as in tmux; PowerShell syntax TBD | planned | 25 | — |
 | In-tmux marker variable | `TMUX` | `SUBAK_PANE_ID` / `SUBAK_TERMINAL_ID` mark a Subak pane; no socket path | implemented | 11 | `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 | Terminal type in panes | `TERM` (`default-terminal`) | Same | planned | 25 | — |
-| vi keys from the editor | `VISUAL`, `EDITOR` | Same default for `mode-keys`/`status-keys` | planned | 24 | — |
+| vi keys from the editor | `VISUAL`, `EDITOR` | Same default for `mode-keys`/`status-keys` *Rationale for the move:* the emacs table is Step 25. | planned | 25 | — |
 | Home directory | `HOME` | Windows user profile directory | planned | 10 | — |
 | Locale for output | `LC_CTYPE` | Always UTF-8 (KIM-NFR-013) | planned | 12 | — |
 | Locale for times | `LC_TIME` | Windows locale for time formats | planned | 25 | — |
@@ -746,13 +746,13 @@ a family is scheduled in detail.
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Named and automatic buffers | `buffer0001`…, explicit names via `set-buffer -n`, `load-buffer -b` | Same | planned | 24 | — |
-| Automatic buffer limit | `buffer-limit` (explicit names exempt) | Same | planned | 24 | — |
-| Default buffer | most recent automatic buffer | Same | planned | 24 | — |
-| Bracketed paste | `paste-buffer -p` | Same | planned | 24 | — |
-| Line-ending handling on paste | `paste-buffer -r`, `-s separator` | Same; CRLF handling for Windows programs TBD | planned | 24 | — |
-| System clipboard | `set-clipboard`, `set-buffer -w`, `load-buffer -w`, OSC 52 | Windows clipboard | planned | 24 | — |
-| Clipboard read by programs | `get-clipboard` | Opt-in only (privacy) | planned | 24 | — |
+| Named and automatic buffers | `buffer0001`…, explicit names via `set-buffer -n`, `load-buffer -b` | Same `bufferN` and names from `-b`. | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| Automatic buffer limit | `buffer-limit` (explicit names exempt) | Same 50; named buffers are exempt. | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| Default buffer | most recent automatic buffer | Same | implemented | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| Bracketed paste | `paste-buffer -p` | Same *Rationale for the move:* paste-buffer -p is Step 25. | planned | 25 | — |
+| Line-ending handling on paste | `paste-buffer -r`, `-s separator` | Same; CRLF handling for Windows programs TBD *Partial:* line ends become carriage returns (tmux without `-r`); `-r`, `-s` later. | partial | 24 | `crates/subak/tests/tmux_commands.rs::paste_buffers_live_in_the_host_and_paste_as_input` (2026-11-11) |
+| System clipboard | `set-clipboard`, `set-buffer -w`, `load-buffer -w`, OSC 52 | Windows clipboard *Partial:* copy mode copies into a buffer and the Windows clipboard; `set-clipboard`, `-w`, OSC 52 later. | partial | 24 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` (2026-11-11) |
+| Clipboard read by programs | `get-clipboard` | Opt-in only (privacy) *Rationale for the move:* opt-in only, Step 25. | planned | 25 | — |
 | Per-pane history buffer | `history-limit` | Scrollback. *Partial:* the Host keeps each pane's history in memory, bounded and evicted oldest first ([SCROLLBACK §1](SCROLLBACK.md)); copying from it into buffers with copy mode later (Step 24) | partial | 13 | `crates/subak/tests/scrollback_replay.rs::reattach_after_shell_output_and_scrolling_reproduces_history_and_screen` (2026-11-04) |
 
 ## 17. Configuration file and parsing syntax
@@ -788,7 +788,7 @@ a family is scheduled in detail.
 | Synchronize scripts | `wait-for`, `-S`, `-L`, `-U` | Same | planned | 25 | — |
 | Command aliases | `command-alias[N] name=value` | Same | planned | 25 | — |
 | Format arguments | `-F` on `display-message`, `list-*`, `new-*`, `set-option` | Same | planned | 25 | — |
-| Placeholders in prompts | `%%`, `%1`…`%9`, `%%%` | Same | planned | 24 | — |
+| Placeholders in prompts | `%%`, `%1`…`%9`, `%%%` | Same *Rationale for the move:* prompt templates with Step 25. | planned | 25 | — |
 | Shell for commands | `/bin/sh -c` (or `default-shell`) | Profile shell (PowerShell, cmd, Git Bash, WSL); quoting differs. *Differs:* `subak new` runs the program with its arguments directly, never through a shell; scripts need their interpreter named (Step 11, [PTY_PROCESSES §2](PTY_PROCESSES.md)) | planned | 25 | — |
 
 ## 19. Control mode
@@ -841,14 +841,14 @@ a family is scheduled in detail.
 | Session names | `new-session -s`, `rename-session` | Terminal names (SUBAK-FR-010) | planned | 10 | — |
 | Window names | `new-window -n`, `rename-window`, `automatic-rename`, `\033k…\033\\` | Same. *Partial:* `subak window new --name`, `subak window rename`; a window is named after its first program until renamed (`automatic_name`); following the foreground program and `\033k…\033\\` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Pane titles | `select-pane -T`, OSC 2, `allow-set-title` | Same | planned | 25 | — |
-| Marked pane | `select-pane -m`, `-M`, `{marked}` | Same | planned | 24 | — |
+| Marked pane | `select-pane -m`, `-M`, `{marked}` | Same *Rationale for the move:* marked panes are Step 25. | planned | 25 | — |
 | Disable/enable pane input | `select-pane -d`, `-e` | Same | planned | 25 | — |
 | Synchronized input | `synchronize-panes` | Same | planned | 25 | — |
 | Linked windows | `link-window`, `unlink-window` | Same | planned | 25 | — |
 | Activity, bell and silence alerts | `monitor-*`, `visual-*`, `*-action`, window flags | Alerts on the in-tab window list and the GUI tab | planned | 25 | — |
 | Dead panes | `remain-on-exit`, `pane_dead`, `respawn-pane` | Same | planned | 25 | — |
 | Floating and modal panes (new in 3.8) | `new-pane`, `move-pane -P`, `-O` modal, z-order | *Rationale:* see `new-pane` (§2.2) | deferred | post-26 | — |
-| Shell integration marks | OSC 133 (`next-prompt`, `pane-shell-prompt`) | Same | planned | 24 | — |
+| Shell integration marks | OSC 133 (`next-prompt`, `pane-shell-prompt`) | Same *Rationale for the move:* shell integration is Step 25. | planned | 25 | — |
 | Hyperlinks | OSC 8, `clear-history -H` | Clickable links in the GUI | planned | 25 | — |
 
 ## 22. Terminal integration and exit messages
@@ -940,38 +940,38 @@ whenever a row or Status changes.
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 422 |
-| `partial` | 67 |
-| `implemented` | 38 |
+| `planned` | 370 |
+| `partial` | 102 |
+| `implemented` | 54 |
 | `deferred` | 55 |
-| `unsupported` | 24 |
+| `unsupported` | 25 |
 | **Total** | **606** |
 
 | Section | planned | partial | implemented | deferred | unsupported | Total |
 | --- | --- | --- | --- | --- | --- | --- |
 | §1 Invocation | 4 | 3 | 4 | 2 | 4 | 17 |
-| §2 Commands | 52 | 28 | 2 | 5 | 5 | 92 |
+| §2 Commands | 41 | 37 | 4 | 5 | 5 | 92 |
 | §3 Notable command flags | 9 | 8 | 1 | 1 | 1 | 20 |
-| §4 Prefix table | 36 | 5 | 21 | 9 | 1 | 72 |
-| §5 Root table (mouse) | 7 | 4 | 1 | 7 | 0 | 19 |
-| §6 Key tables overview | 3 | 3 | 1 | 1 | 0 | 8 |
-| §7 Copy mode | 29 | 0 | 0 | 0 | 0 | 29 |
+| §4 Prefix table | 29 | 6 | 27 | 9 | 1 | 72 |
+| §5 Root table (mouse) | 5 | 6 | 1 | 7 | 0 | 19 |
+| §6 Key tables overview | 2 | 4 | 1 | 1 | 0 | 8 |
+| §7 Copy mode | 18 | 10 | 1 | 0 | 0 | 29 |
 | §8 Other pane modes | 5 | 0 | 0 | 2 | 0 | 7 |
-| §9 Options | 73 | 8 | 0 | 9 | 5 | 95 |
+| §9 Options | 70 | 10 | 1 | 9 | 5 | 95 |
 | §10 Formats | 40 | 0 | 0 | 2 | 2 | 44 |
-| §11 Status line and styles | 17 | 0 | 0 | 0 | 0 | 17 |
+| §11 Status line and styles | 16 | 1 | 0 | 0 | 0 | 17 |
 | §12 Hooks | 53 | 0 | 0 | 4 | 0 | 57 |
-| §13 Target syntax | 23 | 0 | 1 | 0 | 0 | 24 |
+| §13 Target syntax | 12 | 7 | 4 | 0 | 1 | 24 |
 | §14 Mouse | 7 | 0 | 0 | 0 | 0 | 7 |
 | §15 Environment | 11 | 1 | 3 | 0 | 1 | 16 |
-| §16 Buffers and clipboard | 7 | 1 | 0 | 0 | 0 | 8 |
+| §16 Buffers and clipboard | 2 | 3 | 3 | 0 | 0 | 8 |
 | §17 Configuration file and parsing | 12 | 0 | 0 | 1 | 1 | 14 |
 | §18 Command chaining and scripting | 12 | 0 | 0 | 0 | 0 | 12 |
 | §19 Control mode | 0 | 0 | 0 | 8 | 0 | 8 |
 | §20 Multiple clients and access control | 5 | 3 | 0 | 2 | 4 | 14 |
 | §21 Layouts, names, alerts, pane lifecycle | 17 | 1 | 4 | 1 | 0 | 23 |
 | §22 Terminal integration and exit messages | 0 | 2 | 0 | 1 | 0 | 3 |
-| **Total** | **422** | **67** | **38** | **55** | **24** | **606** |
+| **Total** | **370** | **102** | **54** | **55** | **25** | **606** |
 
 Coverage checks for matrix version 1: all 92 commands and their aliases, all 184 options in
 `options-table.c`, all 51 named hooks and all 99 copy-mode commands of tmux 3.8 appear in the

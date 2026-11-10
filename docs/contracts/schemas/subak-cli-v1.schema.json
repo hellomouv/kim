@@ -96,6 +96,24 @@
     },
     {
       "$ref": "#/$defs/ok_layout"
+    },
+    {
+      "$ref": "#/$defs/ok_command"
+    },
+    {
+      "$ref": "#/$defs/ok_buffer_ls"
+    },
+    {
+      "$ref": "#/$defs/ok_buffer_show"
+    },
+    {
+      "$ref": "#/$defs/ok_buffer_set"
+    },
+    {
+      "$ref": "#/$defs/ok_buffer_delete"
+    },
+    {
+      "$ref": "#/$defs/ok_buffer_paste"
     }
   ],
   "$defs": {
@@ -221,6 +239,92 @@
       "oneOf": [
         {"$ref": "#/$defs/layout_change"},
         {"type": "object", "required": ["dry_run", "would_change"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_change": {"$ref": "#/$defs/layout_change"}}}
+      ]
+    },
+    "buffer_info": {
+      "description": "Step 24: one paste buffer as listed: never its text, a redacted first line only.",
+      "type": "object",
+      "required": ["name", "bytes", "lines", "preview"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 64},
+        "bytes": {"type": "integer", "minimum": 0},
+        "lines": {"type": "integer", "minimum": 0},
+        "preview": {"type": "string"}
+      }
+    },
+    "result_buffer_list": {
+      "description": "Step 24: buffer.list (tmux list-buffers), newest first; buffers live in the Host's memory only.",
+      "type": "object",
+      "required": ["buffers", "persisted"],
+      "additionalProperties": false,
+      "properties": {
+        "buffers": {"type": "array", "items": {"$ref": "#/$defs/buffer_info"}},
+        "persisted": {"const": false}
+      }
+    },
+    "result_buffer_get": {
+      "description": "Step 24: buffer.get (tmux show-buffer): one buffer's text.",
+      "type": "object",
+      "required": ["name", "bytes", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "data": {"type": "string"}
+      }
+    },
+    "result_buffer_set": {
+      "description": "Step 24: buffer.set (tmux set-buffer); with dry_run, what would be kept.",
+      "oneOf": [
+        {"type": "object", "required": ["name", "bytes", "buffers"], "additionalProperties": false, "properties": {"name": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0}, "buffers": {"type": "integer", "minimum": 1, "maximum": 50}}},
+        {"type": "object", "required": ["dry_run", "would_set"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_set": {"type": "object"}}}
+      ]
+    },
+    "result_buffer_delete": {
+      "description": "Step 24: buffer.delete (tmux delete-buffer); with dry_run, which buffer would go.",
+      "oneOf": [
+        {"type": "object", "required": ["deleted", "buffers"], "additionalProperties": false, "properties": {"deleted": {"type": "string"}, "buffers": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["dry_run", "would_delete"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_delete": {"type": "object"}}}
+      ]
+    },
+    "result_input": {
+      "description": "Step 24: pane.send_keys and buffer.paste: the bytes written to the pane as input (never echoed back); with dry_run, what would be.",
+      "oneOf": [
+        {"type": "object", "required": ["pane_id", "bytes"], "additionalProperties": false, "properties": {"pane_id": {"$ref": "#/$defs/pane_id"}, "terminal_id": {"$ref": "#/$defs/terminal_id"}, "name": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["dry_run"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_send": {"type": "object"}, "would_paste": {"type": "object"}}}
+      ]
+    },
+    "result_move_pane": {
+      "description": "Step 24: pane.break (tmux break-pane: a new window holds the pane) and pane.join (join-pane: the pane joined window_id; window_removed when its old window went with it).",
+      "oneOf": [
+        {"type": "object", "required": ["terminal_id", "window_id", "pane_id", "selected", "window"], "additionalProperties": false, "properties": {"terminal_id": {"$ref": "#/$defs/terminal_id"}, "window_id": {"$ref": "#/$defs/window_id"}, "pane_id": {"$ref": "#/$defs/pane_id"}, "selected": {"type": "boolean"}, "window_removed": {"type": "boolean"}, "window": {"anyOf": [{"$ref": "#/$defs/window"}, {"type": "null"}]}}},
+        {"type": "object", "required": ["dry_run"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_break": {"type": "object"}, "would_join": {"type": "object"}}}
+      ]
+    },
+    "ok_command": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "command"}, "data": {"$ref": "#/$defs/result_command"}}}]
+    },
+    "ok_buffer_ls": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.ls"}, "data": {"$ref": "#/$defs/result_buffer_list"}}}]
+    },
+    "ok_buffer_show": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.show"}, "data": {"$ref": "#/$defs/result_buffer_get"}}}]
+    },
+    "ok_buffer_set": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.set"}, "data": {"$ref": "#/$defs/result_buffer_set"}}}]
+    },
+    "ok_buffer_delete": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.delete"}, "data": {"$ref": "#/$defs/result_buffer_delete"}}}]
+    },
+    "ok_buffer_paste": {
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.paste"}, "data": {"$ref": "#/$defs/result_input"}}}]
+    },
+    "result_command": {
+      "description": "Step 24: `subak command` (tmux command lines): each command's IPC method and its result, in order; or, with --dry-run, the plan.",
+      "oneOf": [
+        {"type": "object", "required": ["results"], "additionalProperties": false, "properties": {"results": {"type": "array", "items": {"type": "object", "required": ["command", "method", "result"], "additionalProperties": false, "properties": {"command": {"type": "string"}, "method": {"type": "string"}, "result": {"type": "object"}}}}}},
+        {"type": "object", "required": ["dry_run", "would_run"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_run": {"type": "array", "items": {"type": "object", "required": ["command", "method"], "properties": {"command": {"type": "string"}, "method": {"type": ["string", "null"]}}}}}}
       ]
     },
     "result_topology": {

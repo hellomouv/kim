@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 12] = [
+pub const FEATURES: [&str; 13] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -59,6 +59,8 @@ pub const FEATURES: [&str; 12] = [
     // Step 22: splits and layouts (`pane.split|adjust|swap|zoom`, directional `pane.select`,
     // `window.layout`, window `size`/`zoomed`, pane `rect`/`visible`).
     "terminal.layout",
+    // Step 24: `pane.send_keys`, `pane.break|join`, `buffer.*` (tmux paste buffers).
+    "terminal.buffers",
 ];
 
 /// One decoded frame.
@@ -576,7 +578,15 @@ pub const METHODS: &[Method] = &[
     m("pane.select", CG, true),
     m("pane.swap", CG, true),
     m("pane.zoom", CG, true),
-    m("pane.send_keys", CG, false),
+    m("pane.send_keys", CG, true),
+    // Step 24 (ADR 0058): moving panes between windows and tmux paste buffers.
+    m("pane.break", CG, true),
+    m("pane.join", CG, true),
+    m("buffer.set", CG, true),
+    m("buffer.list", CG, true),
+    m("buffer.get", CG, true),
+    m("buffer.delete", CG, true),
+    m("buffer.paste", CG, true),
     // Step 13: reading and clearing a pane's history needs the MCP grant too (Step 37).
     m("pane.capture", CG, true),
     m("pane.clear_history", CG, true),

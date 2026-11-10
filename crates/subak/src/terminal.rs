@@ -612,6 +612,194 @@ pub fn layout(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
     require(endpoint)?.request(method, &params)
 }
 
+/// Step 24 (ADR 0058): `subak command '<tmux command line>'` (also `subak tmux`): the tmux
+/// commands of [`crate::tmuxcmd`], run one after another through the Host; the first refusal
+/// stops the rest (tmux). Without `-t` a command acts on `--target`, else on the pane this runs in
+/// (`SUBAK_PANE_ID`, set in every pane). `--dry-run` parses and plans only. Commands that end
+/// processes need `--yes`.
+pub fn command(a: &Args, endpoint: &str) -> Result<Value, CliError> {
+    use crate::tmuxcmd::{self, Context, Plan};
+    let line = if a.command.is_empty() {
+        a.positional.join(" ")
+    } else {
+        // `subak command -- split-window -h`: the words as the shell split them.
+        a.command
+            .iter()
+            .map(|w| {
+                if w == ";" {
+                    w.clone()
+                } else {
+                    format!("'{}'", w.replace('\'', "'\\''"))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let cmds = tmuxcmd::parse(&line).map_err(|e| {
+        let err = CliError::usage(format!("tmux command: {}", e.message))
+            .detail(format!("kind: {}", e.kind));
+        match e.hint {
+            Some(h) => err.hint(h),
+            None => err,
+        }
+    })?;
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    let mut ctx = Context {
+        yes: a.yes,
+        ..Context::default()
+    };
+    match &a.target {
+        Some(t) => {
+            ctx.pane = Some(t.clone());
+            let (term, rest) = t
+                .split_once(':')
+                .map_or((t.as_str(), None), |(x, y)| (x, Some(y)));
+            if !term.starts_with("p-") && !term.starts_with("w-") {
+                ctx.terminal = Some(term.to_string());
+            }
+            if let Some(r) = rest {
+                let w = r.split('.').next().unwrap_or(r);
+                ctx.window = Some(format!("{term}:{w}"));
+            } else if term.starts_with("w-") {
+                ctx.window = Some(term.to_string());
+            }
+        }
+        None => {
+            ctx.pane = env("SUBAK_PANE_ID");
+            ctx.terminal = env("SUBAK_TERMINAL_ID");
+        }
+    }
+    let plans: Vec<(String, Plan)> = cmds
+        .iter()
+        .map(|c| {
+            tmuxcmd::plan(c, &ctx)
+                .map(|p| (c.name().to_string(), p))
+                .map_err(|e| {
+                    let mut err = CliError::usage(format!("{}: {}", c.name(), e.message))
+                        .detail(format!("kind: {}", e.kind));
+                    if e.kind == "confirmation_required" {
+                        err = CliError::new(
+                            Code::ConfirmationRequired,
+                            format!("{}: {}", c.name(), e.message),
+                        );
+                    }
+                    match e.hint {
+                        Some(h) => err.hint(h),
+                        None => err,
+                    }
+                })
+        })
+        .collect::<Result<_, _>>()?;
+    if a.dry_run {
+        let would: Vec<Value> = plans
+            .iter()
+            .map(|(name, p)| match p {
+                Plan::Request { method, params } => {
+                    json!({"command": name, "method": method, "params": params})
+                }
+                Plan::Relative { terminal, delta } => {
+                    json!({"command": name, "method": "window.select", "params": {"terminal": terminal, "delta": delta}})
+                }
+                Plan::Local(what) => json!({"command": name, "method": null, "local": what}),
+            })
+            .collect();
+        return Ok(json!({"dry_run": true, "would_run": would}));
+    }
+    if let Some((name, _)) = plans.iter().find(|(_, p)| matches!(p, Plan::Local(_))) {
+        return Err(CliError::usage(format!("{name} works only in the Subak window"))
+            .hint("in the window: Ctrl+B [ (copy mode), Ctrl+B d (detach); from a console: `subak detach <terminal>`"));
+    }
+    let mut s = require(endpoint)?;
+    // Window commands of the context pane need its window.
+    if ctx.window.is_none()
+        && let (Some(t), Some(p)) = (&ctx.terminal, &ctx.pane)
+        && let Ok(top) = s.request("pane.list", &json!({"target": t}))
+    {
+        ctx.window = top["windows"].as_array().and_then(|ws| {
+            ws.iter()
+                .find(|w| {
+                    w["panes"]
+                        .as_array()
+                        .is_some_and(|ps| ps.iter().any(|x| x["id"] == p.as_str()))
+                })
+                .and_then(|w| w["id"].as_str().map(String::from))
+        });
+        // Re-plan with the window now known.
+    }
+    let plans: Vec<(String, Plan)> = cmds
+        .iter()
+        .map(|c| {
+            (
+                c.name().to_string(),
+                tmuxcmd::plan(c, &ctx).expect("planned above"),
+            )
+        })
+        .collect();
+    let mut results = Vec::new();
+    for (name, p) in plans {
+        let (method, result) = match p {
+            Plan::Request { method, params } => {
+                let r = if matches!(method, "pane.split" | "window.create" | "terminal.create") {
+                    s.request_within(method, &params, CREATE_TIMEOUT)
+                } else {
+                    s.request(method, &params)
+                };
+                (method, r)
+            }
+            Plan::Relative { terminal, delta } => {
+                let r = s
+                    .request("window.list", &json!({"target": terminal}))
+                    .and_then(|l| {
+                        let ws = l["windows"].as_array().cloned().unwrap_or_default();
+                        let n = ws.len().max(1) as i64;
+                        let at = ws
+                            .iter()
+                            .position(|w| w["id"] == l["active_window"])
+                            .unwrap_or(0) as i64;
+                        let next = &ws[usize::try_from((at + delta).rem_euclid(n)).unwrap_or(0)];
+                        s.request("window.select", &json!({"target": next["id"]}))
+                    });
+                ("window.select", r)
+            }
+            Plan::Local(_) => unreachable!("refused above"),
+        };
+        match result {
+            Ok(r) => results.push(json!({"command": name, "method": method, "result": r})),
+            Err(e) => {
+                return Err(e.detail(format!(
+                    "stopped at `{name}` after {} command(s) ran",
+                    results.len()
+                )));
+            }
+        }
+    }
+    Ok(json!({"results": results}))
+}
+
+/// Step 24: `subak buffer ls|show|set|delete|paste` (tmux `list-buffers`, `show-buffer`,
+/// `set-buffer`, `delete-buffer`, `paste-buffer`).
+pub fn buffer(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
+    let first = a.positional.first().cloned();
+    let (method, params) = match cmd {
+        Cmd::BufferLs => ("buffer.list", json!({})),
+        Cmd::BufferShow => ("buffer.get", json!({"name": first})),
+        Cmd::BufferDelete => (
+            "buffer.delete",
+            json!({"name": first, "dry_run": a.dry_run}),
+        ),
+        Cmd::BufferSet => (
+            "buffer.set",
+            json!({"name": a.name, "data": first.unwrap_or_default(), "append": a.append,
+                "dry_run": a.dry_run}),
+        ),
+        _ => (
+            "buffer.paste",
+            json!({"target": first, "name": a.name, "delete": a.delete, "dry_run": a.dry_run}),
+        ),
+    };
+    require(endpoint)?.request(method, &params)
+}
+
 /// `window ls <terminal>` and `pane ls <terminal|window>`.
 pub fn topology(a: &Args, endpoint: &str, panes: bool) -> Result<Value, CliError> {
     let method = if panes { "pane.list" } else { "window.list" };

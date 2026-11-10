@@ -527,6 +527,66 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "command",
+      "usage": "subak command [--target <target>] [--yes] [--dry-run] [--json] '<tmux command>[; <tmux command>]…' (also `subak tmux`, or the words after --)",
+      "summary": "Run tmux command lines (split-window, select-pane, send-keys, break-pane, join-pane, set-buffer, list-panes, …) on a Terminal; kill-* need --yes",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "buffer.ls",
+      "usage": "subak buffer ls [--json]",
+      "summary": "The Host's paste buffers (tmux list-buffers): names, sizes and a redacted first line",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "buffer.show",
+      "usage": "subak buffer show [<name>] [--json]",
+      "summary": "One paste buffer's text, the newest without a name (tmux show-buffer)",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "buffer.set",
+      "usage": "subak buffer set <text> [--name <name>] [--append] [--dry-run] [--json]",
+      "summary": "Put text in a paste buffer of the Host (tmux set-buffer); memory only, never written",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "buffer.delete",
+      "usage": "subak buffer delete [<name>] [--dry-run] [--json]",
+      "summary": "Delete a paste buffer, the newest without a name (tmux delete-buffer)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "buffer.paste",
+      "usage": "subak buffer paste <pane> [--name <name>] [--delete] [--dry-run] [--json]",
+      "summary": "Type a paste buffer into a pane as input (tmux paste-buffer)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

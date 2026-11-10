@@ -448,7 +448,26 @@ struct State {
     stats: Stats,
     /// The Terminal started with `--shell` (its pane is `host.status.pane`).
     initial: Option<String>,
+    /// Step 24: tmux paste buffers, newest first; in this Host's memory only (never written,
+    /// never logged), gone when it exits.
+    buffers: Vec<PasteBuffer>,
+    /// The number of the next automatic buffer name (`buffer0`, `buffer1`, …).
+    next_buffer: u64,
 }
+
+/// One paste buffer (Step 24).
+#[derive(Debug, Clone)]
+struct PasteBuffer {
+    name: String,
+    data: String,
+    /// Named by the user (`-b`), so a full list never drops it first (tmux).
+    named: bool,
+}
+
+/// At most this many buffers (tmux `buffer-limit`); the oldest automatic one goes first.
+pub const MAX_BUFFERS: usize = 50;
+/// The largest buffer, in bytes.
+pub const MAX_BUFFER_BYTES: usize = 1 << 20;
 
 impl State {
     fn live_terminals(&self) -> usize {
@@ -738,6 +757,8 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             next_conn: 1,
             stopping: false,
             stats: Stats::default(),
+            buffers: Vec::new(),
+            next_buffer: 0,
             initial: None,
         }),
         events: ev_tx,
@@ -1963,6 +1984,15 @@ impl Host {
             "pane.swap" => Reply::Now(self.layout_op(p, LayoutOp::Swap)),
             "pane.zoom" => Reply::Now(self.layout_op(p, LayoutOp::Zoom)),
             "window.rotate" => Reply::Now(self.layout_op(p, LayoutOp::Rotate)),
+            // Step 24 (ADR 0058): keys, paste buffers, moving panes between windows.
+            "pane.send_keys" => Reply::Now(self.send_keys(p)),
+            "pane.break" => Reply::Now(self.break_pane(p)),
+            "pane.join" => Reply::Now(self.join_pane(p)),
+            "buffer.set" => Reply::Now(self.buffer_set(p)),
+            "buffer.list" => Reply::Now(Ok(self.buffer_list())),
+            "buffer.get" => Reply::Now(self.buffer_get(p)),
+            "buffer.delete" => Reply::Now(self.buffer_delete(p)),
+            "buffer.paste" => Reply::Now(self.buffer_paste(p)),
             "window.select_layout" => Reply::Now(self.layout_op(p, LayoutOp::Preset)),
             "window.list" => Reply::Now(self.topology(p, false)),
             "pane.list" => Reply::Now(self.topology(p, true)),
@@ -3488,6 +3518,413 @@ impl Host {
         };
         apply_resizes(&resizes)?;
         Ok(out)
+    }
+
+    /// The running pane a target means (a Terminal or window: its active pane), for input.
+    fn input_pane(&self, p: &Value) -> Result<(Arc<PaneRt>, String), IpcError> {
+        let target = target(p)?;
+        let st = self.lock();
+        let r = st.reg.resolve(target)?;
+        let t = &st.reg.terminals[r.terminal];
+        require_running(t)?;
+        if t.ending.is_some() {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "the Terminal is ending",
+            ));
+        }
+        let w = &t.windows[r.window];
+        let pi = if r.level == Level::Pane {
+            r.pane
+        } else {
+            w.active_pane
+        };
+        let id = w.panes[pi].id.clone();
+        let rt = st
+            .rt
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| IpcError::new(ErrorCode::InvalidState, "the pane has ended"))?;
+        Ok((rt, id))
+    }
+
+    /// Writes input to a pane as if a client typed it (counted as input, never logged).
+    fn write_to(&self, rt: &PaneRt, bytes: &[u8]) -> Result<(), IpcError> {
+        if let Some(o) = self.lock().out.get_mut(&rt.pane_id) {
+            o.input_bytes += bytes.len() as u64;
+        }
+        rt.pty
+            .write_input(bytes)
+            .map_err(|e| IpcError::new(ErrorCode::InternalError, format!("input failed: {e}")))
+    }
+
+    /// `pane.send_keys` (tmux `send-keys`): tmux key names (`Enter`, `C-c`, `Up`, `F5`, …; any
+    /// other word as its text) or, with `literal`, the words as text, to the target pane.
+    fn send_keys(&self, p: &Value) -> Result<Value, IpcError> {
+        let keys: Vec<String> = match &p["keys"] {
+            Value::Array(a) => a
+                .iter()
+                .map(|k| k.as_str().map(String::from))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| IpcError::param("keys", "keys must be strings"))?,
+            _ => return Err(IpcError::param("keys", "keys is a list of strings")),
+        };
+        let literal = flag(p, "literal")?;
+        let bytes: Vec<u8> = keys
+            .iter()
+            .flat_map(|k| {
+                if literal {
+                    k.as_bytes().to_vec()
+                } else {
+                    crate::tmuxcmd::key_bytes(k)
+                }
+            })
+            .collect();
+        if bytes.len() > MAX_BUFFER_BYTES {
+            return Err(IpcError::param("keys", "at most 1 MiB of input at a time"));
+        }
+        let (rt, pane_id) = self.input_pane(p)?;
+        if flag(p, "dry_run")? {
+            return Ok(
+                json!({"dry_run": true, "would_send": {"pane_id": pane_id, "bytes": bytes.len()}}),
+            );
+        }
+        self.write_to(&rt, &bytes)?;
+        Ok(json!({"pane_id": pane_id, "terminal_id": rt.terminal_id, "bytes": bytes.len()}))
+    }
+
+    /// `buffer.set` (tmux `set-buffer`): a new buffer (named, or `bufferN`), or `append` to one.
+    fn buffer_set(&self, p: &Value) -> Result<Value, IpcError> {
+        let data = optional_string(p, "data")?
+            .ok_or_else(|| IpcError::param("data", "data is required"))?;
+        let name = optional_string(p, "name")?;
+        if let Some(n) = name
+            && (n.is_empty() || n.chars().count() > 64 || n.chars().any(char::is_control))
+        {
+            return Err(IpcError::param(
+                "name",
+                "a buffer name has 1-64 visible characters",
+            ));
+        }
+        let append = flag(p, "append")?;
+        if flag(p, "dry_run")? {
+            return Ok(json!({"dry_run": true, "would_set": {
+                "name": name, "bytes": data.len(), "append": append}}));
+        }
+        let mut st = self.lock();
+        let existing = name.and_then(|n| st.buffers.iter().position(|b| b.name == n));
+        let new_len =
+            existing.map_or(0, |i| if append { st.buffers[i].data.len() } else { 0 }) + data.len();
+        if new_len > MAX_BUFFER_BYTES {
+            return Err(IpcError::param("data", "a buffer holds at most 1 MiB"));
+        }
+        let name = match (existing, name) {
+            (Some(i), _) => {
+                let mut b = st.buffers.remove(i);
+                if append {
+                    b.data.push_str(data);
+                } else {
+                    b.data = data.to_string();
+                }
+                let n = b.name.clone();
+                st.buffers.insert(0, b);
+                n
+            }
+            (None, given) => {
+                let named = given.is_some();
+                let n = given.map_or_else(
+                    || {
+                        let n = format!("buffer{}", st.next_buffer);
+                        st.next_buffer += 1;
+                        n
+                    },
+                    String::from,
+                );
+                st.buffers.insert(
+                    0,
+                    PasteBuffer {
+                        name: n.clone(),
+                        data: data.to_string(),
+                        named,
+                    },
+                );
+                if st.buffers.len() > MAX_BUFFERS {
+                    // tmux: the oldest automatic buffer goes first.
+                    let drop = st
+                        .buffers
+                        .iter()
+                        .rposition(|b| !b.named)
+                        .unwrap_or(st.buffers.len() - 1);
+                    st.buffers.remove(drop);
+                }
+                n
+            }
+        };
+        let bytes = st.buffers[0].data.len();
+        Ok(json!({"name": name, "bytes": bytes, "buffers": st.buffers.len()}))
+    }
+
+    /// `buffer.list` (tmux `list-buffers`): names, sizes and a redacted one-line preview.
+    fn buffer_list(&self) -> Value {
+        let st = self.lock();
+        let list: Vec<Value> = st
+            .buffers
+            .iter()
+            .map(|b| {
+                let first: String = b
+                    .data
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .take(60)
+                    .collect();
+                json!({
+                    "name": b.name,
+                    "bytes": b.data.len(),
+                    "lines": b.data.lines().count(),
+                    "preview": redact::command_line(&first),
+                })
+            })
+            .collect();
+        json!({"buffers": list, "persisted": false})
+    }
+
+    fn buffer_index(st: &State, p: &Value) -> Result<usize, IpcError> {
+        match optional_string(p, "name")? {
+            None if st.buffers.is_empty() => Err(IpcError::new(
+                ErrorCode::TargetNotFound,
+                "there is no paste buffer",
+            )
+            .details(json!({"hint": "copy in copy mode (Ctrl+B [) or `subak buffer set`"}))),
+            None => Ok(0),
+            Some(n) => st.buffers.iter().position(|b| b.name == n).ok_or_else(|| {
+                IpcError::new(ErrorCode::TargetNotFound, format!("no buffer `{n}`"))
+            }),
+        }
+    }
+
+    /// `buffer.get` (tmux `show-buffer`): one buffer's text (the newest without a name).
+    fn buffer_get(&self, p: &Value) -> Result<Value, IpcError> {
+        let st = self.lock();
+        let i = Self::buffer_index(&st, p)?;
+        let b = &st.buffers[i];
+        Ok(json!({"name": b.name, "bytes": b.data.len(), "data": b.data}))
+    }
+
+    /// `buffer.delete` (tmux `delete-buffer`).
+    fn buffer_delete(&self, p: &Value) -> Result<Value, IpcError> {
+        let mut st = self.lock();
+        let i = Self::buffer_index(&st, p)?;
+        if flag(p, "dry_run")? {
+            let b = &st.buffers[i];
+            return Ok(
+                json!({"dry_run": true, "would_delete": {"name": b.name, "bytes": b.data.len()}}),
+            );
+        }
+        let b = st.buffers.remove(i);
+        Ok(json!({"deleted": b.name, "buffers": st.buffers.len()}))
+    }
+
+    /// `buffer.paste` (tmux `paste-buffer`): a buffer's text as input to the target pane, line
+    /// ends as carriage returns (tmux without `-r`); `delete` drops the buffer afterwards.
+    fn buffer_paste(&self, p: &Value) -> Result<Value, IpcError> {
+        let data = {
+            let st = self.lock();
+            let i = Self::buffer_index(&st, p)?;
+            (st.buffers[i].name.clone(), st.buffers[i].data.clone())
+        };
+        let (rt, pane_id) = self.input_pane(p)?;
+        let text = data.1.replace("\r\n", "\r").replace('\n', "\r");
+        if flag(p, "dry_run")? {
+            return Ok(
+                json!({"dry_run": true, "would_paste": {"name": data.0, "pane_id": pane_id, "bytes": text.len()}}),
+            );
+        }
+        self.write_to(&rt, text.as_bytes())?;
+        if flag(p, "delete")? {
+            let mut st = self.lock();
+            st.buffers.retain(|b| b.name != data.0);
+        }
+        Ok(json!({"name": data.0, "pane_id": pane_id, "bytes": text.len()}))
+    }
+
+    /// `pane.break` (tmux `break-pane`): the target pane leaves its window for a new window of
+    /// its own (named `name`, or after its program); its process keeps running. `select` (default
+    /// true) shows it.
+    fn break_pane(&self, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let name = optional_string(p, "name")?
+            .map(session::parse_window_name)
+            .transpose()?;
+        let select = !matches!(p["select"], Value::Bool(false));
+        let dry_run = flag(p, "dry_run")?;
+        let mut st = self.lock();
+        let r = st.reg.resolve(target)?;
+        if r.level != Level::Pane {
+            return Err(wrong_level(
+                "pane.break",
+                "a pane (terminal:window.pane or a p- id)",
+            ));
+        }
+        let t = &st.reg.terminals[r.terminal];
+        require_running(t)?;
+        let pane = t.windows[r.window].panes[r.pane].clone();
+        if t.windows[r.window].panes.len() < 2 {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "the pane is its window's only pane: nothing to break it out of",
+            ));
+        }
+        let index = t.free_window_index();
+        let tid = t.id.clone();
+        if dry_run {
+            return Ok(json!({"dry_run": true, "would_break": {
+                "terminal_id": tid, "pane_id": pane.id, "window_index": index}}));
+        }
+        let wid = st.reg.issue_id('w', proto::new_object_id);
+        let automatic = name.is_none();
+        let wname = name.unwrap_or_else(|| session::window_name(&pane.command.program));
+        let t = st.reg.get_mut(&tid).expect("resolved above");
+        let (wc0, pc0) = (t.active_window, t.active_pane().id.clone());
+        let (new, old, resized) = t
+            .break_pane(
+                &pane.id,
+                session::Window {
+                    id: wid.clone(),
+                    index,
+                    name: wname,
+                    automatic_name: automatic,
+                    panes: Vec::new(),
+                    active_pane: 0,
+                    layout: None,
+                },
+                select,
+            )
+            .map_err(|m| IpcError::new(ErrorCode::InvalidState, m))?;
+        let t = st.reg.get(&tid).expect("resolved above");
+        let window = st.window_json(t, &t.windows[new]);
+        let wc = t.windows[t.active_window].id
+            != t.windows.get(wc0).map_or(String::new(), |w| w.id.clone())
+            || select;
+        let pc = t.active_pane().id != pc0;
+        let data = json!({"terminal_id": tid, "window": window});
+        st.notify("terminals", "window.created", &data);
+        st.layout_event(&tid, &old);
+        st.selected(&tid, wc && select, pc);
+        let resizes = st.resized(resized);
+        drop(st);
+        apply_resizes(&resizes)?;
+        Ok(
+            json!({"terminal_id": tid, "window_id": wid, "pane_id": pane.id, "selected": select, "window": window}),
+        )
+    }
+
+    /// `pane.join` (tmux `join-pane`): the `source` pane moves into the target window as a split
+    /// of the target pane (a window target: its active pane), `direction`/`before`/`cells`/
+    /// `percent` as in `pane.split`; its old window goes with its last pane. Both panes keep their
+    /// processes. Panes of two Terminals are never joined.
+    fn join_pane(&self, p: &Value) -> Result<Value, IpcError> {
+        let source = optional_string(p, "source")?
+            .ok_or_else(|| IpcError::param("source", "source names the pane to move"))?;
+        let target = target(p)?;
+        let dir = match optional_string(p, "direction")? {
+            None | Some("vertical") => layout::Dir::Vertical,
+            Some("horizontal") => layout::Dir::Horizontal,
+            Some(_) => return Err(IpcError::param("direction", "horizontal or vertical")),
+        };
+        let before = flag(p, "before")?;
+        let amount = match (p["cells"].as_u64(), p["percent"].as_u64()) {
+            (Some(c), None) => Some(layout::Amount::Cells(
+                u16::try_from(c.min(1000)).unwrap_or(1000),
+            )),
+            (None, Some(c)) if (1..=99).contains(&c) => {
+                Some(layout::Amount::Percent(u8::try_from(c).unwrap_or(50)))
+            }
+            (None, None) => None,
+            _ => {
+                return Err(IpcError::param(
+                    "cells",
+                    "give cells (1-1000) or percent (1-99)",
+                ));
+            }
+        };
+        let select = !matches!(p["select"], Value::Bool(false));
+        let dry_run = flag(p, "dry_run")?;
+        let mut st = self.lock();
+        let s = st.reg.resolve(source)?;
+        if s.level != Level::Pane {
+            return Err(IpcError::param("source", "source must name a pane"));
+        }
+        let r = st.reg.resolve(target)?;
+        if r.level == Level::Terminal && r.terminal != s.terminal {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "panes of two Terminals are never joined",
+            ));
+        }
+        if r.terminal != s.terminal {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "panes of two Terminals are never joined",
+            ));
+        }
+        if r.window == s.window {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "the pane is already in that window (use pane.swap or pane.adjust)",
+            ));
+        }
+        let t = &st.reg.terminals[r.terminal];
+        require_running(t)?;
+        let pane_id = t.windows[s.window].panes[s.pane].id.clone();
+        let tw = &t.windows[r.window];
+        let of = if r.level == Level::Pane {
+            tw.panes[r.pane].id.clone()
+        } else {
+            tw.panes[tw.active_pane].id.clone()
+        };
+        let (tid, wid) = (t.id.clone(), tw.id.clone());
+        let mut probe = tw.layout().clone();
+        probe
+            .split(&of, &pane_id, dir, before, amount)
+            .map_err(|e| layout_refused(&e, "join the pane"))?;
+        if dry_run {
+            return Ok(json!({"dry_run": true, "would_join": {
+                "terminal_id": tid, "pane_id": pane_id, "window_id": wid, "split": of}}));
+        }
+        let t = st.reg.get_mut(&tid).expect("resolved above");
+        let pc0 = t.active_pane().id.clone();
+        let wc0 = t.windows[t.active_window].id.clone();
+        let (gone, old, resized) = t
+            .join_pane(&pane_id, &wid, &of, dir, before, amount, select)
+            .map_err(|e| layout_refused(&e, "join the pane"))?;
+        let t = st.reg.get(&tid).expect("resolved above");
+        let (wc, pc) = (
+            t.windows[t.active_window].id != wc0,
+            t.active_pane().id != pc0,
+        );
+        if gone {
+            let data = json!({"terminal_id": tid, "window_id": old, "reason": "joined"});
+            st.notify("terminals", "window.removed", &data);
+        } else {
+            st.layout_event(&tid, &old);
+        }
+        st.layout_event(&tid, &wid);
+        st.selected(&tid, wc, pc);
+        let t = st.reg.get(&tid).expect("resolved above");
+        let window = t
+            .windows
+            .iter()
+            .find(|w| w.id == wid)
+            .map(|w| st.window_json(t, w));
+        let resizes = st.resized(resized);
+        drop(st);
+        apply_resizes(&resizes)?;
+        Ok(
+            json!({"terminal_id": tid, "window_id": wid, "pane_id": pane_id,
+            "window_removed": gone, "selected": select, "window": window}),
+        )
     }
 
     /// `pane.adjust` (tmux `resize-pane -L/-R/-U/-D`), `pane.swap` (`swap-pane`) and `pane.zoom`

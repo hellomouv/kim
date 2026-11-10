@@ -42,6 +42,8 @@ mod pty;
 mod redact;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod session;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod tmuxcmd;
 
 /// The schema validator of `cargo xtask schema-check`, so unit tests can check every IPC message
 /// this build constructs against docs/contracts/schemas (ADR 0015).
@@ -192,6 +194,10 @@ WINDOWS AND PANES (docs/SESSION_MODEL.md §3, ADR 0054; splits and layouts ADR 0
              toggles by default (tmux resize-pane -Z). Selecting another pane unzooms.
     pane select <pane> [left|right|up|down|next|previous]   Also the neighbour of a pane.
     window rotate <window> [up|down]   Move every pane one place (tmux rotate-window).
+    command '<tmux command>[; …]'   tmux commands (split-window, select-pane, send-keys,
+             break-pane, join-pane, set-buffer, list-panes, …; also `subak tmux`, or the words
+             after --). No -t: --target, else the pane it runs in. kill-* need --yes.
+    buffer ls|show|set|delete|paste   The Host's paste buffers (memory only; ADR 0058).
     window layout <window> <even-horizontal|even-vertical|tiled>   Arrange the panes evenly
              (tmux select-layout; more presets with Step 25).
     window ls, pane ls   The windows, or the panes with pids and programs; * marks the active.
@@ -506,6 +512,10 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::PaneResize | Cmd::PaneSwap | Cmd::PaneZoom | Cmd::WindowRotate | Cmd::WindowLayout => {
             terminal::layout(a, &endpoint, cmd)
         }
+        Cmd::Command => terminal::command(a, &endpoint),
+        Cmd::BufferLs | Cmd::BufferShow | Cmd::BufferSet | Cmd::BufferDelete | Cmd::BufferPaste => {
+            terminal::buffer(a, &endpoint, cmd)
+        }
         // Help, version, capabilities and the portable `hotkeys` commands run elsewhere.
         _ => Err(CliError::new(Code::Internal, "not a host command")),
     }
@@ -602,7 +612,7 @@ fn table(list: &[Value]) -> Option<String> {
 
 /// The windows (and with `panes` every pane) of `window ls` / `pane ls`; `*` marks the active
 /// window and each window's active pane.
-fn topology_table(d: &Value, panes: bool) -> String {
+pub(crate) fn topology_table(d: &Value, panes: bool) -> String {
     let active = &d["active_window"];
     let mut s = if panes {
         format!(
@@ -655,6 +665,25 @@ fn topology_table(d: &Value, panes: bool) -> String {
         }
     }
     s.trim_end().to_string()
+}
+
+/// The paste buffers as a table (Step 24): name, size and a redacted first line.
+pub(crate) fn buffer_table(d: &Value) -> String {
+    let list = d["buffers"].as_array().map_or(&[][..], Vec::as_slice);
+    if list.is_empty() {
+        return "\n(no paste buffers)".into();
+    }
+    let mut s = format!("\n{:<16} {:>8} {:>6}  FIRST LINE", "NAME", "BYTES", "LINES");
+    for b in list {
+        s.push_str(&format!(
+            "\n{:<16} {:>8} {:>6}  {}",
+            text(&b["name"]),
+            b["bytes"].as_u64().unwrap_or(0),
+            b["lines"].as_u64().unwrap_or(0),
+            text(&b["preview"])
+        ));
+    }
+    s
 }
 
 /// A pane's size and place (Step 22): `40x24@41,0`, `(hidden)` while another pane is zoomed.
@@ -1229,6 +1258,78 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
             );
             writeln!(out, "{}", layout_lines(d))
         }
+        Cmd::Command if d["dry_run"] == true => {
+            let _ = writeln!(out, "dry run: parsed and planned, nothing ran");
+            for w in d["would_run"].as_array().map_or(&[][..], Vec::as_slice) {
+                let _ = writeln!(
+                    out,
+                    "  {:<16} {} {}",
+                    text(&w["command"]),
+                    w["method"].as_str().unwrap_or("(window only)"),
+                    w["params"]
+                );
+            }
+            Ok(())
+        }
+        Cmd::Command => {
+            for r in d["results"].as_array().map_or(&[][..], Vec::as_slice) {
+                let res = &r["result"];
+                let line = match r["method"].as_str().unwrap_or("") {
+                    "window.list" | "pane.list" => {
+                        format!("\n{}", topology_table(res, r["method"] == "pane.list"))
+                    }
+                    "terminal.list" => res["terminals"].as_array().map_or(String::new(), |ts| {
+                        ts.iter()
+                            .map(|t| {
+                                format!(
+                                    "\n  {} ({}) {}",
+                                    text(&t["name"]),
+                                    text(&t["id"]),
+                                    text(&t["state"])
+                                )
+                            })
+                            .collect()
+                    }),
+                    "buffer.list" => buffer_table(res),
+                    "buffer.get" => format!("\n{}", res["data"].as_str().unwrap_or("")),
+                    "pane.capture" => format!(
+                        "\n{}",
+                        res["lines"].as_array().map_or(String::new(), |l| l
+                            .iter()
+                            .map(|x| x.as_str().unwrap_or(""))
+                            .collect::<Vec<_>>()
+                            .join("\n"))
+                    ),
+                    _ => {
+                        let id = res["pane_id"]
+                            .as_str()
+                            .or_else(|| res["window_id"].as_str())
+                            .or_else(|| res["name"].as_str())
+                            .unwrap_or("");
+                        format!(" ok {id}")
+                    }
+                };
+                let _ = writeln!(out, "{}:{line}", text(&r["command"]));
+            }
+            Ok(())
+        }
+        Cmd::BufferLs => writeln!(out, "{}", buffer_table(d).trim_start()),
+        Cmd::BufferShow => write!(out, "{}", d["data"].as_str().unwrap_or("")),
+        Cmd::BufferSet => writeln!(
+            out,
+            "buffer `{}` holds {} byte(s); {} buffer(s) in the Host",
+            text(&d["name"]),
+            d["bytes"],
+            d["buffers"]
+        ),
+        Cmd::BufferDelete => writeln!(out, "deleted buffer `{}`", text(&d["deleted"])),
+        Cmd::BufferPaste => writeln!(
+            out,
+            "pasted buffer `{}` ({} byte(s)) into pane {}",
+            text(&d["name"]),
+            d["bytes"],
+            text(&d["pane_id"])
+        ),
         Cmd::WindowNew | Cmd::PaneNew | Cmd::PaneSplit => {
             let w = &d["window"];
             let pane = w["panes"]

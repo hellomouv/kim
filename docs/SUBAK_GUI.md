@@ -1263,3 +1263,66 @@ behaves the same there (as in tmux).
 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` | the off-screen window: `c`, `p`, `n`, `0`, `,`, `%`, `z`, `Ctrl+B Ctrl+B`, `Ctrl+B Ctrl+T`, an unbound key, the IME guard, `F1`, `d` |
 | `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` | the console client with `Ctrl+A q` |
 | `e2e/tests/step23_prefix_keys.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |
+
+## 16. The command prompt, copy mode and paste buffers (Step 24)
+
+[ADR 0058](adr/0058-subak-tmux-commands-copy-mode-and-buffers.md).
+
+### 16.1 The command prompt (`Ctrl+B :`)
+
+The banner row becomes a line for tmux commands (the same parser as `subak command`, SUBAK_CLI
+§3.16): `Enter` runs it, `Esc` cancels, Up/Down recall earlier lines (kept while the window
+runs). Commands without `-t` act on the shown Terminal — its active pane *when they run*, so
+`split-window; select-pane -L` behaves as in tmux. `list-panes`, `list-windows`,
+`list-sessions`, `list-buffers`, `show-buffer` and `capture-pane` show their answer in the pane's
+place (Esc closes it); an error is a banner notice. `kill-pane`/`kill-window` ask first when the
+Host says the target is busy. `copy-mode` and `detach-client` work as their keys do.
+
+### 16.2 Copy mode (`Ctrl+B [`, `Ctrl+B PageUp`)
+
+The pane's screen and history are browsed with the keyboard; **no key reaches the program** while
+it is on (the program keeps running and printing). The banner says so.
+
+| Keys | Action |
+| --- | --- |
+| arrows, `h j k l` | move |
+| `w` `b`, `Ctrl+Left/Right` | next / previous word (`terminal.word_separators`) |
+| `0` `^` `$`, `Home` `End` | line start / end |
+| `g` `G`, `Ctrl+Home/End` | oldest line / live screen |
+| `PageUp` `PageDown`, `Ctrl+U` `Ctrl+D` | a page |
+| `/` `?`, `n` `N` | search (the search bar), next / previous match |
+| `Space` | begin a selection; moves extend it |
+| `Enter` | copy the selection into a new paste buffer **and** the clipboard, and leave |
+| `q`, `Escape`, `Ctrl+C` | leave |
+
+`Space`, `Enter` and `q`/`Escape` are the contract's `copy-mode` actions (rebindable); the
+movement keys are fixed for now. The mouse selection of §12 keeps working outside copy mode.
+
+### 16.3 Paste buffers
+
+`Ctrl+B ]` types the newest buffer into the active pane; `Ctrl+B #` lists the buffers in the
+pane's place; `Ctrl+B -` deletes the newest. The buffers are the Host's (in memory only), shared
+with `subak buffer` and every window. `Ctrl+B !` breaks the active pane out into a window of its
+own.
+
+### 16.4 Known limits (Step 24)
+
+- No emacs copy keys, rectangle or line selection, repeat counts, `copy-pipe`, marks or jumps;
+  no bracketed paste for buffers; no prompt templates (`-I`, `-p`); formats (`-F`) are Step 25.
+- **Not tested with a visible window and a real keyboard yet** (manual check below).
+
+### 16.5 Manual check (maintainer)
+
+1. `Ctrl+B :` `split-window -h; select-pane -L` Enter: two panes, the left active. `Ctrl+B :`
+   `list-panes` Enter: the table; Esc.
+2. Print some lines; `Ctrl+B [`, move up with `k`, `0`, `Space`, `$`, `Enter`: copied (also in the
+   clipboard). `Ctrl+B ]`: typed at the prompt. `subak buffer ls` lists it.
+
+### 16.6 Tests
+
+| Test | What it checks |
+| --- | --- |
+| `crates/subak/src/tmuxcmd.rs` unit tests | words, quotes, escapes, `;`, comments, flags and aliases, stable errors, refused relative targets, plans and consent, `send-keys` key names |
+| `crates/subak/tests/tmux_commands.rs` | the real Host: chains, `break-pane`/`join-pane` keeping the process, `send-keys`, the pane context (`SUBAK_PANE_ID`), dry runs, errors, `--yes`; buffers: order, redacted previews, paste as input, the limit |
+| `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` | the off-screen window: the prompt, an answer view, an unknown command, copy mode swallowing keys, a copied line, `Ctrl+B ]` |
+| `e2e/tests/step24_tmux_commands.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |
