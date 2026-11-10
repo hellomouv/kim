@@ -36,7 +36,8 @@
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
         "right_click": { "description": "copy-paste (default): copy a selection, else paste; menu: the pane menu; paste; none.", "enum": ["copy-paste", "menu", "paste", "none"] },
         "middle_click": { "enum": ["none", "paste"] },
-        "word_separators": { "description": "Characters that end a word for double-click selection and mark mode.", "type": "string", "maxLength": 128 }
+        "word_separators": { "description": "Characters that end a word for double-click selection and mark mode.", "type": "string", "maxLength": 128 },
+        "repeat_time_ms": { "description": "Step 23, tmux repeat-time: milliseconds after a repeatable prefix key (Ctrl+B Ctrl+Arrow) during which it works again without the prefix; 0 turns that off (default 500).", "type": "integer", "minimum": 0, "maximum": 2000 }
       },
       "additionalProperties": true
     },

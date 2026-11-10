@@ -486,7 +486,7 @@ moved the border by 10 cell(s) in window w-db5581297310 (81x24); every process k
 
 | Key or event | Effect |
 | --- | --- |
-| `Ctrl+B d` | Detach. `Ctrl+B Ctrl+B` sends one `Ctrl+B` to the program; `Ctrl+B` followed by anything else sends both keys. |
+| `Ctrl+B d` | Detach. `Ctrl+B Ctrl+B` sends one `Ctrl+B` to the program; `Ctrl+B` followed by anything else sends both keys. Since Step 23 both keys follow `hotkeys.json`: the `prefix` leader (a `Ctrl+<letter>`) and `client.detach`'s `@prefix char:<c>`; the banner names the keys in use. |
 | `Ctrl+C` | A key for the program (`0x03`; ConPTY raises `CTRL_C_EVENT` in the pane): it interrupts what runs there. It never ends the client. |
 | `Ctrl+Break` | Detaches this client cleanly. It is not sent to the program (ConPTY has no input encoding for it; ADR 0025 §5). |
 | Closing the window, killing the client | A detach as far as the Host is concerned: the Terminal keeps running. |

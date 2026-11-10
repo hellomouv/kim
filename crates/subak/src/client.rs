@@ -856,6 +856,14 @@ pub fn attach(a: &Args, endpoint: &str, target: Option<&str>) -> Result<Value, C
         .as_u64()
         .and_then(|v| u32::try_from(v).ok())
         .ok_or_else(|| CliError::new(Code::ProtocolError, "pane.attach returned no stream id"))?;
+    let (dk, dd, why) =
+        crate::hotkeys::console_detach_keys(crate::hotkeys::config_dir().as_deref());
+    let detach_keys = DetachKeys::new(dk, dd).describe();
+    if let Some(why) = why
+        && !a.quiet
+    {
+        eprintln!("subak: {why}");
+    }
     if !a.quiet {
         let shown = name.as_str().unwrap_or("?");
         let input = if a.read_only {
@@ -866,7 +874,7 @@ pub fn attach(a: &Args, endpoint: &str, target: Option<&str>) -> Result<Value, C
             "; input is not a console: its bytes are sent as they are, and its end detaches"
         };
         eprintln!(
-            "[subak: attached to `{shown}` ({}) in Host pid {host_pid}, pid {}; Ctrl+B d detaches{input}]",
+            "[subak: attached to `{shown}` ({}) in Host pid {host_pid}, pid {}; {detach_keys} detaches{input}]",
             text(&res["terminal_id"]),
             res["pane"]["pid"]
         );
@@ -1003,7 +1011,10 @@ fn input(
     size: Option<(u16, u16)>,
     verbose: bool,
 ) {
-    let mut keys = DetachKeys::default();
+    let (key, detach, _) =
+        crate::hotkeys::console_detach_keys(crate::hotkeys::config_dir().as_deref());
+    let mut keys = DetachKeys::new(key, detach);
+    let what = keys.describe();
     let mut forward = |bytes: &[u8]| -> Option<bool> {
         let (fwd, detach) = keys.feed(bytes);
         if !fwd.is_empty() && interactive {
@@ -1030,7 +1041,7 @@ fn input(
                         Some(false) => {}
                         Some(true) => {
                             if verbose {
-                                eprint!("subak: Ctrl+B d: detaching\r\n");
+                                eprint!("subak: {what}: detaching\r\n");
                             }
                             d.detach();
                             return;

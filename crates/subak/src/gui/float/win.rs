@@ -2004,7 +2004,7 @@ impl Float {
                 self.run(a);
                 true
             }
-            Outcome::Ignored => false,
+            Outcome::Ignored | Outcome::PassThrough => false,
             Outcome::Pending | Outcome::Cancelled | Outcome::Swallowed | Outcome::Hold(_) => true,
         }
     }

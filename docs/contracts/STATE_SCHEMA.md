@@ -75,6 +75,7 @@ smart_ctrl_c = false
 right_click = "copy-paste"    # copy-paste | menu | paste | none
 middle_click = "none"         # none | paste
 word_separators = "…"         # ≤ 128 characters; default: Windows Terminal's set
+repeat_time_ms = 500          # 0–2000; tmux repeat-time for Ctrl+B Ctrl+Arrow (Step 23); 0: off
 
 [[profiles]]                  # ≤ 64; names unique ignoring case
 name = "PowerShell"           # 1–64 characters, required

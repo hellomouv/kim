@@ -75,11 +75,36 @@ pub enum Action {
     PaneResizeDown,
     PaneZoom,
     PaneClose,
+    /// Step 23: the prefix table's window, help, detach and literal-prefix actions.
+    HelpShow,
+    SendPrefix,
+    WindowNew,
+    WindowNext,
+    WindowPrevious,
+    /// `window.select-0` … `window.select-9`.
+    WindowSelect(u8),
+    WindowRename,
+    WindowKill,
+    ClientDetach,
+    /// Step 23: more of tmux's prefix table, on Step 22's layout methods.
+    PaneNext,
+    PaneSwapPrevious,
+    PaneSwapNext,
+    WindowRotate,
+    WindowRotateBack,
+    LayoutEvenHorizontal,
+    LayoutEvenVertical,
+    LayoutTiled,
+    PaneResizeUp5,
+    PaneResizeDown5,
+    PaneResizeLeft5,
+    PaneResizeRight5,
+    Refresh,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 44] = [
+    pub const ALL: [(Action, &'static str); 75] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -87,6 +112,23 @@ impl Action {
         (Action::HideTab, "tab.hide"),
         (Action::MoveTabLeft, "tab.move-left"),
         (Action::MoveTabRight, "tab.move-right"),
+        (Action::HelpShow, "help.show"),
+        (Action::SendPrefix, "input.send-prefix"),
+        (Action::WindowNew, "window.new"),
+        (Action::WindowNext, "window.next"),
+        (Action::WindowPrevious, "window.previous"),
+        (Action::WindowSelect(0), "window.select-0"),
+        (Action::WindowSelect(1), "window.select-1"),
+        (Action::WindowSelect(2), "window.select-2"),
+        (Action::WindowSelect(3), "window.select-3"),
+        (Action::WindowSelect(4), "window.select-4"),
+        (Action::WindowSelect(5), "window.select-5"),
+        (Action::WindowSelect(6), "window.select-6"),
+        (Action::WindowSelect(7), "window.select-7"),
+        (Action::WindowSelect(8), "window.select-8"),
+        (Action::WindowSelect(9), "window.select-9"),
+        (Action::WindowRename, "window.rename"),
+        (Action::WindowKill, "window.kill"),
         (Action::PaneSplitRight, "pane.split-right"),
         (Action::PaneSplitDown, "pane.split-down"),
         (Action::PaneFocusUp, "pane.focus-up"),
@@ -99,6 +141,20 @@ impl Action {
         (Action::PaneResizeRight, "pane.resize-right"),
         (Action::PaneZoom, "pane.zoom"),
         (Action::PaneClose, "pane.kill"),
+        (Action::PaneNext, "pane.next"),
+        (Action::PaneSwapPrevious, "pane.swap-previous"),
+        (Action::PaneSwapNext, "pane.swap-next"),
+        (Action::WindowRotate, "window.rotate"),
+        (Action::WindowRotateBack, "window.rotate-back"),
+        (Action::LayoutEvenHorizontal, "layout.even-horizontal"),
+        (Action::LayoutEvenVertical, "layout.even-vertical"),
+        (Action::LayoutTiled, "layout.tiled"),
+        (Action::PaneResizeUp5, "pane.resize-up-5"),
+        (Action::PaneResizeDown5, "pane.resize-down-5"),
+        (Action::PaneResizeLeft5, "pane.resize-left-5"),
+        (Action::PaneResizeRight5, "pane.resize-right-5"),
+        (Action::Refresh, "view.refresh"),
+        (Action::ClientDetach, "client.detach"),
         (Action::RenameTerminal, "terminal.rename"),
         (Action::Copy, "clipboard.copy"),
         (Action::Paste, "clipboard.paste"),
@@ -170,7 +226,14 @@ pub enum Outcome {
     Hold(u64),
     /// Run this action.
     Fire(Action),
+    /// Step 23: after the prefix, the keys of a single-chord `app` binding (`Ctrl+B Ctrl+T`):
+    /// they go to the program, not to the shortcut they are bound to (HOTKEY_CONTRACT §13.1).
+    PassThrough,
 }
+
+/// tmux `repeat-time`: how long after a repeatable prefix binding (`pane.resize-*`) its key
+/// works again without the prefix (Step 23, settings `terminal.repeat_time_ms`).
+pub const REPEAT_MS: u64 = 500;
 
 /// One active binding.
 #[derive(Debug, Clone)]
@@ -225,6 +288,14 @@ pub struct Matcher {
     off: Option<&'static str>,
     /// Why `hotkeys.json` is not used (safe mode), or why a reload was ignored.
     pub problem: Option<String>,
+    /// Step 23: the `profiles` overlay of `hotkeys.json` in use, if any.
+    profile: Option<String>,
+    /// Step 23: the prefix leader's chord now (`None`: disabled).
+    leader: Option<Chord>,
+    /// Step 23: `repeat-time` in milliseconds (0: no repeat without the prefix).
+    repeat_ms: u64,
+    /// Step 23: until when the repeatable prefix bindings fire without the prefix.
+    repeating: Option<std::time::Instant>,
 }
 
 /// The contract's name of a virtual key (§5.2), if it has one.
@@ -390,6 +461,10 @@ impl Matcher {
             pending: None,
             armed: None,
             off,
+            profile: None,
+            leader: None,
+            repeat_ms: REPEAT_MS,
+            repeating: None,
         };
         m.rebuild();
         m
@@ -402,17 +477,49 @@ impl Matcher {
     }
 
     fn state(&self) -> ToolState {
-        sh::state(sh::manifest(), &self.loaded)
+        let mut s = sh::state(sh::manifest(), &self.loaded);
+        s.profile.clone_from(&self.profile);
+        s
+    }
+
+    /// Step 23: uses the `profiles` overlay `name` of `hotkeys.json` (`None`: none).
+    pub fn set_profile(&mut self, name: Option<String>) {
+        if self.profile != name {
+            self.profile = name;
+            self.rebuild();
+        }
+    }
+
+    /// Step 23: tmux `repeat-time` (0 turns repeating without the prefix off).
+    pub fn set_repeat_time(&mut self, ms: u64) {
+        self.repeat_ms = ms;
+        self.repeating = None;
+    }
+
+    /// Step 23: the prefix leader's chord now, if it is enabled.
+    pub fn leader(&self) -> Option<&Chord> {
+        self.leader.as_ref()
+    }
+
+    /// Whether `step` is the prefix leader's chord.
+    fn is_leader(&self, step: &Step) -> bool {
+        matches!((step, &self.leader), (Step::Chord(c), Some(l)) if c == l)
     }
 
     fn rebuild(&mut self) {
         self.pending = None;
         self.armed = None;
+        self.repeating = None;
         self.active.clear();
+        self.leader = None;
         if self.off.is_some() {
             return;
         }
         let state = self.state();
+        // Step 23: `@prefix` steps stand for the leader's current chord (§3.3).
+        self.leader = state
+            .leader_chord("prefix")
+            .and_then(|(k, _)| Chord::parse(&k).ok());
         for b in analyze(std::slice::from_ref(&state), &[]).active {
             let Some(action) = Action::from_id(&b.action) else {
                 continue; // not implemented by this build (never shipped)
@@ -431,10 +538,25 @@ impl Matcher {
                     })
                 })
                 .unwrap_or(500);
+            let steps: Option<Vec<Step>> = b
+                .seq
+                .steps()
+                .iter()
+                .map(|s| match s {
+                    Step::Leader(l) => state
+                        .leader_chord(l)
+                        .and_then(|(k, _)| Chord::parse(&k).ok())
+                        .map(Step::Chord),
+                    other => Some(other.clone()),
+                })
+                .collect();
+            let Some(steps) = steps else {
+                continue; // a disabled leader: its table is off
+            };
             self.active.push(Active {
                 action,
                 keys: b.keys.clone(),
-                steps: b.seq.steps().to_vec(),
+                steps,
                 scope: b.scope.clone(),
                 trigger: b.trigger,
                 hold_ms,
@@ -504,6 +626,7 @@ impl Matcher {
     pub fn cancel(&mut self) {
         self.pending = None;
         self.armed = None;
+        self.repeating = None;
     }
 
     /// One key press (not a lone modifier).
@@ -518,6 +641,23 @@ impl Matcher {
             // Another key in between: a `release` binding does not fire; a `hold` stops.
             let _ = i;
             self.armed = None;
+        }
+        // Step 23, tmux `repeat-time`: right after a repeatable prefix binding fired, its key (or
+        // another repeatable one's) works again without the prefix; any other key ends that.
+        if let Some(until) = self.repeating.take()
+            && self.pending.is_none()
+            && std::time::Instant::now() < until
+            && let Some(i) = (0..self.active.len()).find(|i| {
+                let a = &self.active[*i];
+                a.repeat
+                    && a.steps.len() == 2
+                    && self.is_leader(&a.steps[0])
+                    && hits(p, &a.steps[1])
+            })
+        {
+            self.repeating =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(self.repeat_ms));
+            return Outcome::Fire(self.active[i].action);
         }
         let (step, pool) = match self.pending.take() {
             Some((step, pool)) => {
@@ -543,6 +683,17 @@ impl Matcher {
             matched
         };
         if matched.is_empty() {
+            // Step 23, the pass-through rule: after the prefix alone, the keys of a single-chord
+            // `app` binding are sent to the program (`Ctrl+B Ctrl+W` types Ctrl+W).
+            if step == 1
+                && self.leader.is_some()
+                && self
+                    .active
+                    .iter()
+                    .any(|a| a.steps.len() == 1 && a.scope == Scope::App && hits(p, &a.steps[0]))
+            {
+                return Outcome::PassThrough;
+            }
             return if step > 0 {
                 Outcome::Cancelled
             } else {
@@ -557,6 +708,12 @@ impl Matcher {
             if p.repeat && !a.repeat {
                 return Outcome::Swallowed;
             }
+            if a.repeat && a.steps.len() == 2 && self.is_leader(&a.steps[0]) && self.repeat_ms > 0 {
+                self.repeating = Some(
+                    std::time::Instant::now() + std::time::Duration::from_millis(self.repeat_ms),
+                );
+            }
+            let a = &self.active[i];
             return match a.trigger {
                 Trigger::Press => Outcome::Fire(a.action),
                 Trigger::Release => {
@@ -668,6 +825,13 @@ pub mod vk {
 
 /// The pane key of a key that produces no character (cursor and editing keys, F1–F12). Keys that
 /// type something arrive as characters ([`char_key`]).
+/// Step 23: the terminal key of a contract key name (`Tab`, `F5`, `Up`…), if it has one.
+pub fn special_by_name(name: &str) -> Option<Key> {
+    (0u32..=0xFF)
+        .find(|vk| named_key(*vk, false) == Some(name))
+        .and_then(special_key)
+}
+
 pub fn special_key(code: u32) -> Option<Key> {
     Some(match code {
         vk::UP => Key::Up,
@@ -819,19 +983,17 @@ mod tests {
             fire(&mut s, vk::PRIOR, CS),
             Outcome::Fire(Action::ScrollPageUp)
         );
-        // Keys for the program: Ctrl+C (interrupt), Ctrl+V, Tab, Shift+Tab, Ctrl+B (until the
-        // Step 23 prefix), Ctrl+Shift+T, Alt+W, plain letters.
+        // Keys for the program: Ctrl+C (interrupt), Ctrl+V, Tab, Shift+Tab, Ctrl+Shift+T, Alt+W,
+        // plain letters. (Ctrl+B is the prefix and F1 the help since Step 23.)
         for (code, m) in [
             (u32::from(b'C'), Mods::CTRL),
             (u32::from(b'V'), Mods::CTRL),
             (vk::TAB, Mods::NONE),
             (vk::TAB, Mods::SHIFT),
-            (u32::from(b'B'), Mods::CTRL),
             (u32::from(b'T'), CS),
             (u32::from(b'W'), Mods::ALT),
             (u32::from(b'W'), Mods::NONE),
             (vk::PRIOR, Mods::SHIFT),
-            (vk::F1, Mods::NONE),
         ] {
             assert_eq!(fire(&mut s, code, m), Outcome::Ignored, "{code:#x} {m:?}");
         }
@@ -840,6 +1002,221 @@ mod tests {
         p.repeat = true;
         assert_eq!(s.press(&p), Outcome::Swallowed);
         assert!(!s.is_pending());
+    }
+
+    /// A key that produces `ch` on the current layout (a `char:` step needs it).
+    fn typed(vk: u32, m: Mods, ch: char) -> Press {
+        Press {
+            ch: Some(ch),
+            ..press(vk, m)
+        }
+    }
+
+    /// Step 23 (SUBAK-FR-033, HOTKEY_CONTRACT §13.1): the `Ctrl+B` table drives windows and
+    /// panes; `Ctrl+B Ctrl+B` sends the prefix; the keys of a tab shortcut after the prefix go to
+    /// the program; an unbound key after the prefix is swallowed with a hint; Esc cancels.
+    #[test]
+    fn the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through() {
+        let mut s = Matcher::defaults();
+        let ctrl_b = press(u32::from(b'B'), Mods::CTRL);
+        let shift = Mods {
+            shift: true,
+            ..Mods::NONE
+        };
+        let seq = |s: &mut Matcher, second: Press| {
+            assert_eq!(s.press(&ctrl_b), Outcome::Pending);
+            assert_eq!(s.pending_keys().as_deref(), Some("Ctrl+B"));
+            s.press(&second)
+        };
+        for (second, want) in [
+            (typed(u32::from(b'C'), Mods::NONE, 'c'), Action::WindowNew),
+            (typed(u32::from(b'N'), Mods::NONE, 'n'), Action::WindowNext),
+            (
+                typed(u32::from(b'P'), Mods::NONE, 'p'),
+                Action::WindowPrevious,
+            ),
+            (typed(0xBC, Mods::NONE, ','), Action::WindowRename),
+            (typed(0x37, shift, '&'), Action::WindowKill),
+            (typed(0x35, shift, '%'), Action::PaneSplitRight),
+            (typed(0xDE, shift, '"'), Action::PaneSplitDown),
+            (press(vk::UP, Mods::NONE), Action::PaneFocusUp),
+            (press(vk::LEFT, Mods::NONE), Action::PaneFocusLeft),
+            (typed(u32::from(b'Z'), Mods::NONE, 'z'), Action::PaneZoom),
+            (typed(u32::from(b'X'), Mods::NONE, 'x'), Action::PaneClose),
+            (
+                typed(u32::from(b'D'), Mods::NONE, 'd'),
+                Action::ClientDetach,
+            ),
+            (typed(0xBF, shift, '?'), Action::HelpShow),
+            (press(u32::from(b'B'), Mods::CTRL), Action::SendPrefix),
+            (press(u32::from(b'0'), Mods::NONE), Action::WindowSelect(0)),
+            (press(u32::from(b'7'), Mods::NONE), Action::WindowSelect(7)),
+            (typed(u32::from(b'O'), Mods::NONE, 'o'), Action::PaneNext),
+            (typed(0xDB, shift, '{'), Action::PaneSwapPrevious),
+            (typed(0xDD, shift, '}'), Action::PaneSwapNext),
+            (press(u32::from(b'O'), Mods::CTRL), Action::WindowRotate),
+            (press(u32::from(b'O'), Mods::ALT), Action::WindowRotateBack),
+            (
+                press(u32::from(b'1'), Mods::ALT),
+                Action::LayoutEvenHorizontal,
+            ),
+            (
+                press(u32::from(b'2'), Mods::ALT),
+                Action::LayoutEvenVertical,
+            ),
+            (press(u32::from(b'5'), Mods::ALT), Action::LayoutTiled),
+            (press(vk::UP, Mods::ALT), Action::PaneResizeUp5),
+            (press(vk::RIGHT, Mods::CTRL), Action::PaneResizeRight),
+            (typed(u32::from(b'R'), Mods::NONE, 'r'), Action::Refresh),
+        ] {
+            assert_eq!(seq(&mut s, second), Outcome::Fire(want), "{want:?}");
+            assert!(!s.is_pending());
+        }
+        // `char:` steps follow the layout: `%` on whatever key produces it (e.g. AZERTY).
+        assert_eq!(
+            seq(&mut s, typed(0xC0, Mods::NONE, '%')),
+            Outcome::Fire(Action::PaneSplitRight)
+        );
+        // The pass-through rule: a tab shortcut's keys after the prefix reach the program.
+        for second in [
+            press(u32::from(b'T'), Mods::CTRL),
+            press(u32::from(b'W'), Mods::CTRL),
+            press(vk::TAB, Mods::CTRL),
+        ] {
+            assert_eq!(seq(&mut s, second), Outcome::PassThrough);
+            assert!(!s.is_pending());
+        }
+        // An unbound key after the prefix is swallowed (a hint is shown); the next key is the
+        // program's again. Esc cancels quietly.
+        assert_eq!(
+            seq(&mut s, typed(u32::from(b'J'), Mods::NONE, 'j')),
+            Outcome::Cancelled
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'J'), Mods::NONE, 'j')),
+            Outcome::Ignored
+        );
+        assert_eq!(
+            seq(&mut s, press(vk::ESCAPE, Mods::NONE)),
+            Outcome::Swallowed
+        );
+        assert!(!s.is_pending());
+        // Ctrl+C after the prefix is not a binding: swallowed, never an interrupt by surprise;
+        // Ctrl+C alone always reaches the program.
+        assert_eq!(
+            seq(&mut s, press(u32::from(b'C'), Mods::CTRL)),
+            Outcome::Cancelled
+        );
+        assert_eq!(
+            s.press(&press(u32::from(b'C'), Mods::CTRL)),
+            Outcome::Ignored
+        );
+        // The direct keys of Step 22 still work without the prefix.
+        assert_eq!(
+            s.press(&press(vk::LEFT, Mods::ALT)),
+            Outcome::Fire(Action::PaneFocusLeft)
+        );
+        assert_eq!(
+            s.press(&press(vk::F1, Mods::NONE)),
+            Outcome::Fire(Action::HelpShow)
+        );
+    }
+
+    /// tmux `repeat-time`: after `Ctrl+B Ctrl+Up`, `Ctrl+Up` alone resizes again for a while;
+    /// any other key ends it; `repeat_time_ms = 0` turns it off.
+    #[test]
+    fn repeatable_prefix_keys_work_again_without_the_prefix_for_the_repeat_time() {
+        let mut s = Matcher::defaults();
+        let ctrl_b = press(u32::from(b'B'), Mods::CTRL);
+        let ctrl_up = press(vk::UP, Mods::CTRL);
+        assert_eq!(s.press(&ctrl_b), Outcome::Pending);
+        assert_eq!(s.press(&ctrl_up), Outcome::Fire(Action::PaneResizeUp));
+        assert_eq!(s.press(&ctrl_up), Outcome::Fire(Action::PaneResizeUp));
+        assert_eq!(
+            s.press(&press(vk::DOWN, Mods::CTRL)),
+            Outcome::Fire(Action::PaneResizeDown),
+            "another repeatable key of the table"
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'A'), Mods::NONE, 'a')),
+            Outcome::Ignored
+        );
+        assert_eq!(s.press(&ctrl_up), Outcome::Ignored, "the repeat ended");
+        s.set_repeat_time(0);
+        assert_eq!(s.press(&ctrl_b), Outcome::Pending);
+        assert_eq!(s.press(&ctrl_up), Outcome::Fire(Action::PaneResizeUp));
+        assert_eq!(s.press(&ctrl_up), Outcome::Ignored);
+        // A non-repeatable key never repeats.
+        s.set_repeat_time(500);
+        assert_eq!(s.press(&ctrl_b), Outcome::Pending);
+        assert_eq!(
+            s.press(&typed(u32::from(b'Z'), Mods::NONE, 'z')),
+            Outcome::Fire(Action::PaneZoom)
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'Z'), Mods::NONE, 'z')),
+            Outcome::Ignored
+        );
+    }
+
+    /// A rebound leader moves the whole table (and `Ctrl+B` goes back to the program; a leader
+    /// is changed, never disabled, §8); a `profiles` overlay applies only when chosen.
+    #[test]
+    fn the_leader_follows_hotkeys_json_and_profiles_overlay_it() {
+        let dir = sandbox(
+            "leader",
+            serde_json::json!({
+                "schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+                "leaders": {"prefix": "Ctrl+A"},
+                "overrides": [{"action": "window.new", "bindings": ["@prefix char:w"]}],
+                "profiles": {"vim": {"overrides": [{"action": "pane.zoom", "disabled": true}]}}
+            }),
+        );
+        let mut s = Matcher::load(Some(&dir), None);
+        assert_eq!(
+            s.leader().map(ToString::to_string).as_deref(),
+            Some("Ctrl+A")
+        );
+        assert_eq!(
+            s.press(&press(u32::from(b'B'), Mods::CTRL)),
+            Outcome::Ignored
+        );
+        assert_eq!(
+            s.press(&press(u32::from(b'A'), Mods::CTRL)),
+            Outcome::Pending
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'W'), Mods::NONE, 'w')),
+            Outcome::Fire(Action::WindowNew)
+        );
+        assert_eq!(
+            s.press(&press(u32::from(b'A'), Mods::CTRL)),
+            Outcome::Pending
+        );
+        assert_eq!(
+            s.press(&press(u32::from(b'A'), Mods::CTRL)),
+            Outcome::Fire(Action::SendPrefix),
+            "input.send-prefix follows the leader"
+        );
+        // The `vim` profile disables pane.zoom (also Ctrl+Shift+Z); without it, both work.
+        assert_eq!(
+            s.press(&press(u32::from(b'A'), Mods::CTRL)),
+            Outcome::Pending
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'Z'), Mods::NONE, 'z')),
+            Outcome::Fire(Action::PaneZoom)
+        );
+        s.set_profile(Some("vim".into()));
+        assert_eq!(s.press(&press(u32::from(b'Z'), CS)), Outcome::Ignored);
+        assert_eq!(
+            s.press(&press(u32::from(b'A'), Mods::CTRL)),
+            Outcome::Pending
+        );
+        assert_eq!(
+            s.press(&typed(u32::from(b'Z'), Mods::NONE, 'z')),
+            Outcome::Cancelled
+        );
     }
 
     #[test]

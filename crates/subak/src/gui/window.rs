@@ -349,6 +349,9 @@ struct TabBar {
 #[derive(Debug, Clone)]
 struct RenameUi {
     id: String,
+    /// Step 23: renaming the shown Terminal's internal window `w-…` (`Ctrl+B ,`), not the
+    /// Terminal.
+    window: Option<String>,
     text: String,
     /// The caret, in characters.
     cursor: usize,
@@ -475,6 +478,9 @@ struct App {
     /// Step 22: a border being dragged: the pane before it, whether the border is vertical
     /// (between columns), and the grid cell along the drag the last request was made at.
     border_drag: Option<(String, bool, i32)>,
+    /// Step 23: the keyboard help (`F1`, `Ctrl+B ?`) is shown instead of the pane, from this
+    /// line on.
+    help: Option<usize>,
 }
 
 /// A visible pane other than the active one (Step 22): drawn, never typed into.
@@ -759,6 +765,13 @@ impl App {
 
     /// Renders what changed and invalidates those rows.
     fn redraw(&mut self) {
+        if self.help.is_some() {
+            if !self.renderer.render(&self.state_view).is_empty() {
+                self.frames += 1;
+                self.invalidate_all();
+            }
+            return;
+        }
         if self.model.layout().is_some() {
             self.redraw_split();
             return;
@@ -881,8 +894,176 @@ impl App {
     fn pane_frame(&self) -> &Frame {
         self.split_frame
             .as_ref()
-            .filter(|_| self.model.layout().is_some())
+            .filter(|_| self.model.layout().is_some() && self.help.is_none())
             .unwrap_or_else(|| self.renderer.frame())
+    }
+
+    /// Step 23: the keyboard help (`help.show`): every shortcut as bound now, with its title,
+    /// grouped as the manifest lists them, drawn in the pane's place. Up/Down/PageUp/PageDown
+    /// scroll it; Esc, Enter, `q` or `F1` close it. It reads the bindings, so rebinds show.
+    fn show_help(&mut self, from: usize) {
+        let (cols, rows) = self.grid;
+        let m = crate::hotkeys::manifest();
+        let mut lines: Vec<String> = Vec::new();
+        let prefix = self
+            .matcher
+            .leader()
+            .map_or_else(|| "(off)".to_string(), ToString::to_string);
+        lines.push(format!(
+            "Subak keys — prefix {prefix}; after it, an unbound key is ignored and the keys of a tab"
+        ));
+        lines.push(
+            "shortcut go to the program (Ctrl+B Ctrl+W types Ctrl+W). Rebind with `subak hotkeys`."
+                .into(),
+        );
+        lines.push(String::new());
+        let mut seen: Vec<&str> = Vec::new();
+        for (id, keys, _) in self.matcher.bindings() {
+            let title = m.action(id).map_or(id, |a| a.title.as_str());
+            // As typed: `@prefix char:%` is `Ctrl+B %`.
+            let keys = keys
+                .split(' ')
+                .map(|k| {
+                    if k == "@prefix" {
+                        prefix.clone()
+                    } else {
+                        k.strip_prefix("char:").unwrap_or(k).to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !seen.contains(&id) {
+                seen.push(id);
+            }
+            lines.push(format!("  {keys:<24} {title}"));
+        }
+        for a in &m.actions {
+            if !seen.contains(&a.id.as_str()) && Action::from_id(&a.id).is_some() {
+                lines.push(format!("  {:<24} {}", "(not bound)", a.title));
+            }
+        }
+        lines.push(String::new());
+        lines.push("Esc closes · Up/Down/PageUp/PageDown scroll".into());
+        let max = lines.len().saturating_sub(usize::from(rows));
+        let from = from.min(max);
+        self.help = Some(from);
+        let mut v = TermView::new(cols, rows, 0);
+        let mut vt = Vec::new();
+        for (i, l) in lines.iter().skip(from).take(usize::from(rows)).enumerate() {
+            let text: String = l.chars().take(usize::from(cols)).collect();
+            if i > 0 {
+                vt.extend_from_slice(b"\r\n");
+            }
+            if i == 0 && from == 0 {
+                vt.extend_from_slice(b"\x1b[1m");
+                vt.extend_from_slice(text.as_bytes());
+                vt.extend_from_slice(b"\x1b[0m");
+            } else {
+                vt.extend_from_slice(text.as_bytes());
+            }
+        }
+        v.feed(&self.themed_vt(&vt));
+        self.state_view = v;
+        self.event(&json!({"event": "help", "open": true, "from": from, "lines": lines.len()}));
+        self.renderer.render(&self.state_view);
+        self.invalidate_all();
+    }
+
+    fn close_help(&mut self) {
+        if self.help.take().is_some() {
+            self.event(&json!({"event": "help", "open": false}));
+            self.rebuild_state();
+            self.split_frame = None;
+            self.renderer.render(&self.pane);
+            self.redraw();
+            self.invalidate_all();
+        }
+    }
+
+    /// Step 23: `input.send-prefix` (`Ctrl+B Ctrl+B`): the prefix's own keys to the program.
+    fn send_prefix(&mut self) {
+        use kim_hotkeys::keys::Key as HKey;
+        let Some(chord) = self.matcher.leader().cloned() else {
+            return;
+        };
+        let ctrl = chord.mods.ctrl.on();
+        let bytes = match chord.key {
+            HKey::Named(n) if ctrl && n.len() == 1 && n.as_bytes()[0].is_ascii_uppercase() => {
+                vec![n.as_bytes()[0] & 0x1F]
+            }
+            HKey::Named("Space") if ctrl => vec![0],
+            HKey::Named(n) => match keys::special_by_name(n) {
+                Some(k) => self.pane.key(
+                    k,
+                    Mods {
+                        ctrl,
+                        alt: chord.mods.alt.on(),
+                        shift: chord.mods.shift.on(),
+                    },
+                ),
+                None => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        if bytes.is_empty() {
+            self.notice = Some(format!(
+                "The prefix {chord} has no input of its own to send"
+            ));
+            self.rebuild_banner();
+            return;
+        }
+        self.input(&bytes);
+    }
+
+    /// Step 23: the prefix table's window keys, for the shown Terminal's internal windows.
+    fn window_action(&mut self, a: Action) {
+        let Some(t) = self.model.terminal().cloned() else {
+            return;
+        };
+        let pos = t
+            .windows
+            .iter()
+            .position(|w| Some(&w.0) == t.active_window.as_ref());
+        let n = t.windows.len().max(1);
+        let (method, params) = match a {
+            Action::WindowNew => ("window.create", json!({"target": t.id})),
+            Action::WindowNext | Action::WindowPrevious => {
+                let Some(i) = pos else { return };
+                let j = if a == Action::WindowNext {
+                    (i + 1) % n
+                } else {
+                    (i + n - 1) % n
+                };
+                ("window.select", json!({"target": t.windows[j].0}))
+            }
+            Action::WindowSelect(k) => {
+                ("window.select", json!({"target": format!("{}:{k}", t.id)}))
+            }
+            Action::WindowKill => {
+                let Some(wid) = t.active_window.clone() else {
+                    return;
+                };
+                ("window.kill", json!({"target": wid}))
+            }
+            Action::WindowRename => {
+                let Some(i) = pos else { return };
+                let (wid, _, name) = t.windows[i].clone();
+                self.matcher.cancel();
+                self.rename = Some(RenameUi {
+                    id: t.id,
+                    window: Some(wid),
+                    cursor: name.chars().count(),
+                    text: name,
+                });
+                self.event(&json!({"event": "rename", "editing": true, "window": true}));
+                self.rebuild_bar();
+                self.place_ime();
+                return;
+            }
+            _ => return,
+        };
+        let fx = self.model.pane_op(method, params);
+        self.apply(fx);
     }
 
     /// The size the active pane's view has: its place in a split window, else the grid.
@@ -1673,6 +1854,8 @@ impl App {
     /// Applies new settings: only what changed is redone.
     fn apply_settings(&mut self, new: Settings) {
         let old = std::mem::replace(&mut self.settings, new);
+        self.matcher
+            .set_repeat_time(u64::from(self.settings.terminal.repeat_time_ms));
         let (a, b) = (&old.appearance, &self.settings.appearance);
         self.motion.enabled = b.motion.animates(self.system_animations);
         if !self.motion.enabled {
@@ -2396,6 +2579,19 @@ impl App {
         if !self.composition.is_empty() || code == vk::PROCESSKEY {
             return false;
         }
+        // Step 23: the keyboard help takes the keys while it is shown.
+        if let Some(from) = self.help {
+            match code {
+                vk::ESCAPE | vk::RETURN | vk::F1 => self.close_help(),
+                _ if code == u32::from(b'Q') && m == Mods::NONE => self.close_help(),
+                vk::DOWN => self.show_help(from + 1),
+                vk::UP => self.show_help(from.saturating_sub(1)),
+                vk::NEXT => self.show_help(from + usize::from(self.grid.1)),
+                vk::PRIOR => self.show_help(from.saturating_sub(usize::from(self.grid.1))),
+                _ => {}
+            }
+            return true;
+        }
         if matches!(
             code,
             vk::SHIFT
@@ -2441,8 +2637,13 @@ impl App {
         {
             return handled;
         }
-        // 2. (The Ctrl+B prefix table is Step 23's.) 3. The shortcuts (hotkey contract).
+        // 2.–3. The shortcuts (hotkey contract), the `Ctrl+B` prefix table among them (Step 23).
         match self.matcher.press(p) {
+            // `Ctrl+B Ctrl+T`: the shadowed keys go to the program, as if unbound.
+            Outcome::PassThrough => {
+                self.rebuild_banner();
+                self.event(&json!({"event": "pass_through", "vk": code}));
+            }
             Outcome::Fire(a) => {
                 self.rebuild_banner();
                 self.run(a);
@@ -2567,9 +2768,15 @@ impl App {
         if choice == Choice::End {
             let fx = match &c.info.pane {
                 // Step 22: a busy pane, ended by id with consent.
-                Some(p) => self
-                    .model
-                    .pane_op("pane.kill", json!({"target": p, "force": true})),
+                // A `w-` id is a window (`Ctrl+B &`), a `p-` id a pane.
+                Some(p) => self.model.pane_op(
+                    if p.starts_with("w-") {
+                        "window.kill"
+                    } else {
+                        "pane.kill"
+                    },
+                    json!({"target": p, "force": true}),
+                ),
                 None => self.model.confirm_close(&c.info.id),
             };
             self.apply(fx);
@@ -2589,6 +2796,7 @@ impl App {
         self.matcher.cancel();
         self.rename = Some(RenameUi {
             id: t.id,
+            window: None,
             cursor: t.name.chars().count(),
             text: t.name,
         });
@@ -2611,6 +2819,23 @@ impl App {
                 .map_or(r.text.len(), |(b, _)| b)
         };
         match code {
+            vk::RETURN if r.window.is_some() => {
+                let (wid, name) = (
+                    r.window.clone().unwrap_or_default(),
+                    r.text.trim().to_string(),
+                );
+                self.rename = None;
+                self.event(&json!({"event": "rename", "editing": false, "window": wid}));
+                if name.is_empty() {
+                    self.notice = Some("A window name needs at least one character".into());
+                    self.rebuild_banner();
+                } else {
+                    let fx = self
+                        .model
+                        .pane_op("window.rename", json!({"target": wid, "name": name}));
+                    self.apply(fx);
+                }
+            }
             vk::RETURN => {
                 let (id, name) = (r.id.clone(), r.text.trim().to_string());
                 if name.is_empty() {
@@ -2758,6 +2983,22 @@ impl App {
             Action::PaneResizeUp => ("pane.adjust", json!({"direction": "up", "cells": 1})),
             Action::PaneResizeDown => ("pane.adjust", json!({"direction": "down", "cells": 1})),
             Action::PaneZoom => ("pane.zoom", json!({})),
+            Action::PaneNext => ("pane.select", json!({"direction": "next"})),
+            Action::PaneSwapPrevious => ("pane.swap", json!({"direction": "previous"})),
+            Action::PaneSwapNext => ("pane.swap", json!({"direction": "next"})),
+            Action::WindowRotate => ("window.rotate", json!({"direction": "up"})),
+            Action::WindowRotateBack => ("window.rotate", json!({"direction": "down"})),
+            Action::LayoutEvenHorizontal => {
+                ("window.select_layout", json!({"layout": "even-horizontal"}))
+            }
+            Action::LayoutEvenVertical => {
+                ("window.select_layout", json!({"layout": "even-vertical"}))
+            }
+            Action::LayoutTiled => ("window.select_layout", json!({"layout": "tiled"})),
+            Action::PaneResizeUp5 => ("pane.adjust", json!({"direction": "up", "cells": 5})),
+            Action::PaneResizeDown5 => ("pane.adjust", json!({"direction": "down", "cells": 5})),
+            Action::PaneResizeLeft5 => ("pane.adjust", json!({"direction": "left", "cells": 5})),
+            Action::PaneResizeRight5 => ("pane.adjust", json!({"direction": "right", "cells": 5})),
             _ => ("pane.kill", json!({})),
         };
         let fx = self.model.pane_op(method, params);
@@ -2779,7 +3020,46 @@ impl App {
             | Action::PaneResizeUp
             | Action::PaneResizeDown
             | Action::PaneZoom
-            | Action::PaneClose => self.pane_action(a),
+            | Action::PaneClose
+            | Action::PaneNext
+            | Action::PaneSwapPrevious
+            | Action::PaneSwapNext
+            | Action::WindowRotate
+            | Action::WindowRotateBack
+            | Action::LayoutEvenHorizontal
+            | Action::LayoutEvenVertical
+            | Action::LayoutTiled
+            | Action::PaneResizeUp5
+            | Action::PaneResizeDown5
+            | Action::PaneResizeLeft5
+            | Action::PaneResizeRight5 => self.pane_action(a),
+            // tmux `refresh-client`: everything is drawn again.
+            Action::Refresh => {
+                self.split_frame = None;
+                self.renderer.render(&self.pane);
+                self.rebuild_bar();
+                self.redraw();
+                self.invalidate_all();
+            }
+            Action::WindowNew
+            | Action::WindowNext
+            | Action::WindowPrevious
+            | Action::WindowSelect(_)
+            | Action::WindowRename
+            | Action::WindowKill => self.window_action(a),
+            Action::HelpShow => {
+                if self.help.is_some() {
+                    self.close_help();
+                } else {
+                    self.show_help(0);
+                }
+            }
+            Action::SendPrefix => self.send_prefix(),
+            // tmux `detach-client`: the window lets go of every Terminal; nothing ends.
+            // SAFETY: posts the close message (a detach) to our own window.
+            Action::ClientDetach => unsafe {
+                PostMessageW(self.hwnd, WM_CLOSE, 0, 0);
+            },
             Action::NewTerminal => self.new_terminal(None),
             Action::CloseTerminal => {
                 let fx = self.model.close_active();
@@ -4112,7 +4392,7 @@ impl App {
     // Test commands (WM_COPYDATA; test hooks only).
 
     fn dump(&self) -> Value {
-        let surface = if self.model.phase.shows_pane() {
+        let surface = if self.model.phase.shows_pane() && self.help.is_none() {
             &self.pane
         } else {
             &self.state_view
@@ -4192,6 +4472,10 @@ impl App {
                 .collect(),
         );
         dump["split_frame"] = json!(self.split_frame.as_ref().map(|f| [f.width, f.height]));
+        // Step 23: the keyboard help and the pending prefix.
+        dump["help"] = json!(self.help);
+        dump["pending_keys"] = json!(self.matcher.pending_keys());
+        dump["prefix"] = json!(self.matcher.leader().map(ToString::to_string));
         if let (Some(d), Value::Object(more)) = (dump.as_object_mut(), self.step19_json()) {
             d.extend(more);
         }
@@ -5437,10 +5721,13 @@ pub fn run(o: Options) -> ExitCode {
     let animations = system_animations();
     let settings_notice = cfg.notice();
     let motion_on = settings.appearance.motion.animates(animations);
-    let matcher = Matcher::load(
+    let mut matcher = Matcher::load(
         prefs_dir.as_deref(),
         crate::hotkeys::off_reason(o.no_hotkeys),
     );
+    // Step 23: per-profile shortcuts and tmux `repeat-time`.
+    matcher.set_profile(o.hotkeys_profile.clone());
+    matcher.set_repeat_time(u64::from(settings.terminal.repeat_time_ms));
     let mut app = App {
         hwnd,
         opts: o,
@@ -5527,6 +5814,7 @@ pub fn run(o: Options) -> ExitCode {
         side: HashMap::new(),
         split_frame: None,
         border_drag: None,
+        help: None,
     };
     if let Some(m) = &migration {
         app.event(m);

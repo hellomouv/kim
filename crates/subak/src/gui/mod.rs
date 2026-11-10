@@ -69,7 +69,7 @@ const HELP: &str = "\
 subak-gui — the Subak window (pre-alpha, Steps 16-19)
 
 USAGE:
-    subak-gui [<terminal>] [--endpoint <name>] [--no-hotkeys]
+    subak-gui [<terminal>] [--endpoint <name>] [--no-hotkeys] [--hotkeys-profile <name>]
     subak-gui --float [--icon] [--tray] [--manager] [--endpoint <name>] [--no-hotkeys]
     subak-gui --manager [--endpoint <name>]
     subak-gui --help | --version
@@ -127,6 +127,8 @@ FLOATING ICON AND TERMINAL MANAGER (optional, off unless you start it; docs/SUBA
 OPTIONS:
     --endpoint <name>   Use this Host endpoint instead of your default one (as `subak --endpoint`).
     --no-hotkeys        Start with every shortcut off (also KIM_NO_HOTKEYS); keys go to programs.
+    --hotkeys-profile <name>   Use the `profiles` overlay <name> of hotkeys.json on top of your
+                        bindings for this run (per-profile shortcuts; HOTKEY_CONTRACT §8.2).
     -h, --help          This text.
     -V, --version       The version.
 ";
@@ -140,6 +142,8 @@ pub struct Options {
     pub target: Option<String>,
     /// `--no-hotkeys`: every shortcut off for this run (HOTKEY_CONTRACT §8.3 4).
     pub no_hotkeys: bool,
+    /// `--hotkeys-profile <name>` (Step 23): the `profiles` overlay of `hotkeys.json` to use.
+    pub hotkeys_profile: Option<String>,
     /// `--float` / `--manager`: the floating icon and Terminal manager instead of a window.
     pub float: Option<float::FloatOptions>,
     /// Test hooks (debug builds, or the `test-hooks` feature): the window is placed off every
@@ -180,6 +184,14 @@ fn parse(args: &[String]) -> Result<Parsed, String> {
                 o.endpoint = Some(ep.clone());
             }
             "--no-hotkeys" => o.no_hotkeys = true,
+            "--hotkeys-profile" => {
+                i += 1;
+                let name = args
+                    .get(i)
+                    .filter(|e| !e.is_empty() && !e.starts_with('-'))
+                    .ok_or("--hotkeys-profile needs a profile name")?;
+                o.hotkeys_profile = Some(name.clone());
+            }
             "--float" => {
                 o.float.get_or_insert_with(Default::default);
             }

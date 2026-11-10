@@ -621,28 +621,58 @@ pub fn new_object_id(prefix: char) -> String {
     format!("{prefix}-{:012x}", h & 0xFFFF_FFFF_FFFF)
 }
 
-/// tmux-style detach key: `Ctrl+B d`. `Ctrl+B Ctrl+B` sends one literal `Ctrl+B`; `Ctrl+B`
-/// followed by anything else sends both bytes unchanged.
-#[derive(Debug, Default)]
+/// tmux-style detach key: `Ctrl+B d` by default. `Ctrl+B Ctrl+B` sends one literal `Ctrl+B`;
+/// `Ctrl+B` followed by anything else sends both bytes unchanged. Since Step 23 the prefix and
+/// the detach key follow the user's `hotkeys.json` (the `prefix` leader and `client.detach`).
+#[derive(Debug)]
 pub struct DetachKeys {
     prefix: bool,
+    /// The prefix's byte (`Ctrl+B` = 0x02).
+    key: u8,
+    /// The byte after the prefix that detaches (`d`).
+    detach: u8,
 }
 
 pub const PREFIX: u8 = 0x02;
 
+impl Default for DetachKeys {
+    fn default() -> Self {
+        Self::new(PREFIX, b'd')
+    }
+}
+
 impl DetachKeys {
+    pub fn new(key: u8, detach: u8) -> Self {
+        Self {
+            prefix: false,
+            key,
+            detach,
+        }
+    }
+
+    /// The prefix and detach bytes, for messages (`Ctrl+B d`).
+    pub fn describe(&self) -> String {
+        format!(
+            "Ctrl+{} {}",
+            char::from(self.key | 0x40),
+            char::from(self.detach)
+        )
+    }
+
     /// Filters `input`; returns the bytes to forward and whether the user asked to detach.
     pub fn feed(&mut self, input: &[u8]) -> (Vec<u8>, bool) {
         let mut out = Vec::with_capacity(input.len());
         for &b in input {
             if self.prefix {
                 self.prefix = false;
-                match b {
-                    b'd' => return (out, true),
-                    PREFIX => out.push(PREFIX),
-                    other => out.extend_from_slice(&[PREFIX, other]),
+                if b == self.detach {
+                    return (out, true);
+                } else if b == self.key {
+                    out.push(self.key);
+                } else {
+                    out.extend_from_slice(&[self.key, b]);
                 }
-            } else if b == PREFIX {
+            } else if b == self.key {
                 self.prefix = true;
             } else {
                 out.push(b);
@@ -1137,6 +1167,12 @@ mod tests {
             "prefix carried across reads"
         );
         assert_eq!(k.feed(&[b'z', PREFIX, b'd', b'q']), (b"z".to_vec(), true));
+        // Step 23: another prefix (Ctrl+A) and detach key (q); Ctrl+B is plain input then.
+        let mut k = DetachKeys::new(0x01, b'q');
+        assert_eq!(k.describe(), "Ctrl+A q");
+        assert_eq!(k.feed(&[PREFIX, b'd']), (vec![PREFIX, b'd'], false));
+        assert_eq!(k.feed(&[0x01, 0x01]), (vec![0x01], false));
+        assert_eq!(k.feed(&[0x01, b'q']), (Vec::new(), true));
     }
 
     #[test]

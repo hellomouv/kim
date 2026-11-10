@@ -134,8 +134,8 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Join a pane into another window | `join-pane` (`joinp`) | Move a Pane into another Window as a split | planned | 24 | — |
 | Kill a pane | `kill-pane` (`killp`) | Close the Pane and end its process tree (SUBAK-FR-016). *Partial:* `subak pane kill <pane>` / IPC `pane.kill` ends only that pane's job, asks (or `--yes`) and acts by id, needs `force` for a busy pane; **deviation:** the last running pane of a Terminal is refused (`subak kill` ends a Terminal); `-a` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
 | Kill a window | `kill-window` (`killw`) | Close the Window and end its Panes' processes. *Partial:* `subak window kill <window>` / IPC `window.kill`, as `kill-pane`; the last running window is refused; `-a` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
-| Select the previous pane | `last-pane` (`lastp`) | Focus the previously active Pane | planned | 23 | — |
-| Select the previous window | `last-window` (`last`) | Focus the previously current Window | planned | 23 | — |
+| Select the previous pane | `last-pane` (`lastp`) | Focus the previously active Pane *Rationale for the move:* needs the previous selection kept by the Host. | planned | 25 | — |
+| Select the previous window | `last-window` (`last`) | Focus the previously current Window *Rationale for the move:* needs the previous selection kept by the Host. | planned | 25 | — |
 | Link a window into another session | `link-window` (`linkw`) | Show one Window in several Terminals | planned | 25 | — |
 | List panes | `list-panes` (`lsp`) | Host op and CLI listing with stable IDs (SUBAK-FR-010). *Partial:* `subak pane ls <terminal|window>` (also `list-panes`) / IPC `pane.list` with ids, indexes, pids and the active pane; `-a`, `-s`, `-F`, `-f` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | List windows | `list-windows` (`lsw`) | Host op and CLI listing with stable IDs. *Partial:* `subak window ls <terminal>` (also `list-windows`) / IPC `window.list`; `-a`, `-F`, `-f` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
@@ -143,11 +143,11 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Move or renumber a window | `move-window` (`movew`) | Reorder or move a Window; `-r` renumbers | planned | 25 | — |
 | Create a window | `new-window` (`neww`) | New internal Window in the current Terminal (not a GUI tab). *Partial:* `subak window new <terminal>` (also `new-window`) / IPC `window.create`: lowest free index, `-n` as `--name`, `-d` as `--no-select`, `-c`/`-e` as `--cwd`/`--env`, a program as argv or `--command-line`; `-a`, `-b`, `-k`, `-S`, `-P` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Create a floating pane (new in 3.8) | `new-pane` (`newp`) | *Rationale:* floating and modal panes are new in tmux 3.8; the GUI overlay design needs an ADR; tiled panes come first | deferred | post-26 | — |
-| Select the next window | `next-window` (`next`) | Focus the next Window; `-a` (next with alert) in Step 25 | planned | 23 | — |
+| Select the next window | `next-window` (`next`) | Focus the next Window; `-a` (next with alert) in Step 25 *Partial:* `Ctrl+B n` in the window; the CLI selects by index (`subak window select`). | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Select the next layout | `next-layout` (`nextl`) | Cycle layout presets | planned | 25 | — |
 | Pipe pane output to a command | `pipe-pane` (`pipep`) | The Host streams pane output (`-O`) or input (`-I`) to a command | planned | 25 | — |
 | Select the previous layout | `previous-layout` (`prevl`) | Cycle layout presets backwards | planned | 25 | — |
-| Select the previous window | `previous-window` (`prev`) | Focus the previous Window | planned | 23 | — |
+| Select the previous window | `previous-window` (`prev`) | Focus the previous Window *Partial:* `Ctrl+B p` in the window; the CLI selects by index. | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Rename a window | `rename-window` (`renamew`) | Rename the internal Window (SUBAK-FR-010): `subak window rename <window> <name>` (also `rename-window`) / IPC `window.rename`; the id stays, names need not be unique, not only digits | implemented | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Resize or zoom a pane | `resize-pane` (`resizep`) | Resize a split by cells or `%`; `-Z` zoom; `-M` mouse drag. *Partial:* `subak pane resize <pane> <left|right|up|down> [cells]` (also `resize-pane`) / IPC `pane.adjust`, `subak pane zoom` / `pane.zoom` (`-Z`), and dragging a border in the window (`-M`); `-x`/`-y` absolute sizes and `%` later | partial | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11), `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Resize a window | `resize-window` (`resizew`) | Manual Window size (with `window-size`) | planned | 25 | — |
@@ -166,11 +166,11 @@ Grouped by the manual page section that documents them. `set-window-option` and
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Bind a key | `bind-key` (`bind`) | Key-binding engine: `-T` table, `-n` root table, `-r` repeatable, `-N` note | planned | 23 | — |
-| List key bindings | `list-keys` (`lsk`) | List bindings and notes (`-N`, `-T`, `-1`, `-a`, `-P`) | planned | 23 | — |
-| Send keys to a pane | `send-keys` (`send`) | Host send-input op (SUBAK-FR-013) with tmux key names; `-l`, `-H`, `-N`, `-R`; `-X` copy-mode commands in 24; `-M` mouse in 25 | planned | 23 | — |
-| Send the prefix key | `send-prefix` | Send `Ctrl+B` (or `prefix2` with `-2`) to the Pane | planned | 23 | — |
-| Unbind a key | `unbind-key` (`unbind`) | Remove a binding (`-a` all, `-n`, `-T`, `-q`) | planned | 23 | — |
+| Bind a key | `bind-key` (`bind`) | Key-binding engine: `-T` table, `-n` root table, `-r` repeatable, `-N` note *Partial:* `subak hotkeys set <action> <keys>` binds actions (with `@prefix` sequences, `repeat` = `-r`) in `hotkeys.json`; arbitrary commands and `-T`/`-n` tables later. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11) |
+| List key bindings | `list-keys` (`lsk`) | List bindings and notes (`-N`, `-T`, `-1`, `-a`, `-P`) *Partial:* `subak hotkeys list` and the window's keyboard help (`F1`, `Ctrl+B ?`). | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Send keys to a pane | `send-keys` (`send`) | Host send-input op (SUBAK-FR-013) with tmux key names; `-l`, `-H`, `-N`, `-R`; `-X` copy-mode commands in 24; `-M` mouse in 25 *Rationale for the move:* with `pane.send_keys` (Step 24). | planned | 24 | — |
+| Send the prefix key | `send-prefix` | Send `Ctrl+B` (or `prefix2` with `-2`) to the Pane *Partial:* `Ctrl+B Ctrl+B` in the window and the console client; no `send-prefix` command, no `prefix2`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
+| Unbind a key | `unbind-key` (`unbind`) | Remove a binding (`-a` all, `-n`, `-T`, `-q`) *Partial:* `subak hotkeys disable <action>` / `reset`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11) |
 
 ### 2.4 Options, hooks and environment
 
@@ -243,7 +243,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Capture options | `capture-pane -p -e -J -N -S -E -a -b -C -M -P -q -T` | Text (`-p`), styles (`-e`), joined lines (`-J`), ranges (`-S`/`-E`), alternate screen (`-a`). *Partial:* `-p` (always), `-e` = `--vt`, `-J` = `--join`, `-S`/`-E` = `--start`/`--end` with the same numbering and `-`; `-N`, `-a`, `-b`, `-C`, `-M`, `-P`, `-q`, `-T` later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak/src/screen.rs::tests::capture_ranges_join_and_edges` (2026-11-04) |
 | Copy-mode entry options | `copy-mode -u -d -e -H -M -q -S -s -k` | Scroll on entry, exit at bottom, mouse entry, quit all modes | planned | 24 | — |
 | List filters and sort order | `list-* -f filter -O order -r` | CLI filter and sort; format filters in Step 25 | planned | 25 | — |
-| Send keys to a client's key table | `send-keys -K -c target-client` | Inject keys into a client's key handling | planned | 23 | — |
+| Send keys to a client's key table | `send-keys -K -c target-client` | Inject keys into a client's key handling *Rationale for the move:* with custom key tables (Step 25). | planned | 25 | — |
 
 ## 4. Default key bindings: prefix table (`C-b`)
 
@@ -253,75 +253,75 @@ exists, so no key row targets a Step before 23.
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Send the prefix key to the program | `C-b C-b` → `send-prefix` | `Ctrl+B Ctrl+B` sends a literal `Ctrl+B` (*basic*) | planned | 23 | — |
-| Rotate panes forwards | `C-b C-o` → `rotate-window` | Same key | planned | 23 | — |
+| Send the prefix key to the program | `C-b C-b` → `send-prefix` | `Ctrl+B Ctrl+B` sends a literal `Ctrl+B` (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Rotate panes forwards | `C-b C-o` → `rotate-window` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Suspend the client | `C-b C-z` → `suspend-client` | *Rationale:* no SIGTSTP on Windows; the key stays unbound | unsupported | — | — |
 | Next layout preset | `C-b Space` → `next-layout` | Same key | planned | 25 | — |
 | Break pane to a new window | `C-b !` → `break-pane` | Same key | planned | 24 | — |
-| Split top/bottom | `C-b "` → `split-window` | Same key (*basic*) | planned | 23 | — |
+| Split top/bottom | `C-b "` → `split-window` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | List paste buffers | `C-b #` → `list-buffers` | Same key | planned | 24 | — |
-| Rename the session | `C-b $` → `command-prompt -I'#S' { rename-session }` | Rename the Terminal (and its tab) (*basic*); full prompt in 24 | planned | 23 | — |
-| Split left/right | `C-b %` → `split-window -h` | Same key (*basic*) | planned | 23 | — |
-| Kill the window (confirm) | `C-b &` → `confirm-before kill-window` | Same key with confirmation (*basic*; SUBAK_PHILOSOPHY §6.1) | planned | 23 | — |
+| Rename the session | `C-b $` → `command-prompt -I'#S' { rename-session }` | Rename the Terminal (and its tab) (*basic*); full prompt in 24 *Partial:* `Ctrl+B $` opens the in-place rename of the tab (the prompt with Step 24). | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
+| Split left/right | `C-b %` → `split-window -h` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Kill the window (confirm) | `C-b &` → `confirm-before kill-window` | Same key with confirmation (*basic*; SUBAK_PHILOSOPHY §6.1) *Partial:* `Ctrl+B &` asks only when the window runs more than a shell (the Host's busy rule, as `Ctrl+W`); an idle window ends at once. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
 | Prompt for a window index | `C-b '` → `command-prompt -pindex` | Same key | planned | 24 | — |
 | New floating pane | `C-b *` → `new-pane` | *Rationale:* floating panes deferred (see `new-pane`) | deferred | post-26 | — |
 | Toggle floating/tiled pane | `C-b @` → `join-pane` / `break-pane -W` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Previous session | `C-b (` → `switch-client -p` | Previous Terminal in the current client (GUI analogue: `Ctrl+Shift+Tab`) | planned | 25 | — |
 | Next session | `C-b )` → `switch-client -n` | Next Terminal (GUI analogue: `Ctrl+Tab`) | planned | 25 | — |
-| Rename the window | `C-b ,` → `command-prompt -I'#W' { rename-window }` | Rename the internal Window (*basic*); full prompt in 24 | planned | 23 | — |
+| Rename the window | `C-b ,` → `command-prompt -I'#W' { rename-window }` | Rename the internal Window (*basic*); full prompt in 24 *Partial:* `Ctrl+B ,` renames the active internal window in the tab's place (the prompt with Step 24). | partial | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Delete the latest paste buffer | `C-b -` → `delete-buffer` | Same key | planned | 24 | — |
 | Move the window (prompt) | `C-b .` → `command-prompt { move-window }` | Same key | planned | 25 | — |
-| Describe a key binding | `C-b /` → `list-keys -1N` | Same key | planned | 23 | — |
-| Select window 0–9 | `C-b 0` … `C-b 9` → `select-window -t:=N` | Same keys (*basic*) | planned | 23 | — |
+| Describe a key binding | `C-b /` → `list-keys -1N` | Same key *Rationale for the move:* with the command prompt of Step 24. | planned | 24 | — |
+| Select window 0–9 | `C-b 0` … `C-b 9` → `select-window -t:=N` | Same keys (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Command prompt | `C-b :` → `command-prompt` | Same key | planned | 24 | — |
-| Previously active pane | `C-b ;` → `last-pane` | Same key | planned | 23 | — |
+| Previously active pane | `C-b ;` → `last-pane` | Same key *Rationale for the move:* the Host keeps no previous selection yet (Step 25). | planned | 25 | — |
 | Choose a paste buffer | `C-b =` → `choose-buffer -Z` | Same key | planned | 24 | — |
-| List key bindings | `C-b ?` → `list-keys -N` | Same key | planned | 23 | — |
+| List key bindings | `C-b ?` → `list-keys -N` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Choose a client to detach | `C-b D` → `choose-client -Z` | Same key | planned | 25 | — |
-| Spread panes out evenly | `C-b E` → `select-layout -E` | Same key | planned | 23 | — |
+| Spread panes out evenly | `C-b E` → `select-layout -E` | Same key *Rationale for the move:* `select-layout -E` moved to Step 25. | planned | 25 | — |
 | Last session | `C-b L` → `switch-client -l` | Same key | planned | 25 | — |
 | Clear the marked pane | `C-b M` → `select-pane -M` | Same key | planned | 24 | — |
 | Set the pane title | `C-b T` → `command-prompt -I'#T' { select-pane -T }` | Same key | planned | 24 | — |
 | Enter copy mode | `C-b [` → `copy-mode` | Same key | planned | 24 | — |
 | Paste the latest buffer | `C-b ]` → `paste-buffer -p` | Same key | planned | 24 | — |
-| New window | `C-b c` → `new-window` | New internal Window, not a tab (*basic*) | planned | 23 | — |
-| Detach the client | `C-b d` → `detach-client` | Same key; processes keep running (*basic*; SUBAK-FR-015) | planned | 24 | — |
+| New window | `C-b c` → `new-window` | New internal Window, not a tab (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Detach the client | `C-b d` → `detach-client` | Same key; processes keep running (*basic*; SUBAK-FR-015) *Step 23:* `Ctrl+B d` closes the window (a detach); the console client follows the user's prefix and `client.detach`. | implemented | 23 | `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11), `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` (2026-11-11) |
 | Find a window (prompt) | `C-b f` → `command-prompt { find-window -Z }` | Same key | planned | 25 | — |
 | Show window information | `C-b i` → `display-message` | Same key | planned | 25 | — |
-| Last window | `C-b l` → `last-window` | Same key | planned | 23 | — |
+| Last window | `C-b l` → `last-window` | Same key *Rationale for the move:* the Host keeps no previous selection yet (Step 25). | planned | 25 | — |
 | Mark the pane | `C-b m` → `select-pane -m` | Same key | planned | 24 | — |
-| Next window | `C-b n` → `next-window` | Same key (*basic*) | planned | 23 | — |
-| Next pane | `C-b o` → `select-pane -t:.+` | Same key | planned | 23 | — |
+| Next window | `C-b n` → `next-window` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Next pane | `C-b o` → `select-pane -t:.+` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Customize options | `C-b C` → `customize-mode -Z` | *Rationale:* `customize-mode` deferred | deferred | post-26 | — |
-| Previous window | `C-b p` → `previous-window` | Same key (*basic*) | planned | 23 | — |
+| Previous window | `C-b p` → `previous-window` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Show pane numbers | `C-b q` → `display-panes` | Same key | planned | 25 | — |
-| Redraw the client | `C-b r` → `refresh-client` | Same key | planned | 23 | — |
+| Redraw the client | `C-b r` → `refresh-client` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Choose a session | `C-b s` → `choose-tree -Zs` | Same key | planned | 25 | — |
 | Show a clock | `C-b t` → `clock-mode` | *Rationale:* `clock-mode` deferred | deferred | post-26 | — |
 | Fuzzy-switch window | `C-b Tab` → `new-pane …; switch-mode -wk` | Same key opens the Window switcher (without a floating pane) | planned | 25 | — |
 | Fuzzy-switch session | `C-b BTab` → `new-pane …; switch-mode -sk` | Same key opens the Terminal switcher | planned | 25 | — |
 | Choose a window | `C-b w` → `choose-tree -Zw` | Same key | planned | 25 | — |
-| Kill the pane (confirm) | `C-b x` → `confirm-before kill-pane` | Same key with confirmation (*basic*) | planned | 23 | — |
-| Zoom the pane | `C-b z` → `resize-pane -Z` | Same key (*basic*) | planned | 23 | — |
-| Swap with the previous pane | `C-b {` → `swap-pane -U` | Same key | planned | 23 | — |
-| Swap with the next pane | `C-b }` → `swap-pane -D` | Same key | planned | 23 | — |
+| Kill the pane (confirm) | `C-b x` → `confirm-before kill-pane` | Same key with confirmation (*basic*) *Partial:* `Ctrl+B x` asks only when the pane runs more than a shell (the Host's busy rule); an idle pane ends at once. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
+| Zoom the pane | `C-b z` → `resize-pane -Z` | Same key (*basic*) | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Swap with the previous pane | `C-b {` → `swap-pane -U` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Swap with the next pane | `C-b }` → `swap-pane -D` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Show messages | `C-b ~` → `show-messages` | Same key | planned | 25 | — |
 | Copy mode, one page up | `C-b PPage` → `copy-mode -u` | Same key | planned | 24 | — |
-| Select pane by direction (repeatable) | `C-b Up`, `Down`, `Left`, `Right` → `select-pane -U/-D/-L/-R` | Same keys (*basic*) | planned | 23 | — |
-| Even-horizontal layout | `C-b M-1` → `select-layout even-horizontal` | Same key | planned | 23 | — |
-| Even-vertical layout | `C-b M-2` → `select-layout even-vertical` | Same key | planned | 23 | — |
+| Select pane by direction (repeatable) | `C-b Up`, `Down`, `Left`, `Right` → `select-pane -U/-D/-L/-R` | Same keys (*basic*) *Partial:* `Ctrl+B Up/Down/Left/Right` (and `Alt+Arrow`); not repeatable without the prefix yet. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Even-horizontal layout | `C-b M-1` → `select-layout even-horizontal` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Even-vertical layout | `C-b M-2` → `select-layout even-vertical` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Main-horizontal layout | `C-b M-3` → `select-layout main-horizontal` | Same key | planned | 25 | — |
 | Main-vertical layout | `C-b M-4` → `select-layout main-vertical` | Same key | planned | 25 | — |
-| Tiled layout | `C-b M-5` → `select-layout tiled` | Same key | planned | 23 | — |
+| Tiled layout | `C-b M-5` → `select-layout tiled` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Main-horizontal-mirrored layout | `C-b M-6` → `select-layout main-horizontal-mirrored` | Same key | planned | 25 | — |
 | Main-vertical-mirrored layout | `C-b M-7` → `select-layout main-vertical-mirrored` | Same key | planned | 25 | — |
 | Next window with an alert | `C-b M-n` → `next-window -a` | Same key | planned | 25 | — |
-| Rotate panes backwards | `C-b M-o` → `rotate-window -D` | Same key | planned | 23 | — |
+| Rotate panes backwards | `C-b M-o` → `rotate-window -D` | Same key | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Previous window with an alert | `C-b M-p` → `previous-window -a` | Same key | planned | 25 | — |
 | Pan the visible part of a larger window | `C-b S-Up`, `S-Down`, `S-Left`, `S-Right` → `refresh-client -U/-D/-L/-R 10` | *Rationale:* only matters when a client is smaller than its window; revisit with multi-client sizing | deferred | post-26 | — |
 | Follow the cursor again | `C-b DC` → `refresh-client -c` | *Rationale:* as above | deferred | post-26 | — |
-| Resize the pane by 5 (repeatable) | `C-b M-Up`, `M-Down`, `M-Left`, `M-Right` → `resize-pane … 5` | Same keys | planned | 23 | — |
-| Resize the pane by 1 (repeatable) | `C-b C-Up`, `C-Down`, `C-Left`, `C-Right` → `resize-pane` | Same keys | planned | 23 | — |
+| Resize the pane by 5 (repeatable) | `C-b M-Up`, `M-Down`, `M-Left`, `M-Right` → `resize-pane … 5` | Same keys | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Resize the pane by 1 (repeatable) | `C-b C-Up`, `C-Down`, `C-Left`, `C-Right` → `resize-pane` | Same keys | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
 | Move a floating pane (`move` table) | `C-b g` then `1`–`4`, `M-1`–`M-4`, arrows, `M-` arrows, `0`, `,`, `.` | *Rationale:* floating panes deferred | deferred | post-26 | — |
 | Window menu | `C-b <` → `display-menu` (window) | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
 | Pane menu | `C-b >` → `display-menu` (pane) | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
@@ -357,14 +357,14 @@ when `mouse` is on.
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Prefix table | `prefix` (§4) | Subak prefix table behind `Ctrl+B` | planned | 23 | — |
-| Root table | `root` (§5) | Root bindings; GUI shortcuts (`Ctrl+T` etc.) are handled before it (§23) | planned | 23 | — |
+| Prefix table | `prefix` (§4) | Subak prefix table behind `Ctrl+B` Since Step 23: the `prefix` leader of the hotkey contract, rebindable. | implemented | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11), `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` (2026-11-11) |
+| Root table | `root` (§5) | Root bindings; GUI shortcuts (`Ctrl+T` etc.) are handled before it (§23) *Partial:* the window's single-chord shortcuts (`app`/`terminal` scopes) act as the root table; the mouse root bindings are §5. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
 | Copy-mode tables | `copy-mode` (emacs), `copy-mode-vi` (§7) | Both tables | planned | 24 | — |
 | Floating-pane move table | `move` | *Rationale:* floating panes deferred | deferred | post-26 | — |
-| Custom key tables | `bind -T name`, `switch-client -T name`, `key-table` option | User-defined tables | planned | 23 | — |
-| Key names | `C-`, `^`, `S-`, `M-`, `Up`, `BSpace`, `BTab`, `DC`, `End`, `Enter`, `Escape`, `F1`–`F12`, `Home`, `IC`, `NPage`/`PageDown`/`PgDn`, `PPage`/`PageUp`/`PgUp`, `Space`, `Tab` | Same names in bindings and `send-keys` | planned | 23 | — |
-| Catch-all binding | `Any` key | Same | planned | 23 | — |
-| Repeatable keys | `bind -r`, `repeat-time`, `initial-repeat-time` | Same | planned | 23 | — |
+| Custom key tables | `bind -T name`, `switch-client -T name`, `key-table` option | User-defined tables *Rationale for the move:* one leader table in Step 23; more tables with Step 25. | planned | 25 | — |
+| Key names | `C-`, `^`, `S-`, `M-`, `Up`, `BSpace`, `BTab`, `DC`, `End`, `Enter`, `Escape`, `F1`–`F12`, `Home`, `IC`, `NPage`/`PageDown`/`PgDn`, `PPage`/`PageUp`/`PgUp`, `Space`, `Tab` | Same names in bindings and `send-keys` *Partial:* the hotkey contract's names (`Ctrl+B`, `PageDown`, `char:%`); tmux spellings with `send-keys` (Step 24). | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
+| Catch-all binding | `Any` key | Same *Rationale for the move:* with custom key tables (Step 25). | planned | 25 | — |
+| Repeatable keys | `bind -r`, `repeat-time`, `initial-repeat-time` | Same *Partial:* `repeat: true` bindings repeat for `terminal.repeat_time_ms` (default 500) without the prefix; no `initial-repeat-time`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::repeatable_prefix_keys_work_again_without_the_prefix_for_the_repeat_time` (2026-11-11) |
 
 ## 7. Copy mode (vi and emacs)
 
@@ -437,7 +437,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Key sent for Backspace | `backspace` | Same | planned | 23 | — |
+| Key sent for Backspace | `backspace` | Same *Rationale for the move:* a terminal option of Step 25. | planned | 25 | — |
 | Maximum automatic buffers | `buffer-limit` | Same | planned | 24 | — |
 | Clear the outer terminal on attach | `clear-on-attach` | *Rationale:* no outer terminal; the GUI redraws from Host state | unsupported | — | — |
 | Unicode width overrides | `codepoint-widths`, `variation-selector-always-wide` | Same; important for Korean/CJK (KIM-NFR-013) | planned | 25 | — |
@@ -455,7 +455,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Prompt history file | `history-file`, `prompt-history-limit` | Same, stored in the user profile | planned | 24 | — |
 | Escape-sequence size limit | `input-buffer-size` | Same | planned | 25 | — |
 | Message log size | `message-limit` | Same | planned | 25 | — |
-| Prefix timeout | `prefix-timeout` | Same | planned | 23 | — |
+| Prefix timeout | `prefix-timeout` | Same *Partial:* like tmux's default (no timeout): the prefix waits for the next key, Esc or a click cancels (HOTKEY_CONTRACT §5.3, no timer); not configurable. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_prefix_table_controls_windows_and_panes_and_passes_tab_keys_through` (2026-11-11) |
 | Outer-terminal capabilities | `terminal-features`, `terminal-overrides` | *Rationale:* apply to an outer terminal; the GUI renders natively. Revisit for a console client | deferred | post-26 | — |
 | Theme detection and palettes | `theme`, `dark-theme-black`, `dark-theme-blue`, `dark-theme-cyan`, `dark-theme-dark-grey`, `dark-theme-green`, `dark-theme-light-grey`, `dark-theme-magenta`, `dark-theme-red`, `dark-theme-white`, `dark-theme-yellow`, `light-theme-black`, `light-theme-blue`, `light-theme-cyan`, `light-theme-dark-grey`, `light-theme-green`, `light-theme-light-grey`, `light-theme-magenta`, `light-theme-red`, `light-theme-white`, `light-theme-yellow` | *Rationale:* colours and light/dark follow the Kim design system and the OS; tmux palette options revisited later | deferred | post-26 | — |
 | User-defined outer-terminal keys | `user-keys` | *Rationale:* as `terminal-overrides` | deferred | post-26 | — |
@@ -474,12 +474,12 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Message display time | `display-time` | Same | planned | 25 | — |
 | Focus follows mouse | `focus-follows-mouse` | Same | planned | 25 | — |
 | Scrollback length | `history-limit` | Same. *Partial:* per Terminal at creation, `subak new --history-limit <rows>` (0–100 000, default 2 000, plus a 4 MiB cap per pane); changing it later with an option command later (Step 25) | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request` (2026-11-04) |
-| Repeat timing | `repeat-time`, `initial-repeat-time` | Same | planned | 23 | — |
-| Default key table | `key-table` | Same | planned | 23 | — |
+| Repeat timing | `repeat-time`, `initial-repeat-time` | Same *Partial:* `terminal.repeat_time_ms` in `config.toml` (0–2000, default 500); no `initial-repeat-time`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::repeatable_prefix_keys_work_again_without_the_prefix_for_the_repeat_time` (2026-11-11) |
+| Default key table | `key-table` | Same *Rationale for the move:* with custom key tables (Step 25). | planned | 25 | — |
 | Automatic locking | `lock-after-time`, `lock-command` | *Rationale:* as `lock-client` | unsupported | — | — |
 | Message and prompt look | `message-style`, `message-command-style`, `message-format`, `message-line` | Same | planned | 25 | — |
 | Mouse support | `mouse` | Same; the GUI always receives the mouse, the option controls tmux-style handling | planned | 25 | — |
-| Prefix keys | `prefix`, `prefix2` | Same; default `Ctrl+B` | planned | 23 | — |
+| Prefix keys | `prefix`, `prefix2` | Same; default `Ctrl+B` *Partial:* the `prefix` leader in `hotkeys.json` (`"leaders": {"prefix": "Ctrl+A"}`), in the window and the console client; no `prefix2`. | partial | 23 | `crates/subak/src/gui/keys.rs::tests::the_leader_follows_hotkeys_json_and_profiles_overlay_it` (2026-11-11), `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` (2026-11-11) |
 | Prompt cursor | `prompt-cursor-colour`, `prompt-cursor-style`, `prompt-command-cursor-colour`, `prompt-command-cursor-style` | Same | planned | 24 | — |
 | Renumber windows on close | `renumber-windows` | Same | planned | 25 | — |
 | Outer window title | `set-titles`, `set-titles-string` | GUI window/tab title | planned | 25 | — |
@@ -514,7 +514,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Window size policy | `window-size` (`largest`, `smallest`, `manual`, `latest`) | Fixed `latest` first (ADR 0008); the other policies with the option | planned | 25 | — |
 | Window list entries | `window-status-format`, `window-status-current-format`, `window-status-separator`, `window-status-style`, `window-status-current-style`, `window-status-last-style`, `window-status-activity-style`, `window-status-bell-style` | Same | planned | 25 | — |
 | Search wrap-around | `wrap-search` | Same | planned | 24 | — |
-| xterm-style modified keys | `xterm-keys` | Same | planned | 23 | — |
+| xterm-style modified keys | `xterm-keys` | Same *Rationale for the move:* a terminal option of Step 25. | planned | 25 | — |
 
 ### 9.5 Pane options (window or pane scope)
 
@@ -940,9 +940,9 @@ whenever a row or Status changes.
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 461 |
-| `partial` | 50 |
-| `implemented` | 16 |
+| `planned` | 422 |
+| `partial` | 67 |
+| `implemented` | 38 |
 | `deferred` | 55 |
 | `unsupported` | 24 |
 | **Total** | **606** |
@@ -950,14 +950,14 @@ whenever a row or Status changes.
 | Section | planned | partial | implemented | deferred | unsupported | Total |
 | --- | --- | --- | --- | --- | --- | --- |
 | §1 Invocation | 4 | 3 | 4 | 2 | 4 | 17 |
-| §2 Commands | 58 | 22 | 2 | 5 | 5 | 92 |
+| §2 Commands | 52 | 28 | 2 | 5 | 5 | 92 |
 | §3 Notable command flags | 9 | 8 | 1 | 1 | 1 | 20 |
-| §4 Prefix table | 62 | 0 | 0 | 9 | 1 | 72 |
+| §4 Prefix table | 36 | 5 | 21 | 9 | 1 | 72 |
 | §5 Root table (mouse) | 7 | 4 | 1 | 7 | 0 | 19 |
-| §6 Key tables overview | 7 | 0 | 0 | 1 | 0 | 8 |
+| §6 Key tables overview | 3 | 3 | 1 | 1 | 0 | 8 |
 | §7 Copy mode | 29 | 0 | 0 | 0 | 0 | 29 |
 | §8 Other pane modes | 5 | 0 | 0 | 2 | 0 | 7 |
-| §9 Options | 76 | 5 | 0 | 9 | 5 | 95 |
+| §9 Options | 73 | 8 | 0 | 9 | 5 | 95 |
 | §10 Formats | 40 | 0 | 0 | 2 | 2 | 44 |
 | §11 Status line and styles | 17 | 0 | 0 | 0 | 0 | 17 |
 | §12 Hooks | 53 | 0 | 0 | 4 | 0 | 57 |
@@ -971,7 +971,7 @@ whenever a row or Status changes.
 | §20 Multiple clients and access control | 5 | 3 | 0 | 2 | 4 | 14 |
 | §21 Layouts, names, alerts, pane lifecycle | 17 | 1 | 4 | 1 | 0 | 23 |
 | §22 Terminal integration and exit messages | 0 | 2 | 0 | 1 | 0 | 3 |
-| **Total** | **461** | **50** | **16** | **55** | **24** | **606** |
+| **Total** | **422** | **67** | **38** | **55** | **24** | **606** |
 
 Coverage checks for matrix version 1: all 92 commands and their aliases, all 184 options in
 `options-table.c`, all 51 named hooks and all 99 copy-mode commands of tmux 3.8 appear in the

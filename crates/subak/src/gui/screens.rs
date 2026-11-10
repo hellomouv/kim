@@ -589,6 +589,8 @@ mod tests {
             place: None,
             active_pane: None,
             layout: None,
+            windows: Vec::new(),
+            active_window: None,
         }
     }
 

@@ -66,6 +66,10 @@ pub struct TermInfo {
     pub active_pane: Option<String>,
     /// Step 22: the active window's layout when it has more than one pane.
     pub layout: Option<WinLayout>,
+    /// Step 23: the Terminal's internal windows `(id, index, name)` in index order, and the
+    /// active one (the prefix keys switch, rename and kill them).
+    pub windows: Vec<(String, u64, String)>,
+    pub active_window: Option<String>,
 }
 
 /// Where one pane of the shown window is, in cells of the window's grid (Step 22).
@@ -209,6 +213,17 @@ impl TermInfo {
             place,
             active_pane: pane["id"].as_str().map(String::from),
             layout: WinLayout::from_window(window),
+            windows: windows
+                .iter()
+                .filter_map(|w| {
+                    Some((
+                        w["id"].as_str()?.to_string(),
+                        w["index"].as_u64()?,
+                        w["name"].as_str().unwrap_or("").to_string(),
+                    ))
+                })
+                .collect(),
+            active_window: window["id"].as_str().map(String::from),
         })
     }
 }
@@ -478,6 +493,8 @@ impl Model {
             place: None,
             active_pane: None,
             layout: None,
+            windows: Vec::new(),
+            active_window: None,
         };
         self.show(t, &mut out);
         out.push(self.request("terminal.list", json!({"detail": "full"}), Pending::List));
@@ -1148,6 +1165,8 @@ impl Model {
                         place: None,
                         active_pane: None,
                         layout: None,
+                        windows: Vec::new(),
+                        active_window: None,
                     });
                 term.id = tid.to_string();
                 if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
@@ -1322,15 +1341,19 @@ impl Model {
                 }
             }
             // A busy pane: the window asks before `force`, as for a busy Terminal (ADR 0042).
-            Pending::PaneOp("pane.kill", target) if code == "busy" => {
+            Pending::PaneOp("pane.kill" | "window.kill", target) if code == "busy" => {
                 let pane = &e["details"]["panes"][0];
-                let name = format!(
-                    "pane {} of `{}`",
-                    pane["index"]
-                        .as_u64()
-                        .map_or_else(|| "?".into(), |i| i.to_string()),
-                    self.terminal().map_or("", |t| t.name.as_str())
-                );
+                let tname = self.terminal().map_or("", |t| t.name.as_str());
+                let name = if target.starts_with("w-") {
+                    format!("this window of `{tname}`")
+                } else {
+                    format!(
+                        "pane {} of `{tname}`",
+                        pane["index"]
+                            .as_u64()
+                            .map_or_else(|| "?".into(), |i| i.to_string()),
+                    )
+                };
                 out.push(Effect::Confirm(Confirm {
                     id: self.terminal().map_or(String::new(), |t| t.id.clone()),
                     name,
@@ -1345,6 +1368,10 @@ impl Model {
                     "pane.kill" => "The pane was not closed",
                     "pane.adjust" => "The pane was not resized",
                     "pane.zoom" => "The pane was not zoomed",
+                    "window.create" => "No window was created",
+                    "window.select" => "The window was not selected",
+                    "window.rename" => "The window was not renamed",
+                    "window.kill" => "The window was not closed",
                     _ => "The pane was not changed",
                 };
                 let busy = if code == "busy" {
@@ -1374,11 +1401,14 @@ impl Model {
             &mut self.phase
             && (term.place != t.place
                 || term.active_pane != t.active_pane
-                || term.layout != t.layout)
+                || term.layout != t.layout
+                || term.windows != t.windows)
         {
             term.place.clone_from(&t.place);
             term.active_pane.clone_from(&t.active_pane);
             term.layout.clone_from(&t.layout);
+            term.windows.clone_from(&t.windows);
+            term.active_window.clone_from(&t.active_window);
             out.push(Effect::Phase);
         }
         if !t.running() {
@@ -1490,6 +1520,8 @@ impl Model {
                     place: None,
                     active_pane: None,
                     layout: None,
+                    windows: Vec::new(),
+                    active_window: None,
                 });
                 if shown.stored() {
                     self.set(Phase::Stored(shown), out);

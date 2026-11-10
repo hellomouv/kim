@@ -222,8 +222,9 @@ SCROLLBACK (docs/SCROLLBACK.md):
              terminal already shows in its own scrollback are not touched.
 
 ATTACH (docs/SUBAK_CLI.md §5):
-    Ctrl+B d        Detach (Ctrl+B Ctrl+B sends one Ctrl+B to the program). Fixed in the CLI
-                    for now; it follows the Ctrl+B prefix of the hotkey contract.
+    Ctrl+B d        Detach (Ctrl+B Ctrl+B sends one Ctrl+B to the program). Since Step 23 it
+                    follows your hotkeys.json: the `prefix` leader (a Ctrl+letter) and the
+                    character of `client.detach` (`@prefix char:d`); `subak hotkeys set`.
     Ctrl+C          Goes to the program as a key (it interrupts what runs there); it never ends
                     this client.
     Ctrl+Break      Detaches this client cleanly (it is not sent to the program).

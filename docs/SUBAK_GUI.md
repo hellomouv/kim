@@ -915,6 +915,7 @@ smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the
 right_click = "copy-paste"   # copy-paste | menu | paste | none
 middle_click = "none"    # none | paste
 word_separators = " ()[]{}'\",;:|<>"   # default: Windows Terminal's set (shown by `config show`)
+repeat_time_ms = 500     # Step 23: Ctrl+B Ctrl+Arrow repeats without the prefix this long; 0: off
 
 [[profiles]]
 name = "PowerShell"
@@ -1198,3 +1199,67 @@ kill are IPC requests (`pane.split`, `pane.select` with a `direction`, `pane.adj
 | `crates/subak/tests/pane_layout.rs` | the real Host: pseudo console sizes seen by programs after every split, resize, zoom, swap and close; directional focus, minimums, dry runs and refusals; the layout across clients; rotate and presets; deep splits and their latency |
 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` | the off-screen window: both and three panes drawn at their places, read-only views, `Alt+Left`, `Alt+Shift+Plus`, `Alt+Shift+Right`, `Ctrl+Shift+Z`, a divider drag, a click, a pane exit, closing the window keeps every pane |
 | `e2e/tests/step22_pane_layout.rs` (ignored; `cargo xtask e2e` only) | a user splits, resizes, zooms and rearranges panes with the CLI and the programs see their sizes; the window draws and drives the split |
+
+## 15. The prefix keys and keyboard help (Step 23)
+
+[ADR 0057](adr/0057-subak-prefix-and-key-binding-engine.md). `Ctrl+B` is tmux's prefix: press
+it, release, then a key of the table. It acts on the **shown tab's Terminal** — its internal
+windows and panes — never on another tab. The banner shows `Ctrl+B` while it waits; there is no
+time limit; `Esc` or a click cancels.
+
+### 15.1 The table (defaults; all rebindable with `subak hotkeys set`)
+
+| Keys | Action |
+| --- | --- |
+| `Ctrl+B c` / `n` / `p` / `0`–`9` | new internal window / next / previous / window *N* |
+| `Ctrl+B ,` / `&` | rename the active window in place / kill it (asks when busy) |
+| `Ctrl+B %` / `"` | split side by side / stacked |
+| `Ctrl+B` arrows, `o` | focus by direction / the next pane |
+| `Ctrl+B Ctrl+Arrow`, `Alt+Arrow` | resize by 1 / by 5 (repeat without the prefix for `terminal.repeat_time_ms`) |
+| `Ctrl+B z` / `x` | zoom / kill the pane (asks when busy) |
+| `Ctrl+B {` / `}`, `Ctrl+O` / `Alt+O` | swap with the previous / next pane, rotate forwards / backwards |
+| `Ctrl+B Alt+1` / `Alt+2` / `Alt+5` | even-horizontal / even-vertical / tiled |
+| `Ctrl+B r`, `d`, `$`, `?` | redraw, detach (closes the window; nothing ends), rename the Terminal, help |
+| `Ctrl+B Ctrl+B` | sends one `Ctrl+B` to the program |
+| `Ctrl+B Ctrl+T`, `Ctrl+B Ctrl+W`, `Ctrl+B Ctrl+Tab`, … | the tab shortcut's keys go to the program instead (pass-through) |
+
+An unbound key after the prefix does nothing and says so; the next key is typed again. `Ctrl+C`
+alone always reaches the program. While the IME composes (Hangul, Japanese), keys belong to the
+input method and the prefix does not trigger; the rename field, a confirmation, a question and
+the help take their own keys. A password prompt cannot be detected in a terminal, so the prefix
+behaves the same there (as in tmux).
+
+### 15.2 Help, configuration and profiles
+
+- `F1` (or `Ctrl+B ?`) shows every shortcut as bound now (the prefix spelled out) with its title,
+  in the pane's place; Up/Down/PageUp/PageDown scroll; `Esc`, `Enter`, `q` or `F1` close it.
+- The prefix: `"leaders": {"prefix": "Ctrl+A"}` in `hotkeys.json` moves the whole table (and gives
+  `Ctrl+B` back to programs). The console client (`subak attach`) follows the same prefix when it
+  is a `Ctrl+<letter>`, and `client.detach`'s character.
+- `terminal.repeat_time_ms` in `config.toml` (0–2000, default 500; 0 off): tmux `repeat-time`.
+- `subak-gui --hotkeys-profile <name>` applies the `profiles` overlay `<name>` of `hotkeys.json`
+  for that run.
+
+### 15.3 Known limits (Step 23)
+
+- No custom key tables, `prefix2`, `last-window`, `last-pane`, describe-key or command prompt
+  (Steps 24–25); `Ctrl+B ,` and `Ctrl+B $` rename in place instead of tmux's prompt.
+- **Not tested with a visible window, a real keyboard and a real IME yet** (manual check below).
+
+### 15.4 Manual check (maintainer)
+
+1. Open a Terminal; `Ctrl+B c`, `Ctrl+B n`, `Ctrl+B p`, `Ctrl+B 0`: windows come and go in that tab
+   only (`subak window ls` agrees). `Ctrl+B %`, `Ctrl+B "`, arrows, `Ctrl+B z`.
+2. In `cmd.exe`: `Ctrl+B Ctrl+B` prints `^B`; `Ctrl+B Ctrl+W` types `^W` and closes nothing.
+3. With the Korean IME on, type Hangul while pressing `Ctrl+B`: the composition is not broken.
+4. `F1`, scroll, `Esc`. `Ctrl+B d`: the window closes; `subak ls` shows every Terminal running.
+
+### 15.5 Tests
+
+| Test | What it checks |
+| --- | --- |
+| `crates/subak/src/gui/keys.rs` unit tests | the table, layouts (`char:%` on any key), pass-through, unbound keys, `Esc`, `Ctrl+C`, repeat-time, a rebound leader, profiles |
+| `crates/subak/src/hotkeys.rs` unit tests | the shipped manifest = the final one ∩ implemented; the console detach keys |
+| `crates/subak/tests/gui_window.rs::the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only` | the off-screen window: `c`, `p`, `n`, `0`, `,`, `%`, `z`, `Ctrl+B Ctrl+B`, `Ctrl+B Ctrl+T`, an unbound key, the IME guard, `F1`, `d` |
+| `crates/subak/tests/subak_cli.rs::attach_detach_keys_follow_the_users_hotkeys_json` | the console client with `Ctrl+A q` |
+| `e2e/tests/step23_prefix_keys.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |

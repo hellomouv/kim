@@ -653,10 +653,19 @@ fn every_command_answers_one_schema_valid_document_with_stable_exit_codes() {
 /// Spawns `subak <args>` with piped stdin and output (the Attach harness shape) and waits for
 /// the attach banner.
 fn attach_with(ep: &str, extra: &[&str]) -> Attach {
+    attach_in(ep, extra, None, "Ctrl+B d detaches")
+}
+
+/// `attach_with` with `%APPDATA%` (its `mouv\subak\hotkeys.json`) set, so the detach keys
+/// never depend on the user's own file; waits for `banner`.
+fn attach_in(ep: &str, extra: &[&str], appdata: Option<&Path>, banner: &str) -> Attach {
     let mut args = vec!["--endpoint", ep, "attach", "--size", "100x30"];
     args.extend_from_slice(extra);
+    let sandbox = std::env::temp_dir().join(format!("subak-cli-appdata-{}", std::process::id()));
+    let appdata = appdata.map_or_else(|| sandbox.clone(), Path::to_path_buf);
     let mut child = Command::new(subak())
         .args(&args)
+        .env("APPDATA", &appdata)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -680,8 +689,47 @@ fn attach_with(ep: &str, extra: &[&str]) -> Attach {
         });
     }
     let a = Attach { child, out };
-    a.expect("Ctrl+B d detaches");
+    a.expect(banner);
     a
+}
+
+/// Step 23 (`SUBAK-FR-034`): the console client's prefix and detach key follow `hotkeys.json`:
+/// with `Ctrl+A` and `client.detach` on `@prefix char:q`, `Ctrl+B d` is ordinary input and
+/// `Ctrl+A q` detaches; `Ctrl+A Ctrl+A` sends one `Ctrl+A`.
+#[test]
+fn attach_detach_keys_follow_the_users_hotkeys_json() {
+    let e = Ep::new("keys");
+    let ep = e.ep.as_str();
+    let (code, doc) = sub(ep, &["new", "keys"]);
+    assert_eq!(code, 0, "{doc}");
+    let appdata = std::env::temp_dir().join(format!("subak-cli-keys-{}", std::process::id()));
+    let dir = appdata.join("mouv").join("subak");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("hotkeys.json"),
+        serde_json::json!({"schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+            "leaders": {"prefix": "Ctrl+A"},
+            "overrides": [{"action": "client.detach", "bindings": ["@prefix char:q"]}]})
+        .to_string(),
+    )
+    .unwrap();
+    let mut a = attach_in(ep, &["keys"], Some(&appdata), "Ctrl+A q detaches");
+    a.send(&[0x02, b'd', 0x0D]); // an unknown command for cmd.exe, nothing more
+    a.send(b"echo still-atta^ched\r");
+    a.expect("still-attached");
+    assert_eq!(
+        exits_with(&mut a, Duration::from_millis(300)),
+        None,
+        "Ctrl+B d is input now"
+    );
+    a.send(&[0x01, b'q']);
+    assert_eq!(exits_with(&mut a, LONG), Some(0), "Ctrl+A q detaches");
+    let (code, doc) = sub(ep, &["info", "keys"]);
+    assert_eq!(
+        (code, doc["data"]["terminal"]["state"].as_str()),
+        (0, Some("running"))
+    );
+    let _ = std::fs::remove_dir_all(&appdata);
 }
 
 fn exits_with(a: &mut Attach, limit: Duration) -> Option<i32> {

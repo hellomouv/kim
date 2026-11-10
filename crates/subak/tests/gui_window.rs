@@ -2424,3 +2424,140 @@ fn a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and
 fn alive_pid(pid: u32) -> bool {
     Proc::try_open(pid).is_some_and(|p| p.alive())
 }
+
+/// Step 23 (`SUBAK-FR-033`, HOTKEY_CONTRACT §13.1): the `Ctrl+B` prefix table drives the shown
+/// Terminal's internal windows and panes — never another tab —; `Ctrl+B Ctrl+B` types the
+/// prefix, `Ctrl+B Ctrl+T` types `Ctrl+T` instead of opening a tab, an unbound key after the
+/// prefix is swallowed with a hint, `F1` shows the keys, `Ctrl+B d` detaches and ends nothing.
+#[test]
+fn the_prefix_table_drives_windows_and_panes_of_the_shown_terminal_only() {
+    let host = Host::start("gui-prefix", &["--no-shell"]);
+    let ep = host.ep.clone();
+    let (_, other_pid) = new_terminal(&ep, "other");
+    let (work, _) = new_terminal(&ep, "work");
+    let mut gui = Gui::start(&ep, Some("work"), &sandbox("prefix"));
+    gui.state("attached");
+    let d = gui.until("work shown", |d| shown(d) == "work");
+    assert_eq!(d["prefix"], "Ctrl+B");
+    let tabs_before = tab_names(&d);
+    let prefix = |g: &Gui| g.press(u64::from(b'B'), true, false);
+    let typed = |g: &Gui, vk: u64, shift: bool, ch: &str| {
+        g.cmd(&json!({"cmd": "key", "vk": vk, "shift": shift, "char": ch}))
+    };
+    let windows = |ep: &str| info(ep, "work")["windows"].as_array().unwrap().clone();
+    // Ctrl+B c: a new internal window of `work` (not a tab), shown at once.
+    let d = prefix(&gui);
+    assert_eq!(d["pending_keys"], "Ctrl+B");
+    typed(&gui, u64::from(b'C'), false, "c");
+    wait_for("a second window", || windows(&ep).len() == 2);
+    let w1 = windows(&ep)[1]["id"].as_str().unwrap().to_string();
+    gui.until("window 1 shown", |d| {
+        d["phase"] == "attached"
+            && d["terminal"]["place"]
+                .as_str()
+                .is_some_and(|p| p.starts_with("window 1"))
+    });
+    assert_eq!(tab_names(&gui.dump()), tabs_before, "no new tab");
+    // Ctrl+B p / n / 0 switch windows of the shown Terminal.
+    prefix(&gui);
+    typed(&gui, u64::from(b'P'), false, "p");
+    wait_for("window 0 active", || {
+        info(&ep, "work")["active_window"] != w1.as_str()
+    });
+    prefix(&gui);
+    typed(&gui, u64::from(b'N'), false, "n");
+    wait_for("window 1 active", || {
+        info(&ep, "work")["active_window"] == w1.as_str()
+    });
+    prefix(&gui);
+    gui.press(u64::from(b'0'), false, false);
+    wait_for("window 0 by number", || {
+        info(&ep, "work")["active_window"] != w1.as_str()
+    });
+    // Ctrl+B , renames the active window in place.
+    prefix(&gui);
+    typed(&gui, 0xBC, false, ",");
+    gui.until("the rename field", |d| !d["renaming"].is_null());
+    gui.press(0x08, false, false); // Backspace x3 ("cmd" -> "")
+    gui.press(0x08, false, false);
+    gui.press(0x08, false, false);
+    gui.typed("logs");
+    gui.press(0x0D, false, false);
+    wait_for("window 0 renamed", || windows(&ep)[0]["name"] == "logs");
+    // Ctrl+B % splits the active pane; Ctrl+B z zooms it and back.
+    prefix(&gui);
+    typed(&gui, 0x35, true, "%");
+    gui.until("split", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+    });
+    prefix(&gui);
+    typed(&gui, u64::from(b'Z'), false, "z");
+    gui.until("zoomed", |d| {
+        d["layout"].is_null() && d["pane_size"] == d["grid"]
+    });
+    prefix(&gui);
+    typed(&gui, u64::from(b'Z'), false, "z");
+    gui.until("unzoomed", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+    });
+    // Ctrl+B Ctrl+B types one Ctrl+B (cmd echoes ^B); Ctrl+B Ctrl+T types Ctrl+T, no new tab.
+    prefix(&gui);
+    prefix(&gui);
+    gui.typed("rem prefix-sent");
+    gui.press(0x0D, false, false);
+    let active = gui.dump()["pane_id"].as_str().unwrap().to_string();
+    wait_for("^B reached the program", || {
+        let c = capture(&ep, &active);
+        c.contains("^Brem prefix-sent") || c.contains("\u{2}rem")
+    });
+    prefix(&gui);
+    let d = gui.press(u64::from(b'T'), true, false);
+    assert_eq!(tab_names(&d), tabs_before, "Ctrl+B Ctrl+T opened no tab");
+    assert!(
+        gui.history().contains("\"pass_through\""),
+        "the keys went to the program"
+    );
+    // An unbound key after the prefix is swallowed with a hint; the next key is typed again.
+    prefix(&gui);
+    let d = typed(&gui, u64::from(b'J'), false, "j");
+    assert!(
+        d["notice"]
+            .as_str()
+            .is_some_and(|b| b.contains("not a shortcut")),
+        "{}",
+        d["notice"]
+    );
+    // While the IME composes (Hangul), Ctrl+B belongs to the input method: no prefix.
+    gui.cmd(&json!({"cmd": "ime", "composition": "ㅎ"}));
+    let d = prefix(&gui);
+    assert!(
+        d["pending_keys"].is_null(),
+        "no prefix during a composition"
+    );
+    gui.cmd(&json!({"cmd": "ime", "result": "", "composition": ""}));
+    // F1: the keys, as bound now; Esc closes.
+    gui.press(0x70, false, false);
+    let d = gui.until("help", |d| !d["help"].is_null());
+    assert!(screen_text(&d).contains("Ctrl+B c "), "{}", screen_text(&d));
+    assert!(screen_text(&d).contains("New window"));
+    gui.press(0x1B, false, false);
+    gui.until("help closed", |d| d["help"].is_null());
+    // Ctrl+B d: the window lets go (exit 0); every Terminal keeps running.
+    prefix(&gui);
+    typed(&gui, u64::from(b'D'), false, "d");
+    assert_eq!(gui.exit_code(), 0);
+    assert_eq!(info(&ep, "work")["state"], "running");
+    assert_eq!(windows(&ep).len(), 2);
+    assert!(
+        alive_pid(other_pid),
+        "the other tab's Terminal was never touched"
+    );
+    let _ = work;
+    println!(
+        "EVIDENCE gui prefix: Ctrl+B c, p, n, 0, ',', %, z, Ctrl+B, Ctrl+T pass-through, an unbound key, F1 and d on the shown Terminal; tabs unchanged"
+    );
+}

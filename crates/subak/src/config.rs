@@ -242,6 +242,9 @@ pub struct TerminalPrefs {
     pub middle_click: MiddleClick,
     /// Characters that end a word for double-click selection and mark mode.
     pub word_separators: String,
+    /// Step 23, tmux `repeat-time`: milliseconds after a repeatable prefix key (`Ctrl+B
+    /// Ctrl+Arrow`) during which it works again without the prefix; 0 turns that off.
+    pub repeat_time_ms: u32,
 }
 
 /// One basic local shell profile (`[[profiles]]`; SSH and advanced profiles are Step 33).
@@ -276,6 +279,8 @@ pub const LINE_HEIGHT: (f32, f32, f32) = (1.0, 2.0, 1.2);
 pub const PADDING: (u32, u32, u32) = (0, 16, 8);
 /// `appearance.opacity` bounds and default, percent.
 pub const OPACITY: (u32, u32, u32) = (50, 100, 100);
+/// `terminal.repeat_time_ms` bounds and default (Step 23, tmux `repeat-time`).
+pub const REPEAT_TIME: (u32, u32, u32) = (0, 2000, 500);
 /// The longest `appearance.font_family` (a GDI face name holds 31 characters).
 pub const FONT_FAMILY_MAX: usize = 31;
 
@@ -299,6 +304,7 @@ impl Default for Settings {
                 right_click: RightClick::CopyPaste,
                 middle_click: MiddleClick::None,
                 word_separators: subak_term::view::WORD_DELIMITERS.to_string(),
+                repeat_time_ms: REPEAT_TIME.2,
             },
             profiles: Vec::new(),
         }
@@ -367,6 +373,7 @@ impl Settings {
             ("terminal", "right_click") => json!(t.right_click.as_str()),
             ("terminal", "middle_click") => json!(t.middle_click.as_str()),
             ("terminal", "word_separators") => json!(t.word_separators),
+            ("terminal", "repeat_time_ms") => json!(t.repeat_time_ms),
             _ => Value::Null,
         }
     }
@@ -579,6 +586,12 @@ pub const KEYS: &[Key] = &[
         takes: "up to 128 characters, no control characters",
         kind: Kind::Text,
     },
+    Key {
+        section: "terminal",
+        name: "repeat_time_ms",
+        takes: "a whole number from 0 to 2000 (milliseconds; 0: off)",
+        kind: Kind::Integer,
+    },
 ];
 
 /// The key `section.name`.
@@ -646,6 +659,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
             t.word_separators =
                 clean_text(text()?, subak_term::view::MAX_WORD_DELIMITERS).ok_or(())?;
         }
+        ("terminal", "repeat_time_ms") => t.repeat_time_ms = int(REPEAT_TIME.0, REPEAT_TIME.1)?,
         _ => return Err(()),
     }
     Ok(())

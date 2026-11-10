@@ -140,14 +140,17 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
     assert_eq!(d["tool"], "subak");
     assert_eq!(d["enabled"], true);
     assert_eq!(d["config"]["state"], "default");
-    assert_eq!(d["leaders"], json!([]), "the prefix leader is Step 23's");
+    assert_eq!(
+        d["leaders"],
+        json!([{"id": "prefix", "keys": "Ctrl+B", "source": "default"}]),
+        "the prefix leader ships since Step 23"
+    );
     // SUBAK-FR-033: the four requested tab keys, exactly.
     for (id, want) in [
         ("terminal.new", "Ctrl+T"),
         ("terminal.close", "Ctrl+W"),
         ("tab.next", "Ctrl+Tab"),
         ("tab.previous", "Ctrl+Shift+Tab"),
-        ("terminal.rename", "Ctrl+Shift+R"),
     ] {
         let a = action(&list, id);
         assert_eq!(keys(a), [want], "{id}");
@@ -161,13 +164,25 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
     assert_eq!(keys(copy), ["Ctrl+Shift+C", "Ctrl+Insert"]);
     assert_eq!(action(&list, "tab.hide")["source"], "unbound");
     assert_eq!(action(&list, "window.close")["source"], "reserved");
+    // Step 23: the prefix table (the four tab keys above are exactly as before).
+    assert_eq!(
+        keys(action(&list, "terminal.rename")),
+        ["Ctrl+Shift+R", "@prefix char:$"]
+    );
+    assert_eq!(keys(action(&list, "window.new")), ["@prefix char:c"]);
+    assert_eq!(keys(action(&list, "window.select-3")), ["@prefix 3"]);
+    assert_eq!(
+        keys(action(&list, "input.send-prefix")),
+        ["@prefix @prefix"]
+    );
+    assert_eq!(keys(action(&list, "client.detach")), ["@prefix char:d"]);
     assert!(
         d["actions"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| !a["id"].as_str().unwrap().starts_with("window.select")),
-        "only what this build implements is listed"
+            .all(|a| !a["id"].as_str().unwrap().starts_with("copy.")),
+        "only what this build implements is listed (copy mode is Step 24)"
     );
     // --scope filters.
     let (_, ctx) = p.json(&["list", "--scope", "context"]);
@@ -198,14 +213,15 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
         show["data"]["conflicts"][0]["code"], "shadows_terminal_input",
         "programs do not receive Ctrl+W: an info with the pass-through hint"
     );
-    let (code, missing) = p.json(&["show", "window.select-1"]);
+    let (code, missing) = p.json(&["show", "copy.exit"]);
     assert_eq!(code, 3);
     assert_eq!(missing["error"]["code"], "action_not_found");
-    // check: no error or warning; the two shadowed terminal keys as infos.
+    // check: no error or warning; the shadowed terminal keys (Ctrl+T, Ctrl+W and, since Step 23,
+    // the prefix Ctrl+B) as infos.
     let (_, check) = p.json(&["check"]);
     assert_eq!(
         check["data"]["summary"],
-        json!({"errors": 0, "warnings": 0, "infos": 2})
+        json!({"errors": 0, "warnings": 0, "infos": 3})
     );
     let (_, errors) = p.json(&["check", "--min-severity", "warning"]);
     assert_eq!(errors["data"]["conflicts"], json!([]));
@@ -336,7 +352,7 @@ fn refused_changes_write_nothing_and_name_the_way_out() {
         (code, e["error"]["code"].as_str()),
         (2, Some("hotkey_invalid"))
     );
-    let (code, e) = p.json(&["set", "window.next", "Ctrl+Shift+5"]);
+    let (code, e) = p.json(&["set", "copy.begin-selection", "Ctrl+Shift+5"]);
     assert_eq!(
         (code, e["error"]["code"].as_str()),
         (3, Some("action_not_found"))

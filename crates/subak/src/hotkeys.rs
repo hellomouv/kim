@@ -46,6 +46,23 @@ pub const IMPLEMENTED: &[&str] = &[
     "tab.hide",
     "tab.move-left",
     "tab.move-right",
+    "help.show",
+    "input.send-prefix",
+    "window.new",
+    "window.next",
+    "window.previous",
+    "window.select-0",
+    "window.select-1",
+    "window.select-2",
+    "window.select-3",
+    "window.select-4",
+    "window.select-5",
+    "window.select-6",
+    "window.select-7",
+    "window.select-8",
+    "window.select-9",
+    "window.rename",
+    "window.kill",
     "pane.split-right",
     "pane.split-down",
     "pane.focus-up",
@@ -58,6 +75,20 @@ pub const IMPLEMENTED: &[&str] = &[
     "pane.resize-right",
     "pane.zoom",
     "pane.kill",
+    "pane.next",
+    "pane.swap-previous",
+    "pane.swap-next",
+    "window.rotate",
+    "window.rotate-back",
+    "layout.even-horizontal",
+    "layout.even-vertical",
+    "layout.tiled",
+    "pane.resize-up-5",
+    "pane.resize-down-5",
+    "pane.resize-left-5",
+    "pane.resize-right-5",
+    "view.refresh",
+    "client.detach",
     "terminal.rename",
     "clipboard.copy",
     "clipboard.paste",
@@ -149,6 +180,68 @@ pub fn load(dir: Option<&Path>) -> (ToolState, Loaded) {
         },
     };
     (state(m, &loaded), loaded)
+}
+
+/// Step 23: the console client's detach keys from the user's layer — the `prefix` leader's byte
+/// (`Ctrl+<letter>`) and the character of `client.detach`'s `@prefix char:<c>` binding —, or the
+/// defaults (`Ctrl+B d`) with the reason when they cannot be typed as console bytes.
+pub fn console_detach_keys(dir: Option<&Path>) -> (u8, u8, Option<String>) {
+    use kim_hotkeys::keys::{Key, Step};
+    let (state, _) = load(dir);
+    let leader = state
+        .leader_chord("prefix")
+        .and_then(|(k, _)| kim_hotkeys::keys::Chord::parse(&k).ok());
+    let Some(chord) = leader else {
+        return (0x02, b'd', None);
+    };
+    let only_ctrl = chord.mods.ctrl.on()
+        && !chord.mods.alt.on()
+        && !chord.mods.shift.on()
+        && !chord.mods.win.on()
+        && !chord.mods.altgr;
+    let key = match chord.key {
+        Key::Named(n) if only_ctrl && n.len() == 1 && n.as_bytes()[0].is_ascii_uppercase() => {
+            n.as_bytes()[0] & 0x1F
+        }
+        _ => {
+            return (
+                0x02,
+                b'd',
+                Some(format!(
+                    "the prefix {chord} is not a Ctrl+letter, which a console sends as one byte; the console client keeps Ctrl+B"
+                )),
+            );
+        }
+    };
+    let detach = state
+        .manifest
+        .action("client.detach")
+        .and_then(|d| state.specs(d))
+        .and_then(|(bindings, _)| {
+            bindings.into_iter().find_map(|b| {
+                let text = match &b {
+                    kim_hotkeys::manifest::BindingSpec::Text(t) => t.clone(),
+                    kim_hotkeys::manifest::BindingSpec::Object(o) => o.keys.clone(),
+                };
+                let seq = kim_hotkeys::keys::Sequence::parse(&text).ok()?;
+                match seq.steps() {
+                    [Step::Leader(_), Step::Chord(c)] if !c.mods.has_command() => match c.key {
+                        Key::Char(ch) if ch.is_ascii() && !ch.is_ascii_control() => Some(ch as u8),
+                        Key::Named(n) if n.len() == 1 => Some(n.as_bytes()[0].to_ascii_lowercase()),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            })
+        });
+    match detach {
+        Some(d) => (key, d, None),
+        None => (
+            key,
+            b'd',
+            Some("client.detach has no `@prefix <character>` binding; the console client detaches with the prefix and d".into()),
+        ),
+    }
 }
 
 /// A sentence for a file that puts Subak's shortcuts in safe mode, or `None`.
@@ -287,6 +380,36 @@ mod tests {
         .unwrap()
     }
 
+    /// Step 23: the console client's detach keys follow the prefix leader and `client.detach`.
+    #[test]
+    fn console_detach_keys_follow_the_leader_and_the_detach_binding() {
+        assert_eq!(console_detach_keys(None), (0x02, b'd', None));
+        let dir = std::env::temp_dir().join(format!("subak-detach-keys-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |v: Value| std::fs::write(layer_path(&dir), v.to_string()).unwrap();
+        write(
+            json!({"schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+            "leaders": {"prefix": "Ctrl+A"},
+            "overrides": [{"action": "client.detach", "bindings": ["@prefix char:q"]}]}),
+        );
+        assert_eq!(console_detach_keys(Some(&dir)), (0x01, b'q', None));
+        write(
+            json!({"schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+            "leaders": {"prefix": "Alt+B"}}),
+        );
+        let (k, d, why) = console_detach_keys(Some(&dir));
+        assert_eq!((k, d), (0x02, b'd'));
+        assert!(why.unwrap().contains("Alt+B"));
+        write(
+            json!({"schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+            "overrides": [{"action": "client.detach", "disabled": true}]}),
+        );
+        let (k, d, why) = console_detach_keys(Some(&dir));
+        assert_eq!((k, d), (0x02, b'd'));
+        assert!(why.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_shipped_manifest_is_the_final_one_filtered_to_what_this_build_implements() {
         let m = manifest();
@@ -296,27 +419,14 @@ mod tests {
             "bump hotkeys.manifest.json with the crate"
         );
         let fin = final_manifest();
-        let leader_free = |d: &Value| {
-            let keys = d.as_str().map_or_else(|| d["keys"].as_str(), Some);
-            !keys.unwrap_or("").contains('@')
-        };
+        // Step 23: the leader and every `@prefix` default ship; copy mode (Step 24) and
+        // `gui.show` (no global registration yet) do not.
         let actions: Vec<Value> = fin["actions"]
             .as_array()
             .unwrap()
             .iter()
             .filter(|a| IMPLEMENTED.contains(&a["id"].as_str().unwrap()))
-            .map(|a| {
-                let mut a = a.clone();
-                let d: Vec<Value> = a["defaults"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .filter(|d| leader_free(d))
-                    .cloned()
-                    .collect();
-                a["defaults"] = Value::Array(d);
-                a
-            })
+            .cloned()
             .collect();
         let contexts: Vec<Value> = fin["contexts"]
             .as_array()
@@ -329,15 +439,11 @@ mod tests {
         want["version"] = json!(env!("CARGO_PKG_VERSION"));
         want["actions"] = Value::Array(actions);
         want["contexts"] = Value::Array(contexts);
-        want.as_object_mut().unwrap().remove("leaders");
         let ours: Value = serde_json::from_str(MANIFEST_JSON).unwrap();
-        assert_eq!(
-            ours, want,
-            "shipped = final manifest ∩ IMPLEMENTED, no @prefix yet"
-        );
+        assert_eq!(ours, want, "shipped = final manifest ∩ IMPLEMENTED");
         let ids: Vec<&str> = m.actions.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids, IMPLEMENTED);
-        assert!(m.leaders.is_empty(), "the prefix leader is Step 23's");
+        assert_eq!(m.leaders.len(), 1, "the prefix leader ships since Step 23");
         assert!(m.has_passthrough());
     }
 
