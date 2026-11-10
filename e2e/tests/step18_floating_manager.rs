@@ -208,6 +208,17 @@ impl Float {
     }
 
     fn cmd(&self, c: &Value) -> Value {
+        self.send(c);
+        self.wait("dump", |v| v["conn"].is_string())
+    }
+
+    /// Quits the floating UI: `close` is not answered with a dump.
+    fn close(&self) {
+        self.send(&json!({"cmd": "close"}));
+    }
+
+    /// Sends a test command without waiting for its answer.
+    fn send(&self, c: &Value) {
         let body = c.to_string();
         let cds = CopyData {
             data: COPYDATA_TEST,
@@ -229,7 +240,6 @@ impl Float {
             )
         };
         assert_ne!(ok, 0, "WM_COPYDATA");
-        self.wait("dump", |v| v["conn"].is_string())
     }
 
     fn until(&self, what: &str, pred: impl Fn(&Value) -> bool) -> Value {
@@ -397,7 +407,7 @@ fn the_floating_manager_follows_the_host_and_manages_terminals_without_ending_ot
     assert_eq!(now.len(), 1);
     assert_eq!((now[0].1.as_str(), now[0].2.as_str()), ("work", "running"));
     // Quit the floating UI: `work` keeps running.
-    f.cmd(&json!({"cmd": "close"}));
+    f.close();
     assert_eq!(f.exit_code(), 0);
     assert!(
         terminals(&subak, &ep)
@@ -433,7 +443,7 @@ fn the_icon_is_dragged_snaps_keeps_its_place_and_comes_back_when_a_monitor_goes(
     let dragged = f.wait("dragged", |_| true);
     assert_eq!(dragged["pos"], json!([-30000, y0 - 150]));
     // A new run comes back there.
-    f.cmd(&json!({"cmd": "close"}));
+    f.close();
     assert_eq!(f.exit_code(), 0);
     let mut f = Float::start(&gui, &ep, appdata.path(), &["--test-monitors", mons]);
     let d = f.cmd(&json!({"cmd": "dump"}));
@@ -450,6 +460,6 @@ fn the_icon_is_dragged_snaps_keeps_its_place_and_comes_back_when_a_monitor_goes(
         x >= -28080 && x + 60 <= -25520 && y >= -30000 && y + 60 <= -28600,
         "{d:#}"
     );
-    f.cmd(&json!({"cmd": "close"}));
+    f.close();
     assert_eq!(f.exit_code(), 0);
 }

@@ -357,8 +357,8 @@ fn ctrl_t_creates_ctrl_w_asks_before_ending_a_busy_terminal_and_the_x_only_detac
     w.key(u32::from(b'W'), true, false);
     w.until("closed", |d| tab_names(d) == ["keep", "agent"]);
     assert!(!terminals(&subak, &ep).iter().any(|t| t.0 == created));
-    // Ctrl+W on the busy one: the window asks; Esc keeps it.
-    w.key(VK_TAB, true, false);
+    // The closed tab was the last one: its left neighbour, the busy one, is shown.
+    // Ctrl+W on it: the window asks; Esc keeps it.
     w.until("agent shown", |d| {
         d["phase"] == "attached" && shown(d) == "agent"
     });
