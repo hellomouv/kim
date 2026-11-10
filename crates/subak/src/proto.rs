@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 13] = [
+pub const FEATURES: [&str; 14] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -61,6 +61,9 @@ pub const FEATURES: [&str; 13] = [
     "terminal.layout",
     // Step 24: `pane.send_keys`, `pane.break|join`, `buffer.*` (tmux paste buffers).
     "terminal.buffers",
+    // Step 25: window options (`synchronize-panes`, `monitor-*`), alerts, hooks, more layouts,
+    // target tokens.
+    "terminal.options",
 ];
 
 /// One decoded frame.
@@ -568,6 +571,11 @@ pub const METHODS: &[Method] = &[
     m("window.select", CG, true),
     // Step 22: tmux `rotate-window` and the basic `select-layout`s.
     m("window.rotate", CG, true),
+    // Step 25: window options and hooks.
+    m("window.set_option", CG, true),
+    m("window.options", CGM, true),
+    m("hook.set", CG, true),
+    m("hook.list", CGM, true),
     m("window.select_layout", CG, true),
     m("pane.create", CG, true),
     // Step 22 (ADR 0056): splits and the layout.

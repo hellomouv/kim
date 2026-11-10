@@ -198,7 +198,7 @@ WINDOWS AND PANES (docs/SESSION_MODEL.md §3, ADR 0054; splits and layouts ADR 0
              break-pane, join-pane, set-buffer, list-panes, …; also `subak tmux`, or the words
              after --). No -t: --target, else the pane it runs in. kill-* need --yes.
     buffer ls|show|set|delete|paste   The Host's paste buffers (memory only; ADR 0058).
-    window layout <window> <even-horizontal|even-vertical|tiled>   Arrange the panes evenly
+    window layout <window> <preset|next|previous|spread>   Arrange the panes (tmux select-layout)
              (tmux select-layout; more presets with Step 25).
     window ls, pane ls   The windows, or the panes with pids and programs; * marks the active.
     window select, pane select   The active window or pane, the same for every client (the
@@ -1291,6 +1291,30 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
                             .collect()
                     }),
                     "buffer.list" => buffer_table(res),
+                    "format" => format!("\n{}", res["message"].as_str().unwrap_or("")),
+                    "text" => format!("\n{}", res["text"].as_str().unwrap_or("")),
+                    "window.options" | "window.set_option" => {
+                        res["options"].as_object().map_or(String::new(), |o| {
+                            o.iter()
+                                .map(|(k, v)| {
+                                    format!("\n  {k} {}", if v == true { "on" } else { "off" })
+                                })
+                                .collect()
+                        })
+                    }
+                    "hook.set" | "hook.list" => {
+                        res["hooks"].as_object().map_or(String::new(), |o| {
+                            if o.is_empty() {
+                                "\n  (no hooks)".to_string()
+                            } else {
+                                o.iter()
+                                    .map(|(k, v)| {
+                                        format!("\n  {k} -> {}", v.as_str().unwrap_or(""))
+                                    })
+                                    .collect()
+                            }
+                        })
+                    }
                     "buffer.get" => format!("\n{}", res["data"].as_str().unwrap_or("")),
                     "pane.capture" => format!(
                         "\n{}",

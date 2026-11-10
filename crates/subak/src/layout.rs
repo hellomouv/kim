@@ -142,15 +142,45 @@ pub enum Preset {
     EvenVertical,
     /// Rows of equal panes: as many columns as the square root of the count, rounded up.
     Tiled,
+    /// Step 25: the first pane across the top ([`MAIN_PANE_HEIGHT`] rows), the others side by
+    /// side below it (`main-horizontal`); mirrored: the main pane at the bottom.
+    MainHorizontal,
+    MainHorizontalMirrored,
+    /// Step 25: the first pane on the left ([`MAIN_PANE_WIDTH`] columns), the others stacked on
+    /// its right (`main-vertical`); mirrored: the main pane on the right.
+    MainVertical,
+    MainVerticalMirrored,
 }
 
+/// tmux's `main-pane-width` and `main-pane-height` defaults (cells), clamped to the window.
+pub const MAIN_PANE_WIDTH: u16 = 80;
+pub const MAIN_PANE_HEIGHT: u16 = 24;
+
 impl Preset {
+    /// tmux's order of `next-layout`.
+    pub const CYCLE: [Preset; 7] = [
+        Preset::EvenHorizontal,
+        Preset::EvenVertical,
+        Preset::MainHorizontal,
+        Preset::MainHorizontalMirrored,
+        Preset::MainVertical,
+        Preset::MainVerticalMirrored,
+        Preset::Tiled,
+    ];
+
     pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "even-horizontal" => Some(Self::EvenHorizontal),
-            "even-vertical" => Some(Self::EvenVertical),
-            "tiled" => Some(Self::Tiled),
-            _ => None,
+        Self::CYCLE.into_iter().find(|p| p.name() == s)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::EvenHorizontal => "even-horizontal",
+            Self::EvenVertical => "even-vertical",
+            Self::Tiled => "tiled",
+            Self::MainHorizontal => "main-horizontal",
+            Self::MainHorizontalMirrored => "main-horizontal-mirrored",
+            Self::MainVertical => "main-vertical",
+            Self::MainVerticalMirrored => "main-vertical-mirrored",
         }
     }
 }
@@ -161,6 +191,8 @@ pub struct Layout {
     root: Node,
     size: (u16, u16),
     zoomed: Option<String>,
+    /// Step 25: the preset last applied (for `next-layout`), until the tree changes otherwise.
+    preset: Option<Preset>,
 }
 
 impl Layout {
@@ -170,7 +202,42 @@ impl Layout {
             root: Node::Pane(pane.to_string()),
             size: (size.0.max(MIN_COLS), size.1.max(MIN_ROWS)),
             zoomed: None,
+            preset: None,
         }
+    }
+
+    /// Step 25 (`next-layout`, `previous-layout`): the next or previous preset of tmux's cycle.
+    pub fn cycle(&mut self, forward: bool) -> Preset {
+        let n = Preset::CYCLE.len();
+        let next = match self
+            .preset
+            .and_then(|p| Preset::CYCLE.iter().position(|q| *q == p))
+        {
+            Some(i) if forward => Preset::CYCLE[(i + 1) % n],
+            Some(i) => Preset::CYCLE[(i + n - 1) % n],
+            None if forward => Preset::CYCLE[0],
+            None => Preset::CYCLE[n - 1],
+        };
+        self.preset(next);
+        next
+    }
+
+    /// Step 25 (`select-layout -E`): every split shares its space equally among its children.
+    pub fn spread(&mut self) {
+        fn ones(n: &mut Node) {
+            if let Node::Split { children, .. } = n {
+                for c in children.iter_mut() {
+                    c.size = 1;
+                    ones(&mut c.node);
+                }
+            }
+        }
+        self.zoomed = None;
+        ones(&mut self.root);
+        let size = self.size;
+        fit(&mut self.root, Dir::Horizontal, size.0);
+        fit(&mut self.root, Dir::Vertical, size.1);
+        self.preset = None;
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -450,6 +517,68 @@ impl Layout {
                 dir: Dir::Vertical,
                 children: order.iter().map(leaf).collect(),
             },
+            Preset::MainHorizontal
+            | Preset::MainHorizontalMirrored
+            | Preset::MainVertical
+            | Preset::MainVerticalMirrored => {
+                let vertical = matches!(p, Preset::MainVertical | Preset::MainVerticalMirrored);
+                let mirrored = matches!(
+                    p,
+                    Preset::MainHorizontalMirrored | Preset::MainVerticalMirrored
+                );
+                let (main_dir, rest_dir) = if vertical {
+                    (Dir::Horizontal, Dir::Vertical)
+                } else {
+                    (Dir::Vertical, Dir::Horizontal)
+                };
+                // The main pane stays the main pane from one main-* preset to the next (a
+                // mirrored one put it last); otherwise it is the first pane.
+                let main_id = match self.preset {
+                    Some(Preset::MainHorizontalMirrored | Preset::MainVerticalMirrored) => {
+                        order[order.len() - 1].clone()
+                    }
+                    _ => order[0].clone(),
+                };
+                let rest: Vec<Child> = order
+                    .iter()
+                    .filter(|id| **id != main_id)
+                    .map(leaf)
+                    .collect();
+                let others = if rest.len() == 1 {
+                    rest.into_iter().next().map(|c| c.node).expect("one pane")
+                } else {
+                    Node::Split {
+                        dir: rest_dir,
+                        children: rest,
+                    }
+                };
+                let total = main_dir.along(self.size);
+                let want = if vertical {
+                    MAIN_PANE_WIDTH
+                } else {
+                    MAIN_PANE_HEIGHT
+                };
+                let room = total.saturating_sub(1);
+                let main_size = want
+                    .min(room.saturating_sub(main_dir.min()))
+                    .max(main_dir.min());
+                let main = Child {
+                    size: main_size,
+                    node: Node::Pane(main_id),
+                };
+                let others = Child {
+                    size: room.saturating_sub(main_size).max(1),
+                    node: others,
+                };
+                Node::Split {
+                    dir: main_dir,
+                    children: if mirrored {
+                        vec![others, main]
+                    } else {
+                        vec![main, others]
+                    },
+                }
+            }
             Preset::Tiled => {
                 let n = order.len();
                 let cols = (1..=n).find(|c| c * c >= n).unwrap_or(n);
@@ -482,6 +611,7 @@ impl Layout {
         fit(&mut self.root, Dir::Horizontal, size.0);
         fit(&mut self.root, Dir::Vertical, size.1);
         self.size = size;
+        self.preset = Some(p);
     }
 
     /// The pane next to `pane` towards `side` (tmux `select-pane -L/-R/-U/-D`): among the panes
@@ -1172,7 +1302,55 @@ mod tests {
         l.preset(Preset::Tiled);
         check(&l);
         assert_eq!(Preset::parse("tiled"), Some(Preset::Tiled));
-        assert_eq!(Preset::parse("main-vertical"), None);
+        assert_eq!(Preset::parse("spiral"), None);
+    }
+
+    #[test]
+    fn main_presets_cycle_and_spread() {
+        let mut l = Layout::new("a", (200, 60));
+        l.split("a", "b", Dir::Horizontal, false, None).unwrap();
+        l.split("b", "c", Dir::Vertical, false, None).unwrap();
+        l.preset(Preset::MainVertical);
+        assert_eq!(l.rect("a").unwrap(), r(0, 0, 80, 60), "main-pane-width");
+        assert_eq!(l.rect("b").unwrap().x, 81);
+        assert_eq!(l.rect("b").unwrap().cols, 119);
+        check(&l);
+        l.preset(Preset::MainVerticalMirrored);
+        assert_eq!(l.rect("a").unwrap().x, 120);
+        l.preset(Preset::MainHorizontal);
+        assert_eq!(l.rect("a").unwrap(), r(0, 0, 200, 24), "main-pane-height");
+        assert_eq!(l.rect("b").unwrap().y, 25);
+        l.preset(Preset::MainHorizontalMirrored);
+        assert_eq!(l.rect("a").unwrap().y, 36);
+        check(&l);
+        // next-layout follows tmux's order and wraps.
+        assert_eq!(l.cycle(true), Preset::MainVertical);
+        assert_eq!(l.cycle(true), Preset::MainVerticalMirrored);
+        assert_eq!(l.cycle(true), Preset::Tiled);
+        assert_eq!(l.cycle(true), Preset::EvenHorizontal);
+        assert_eq!(l.cycle(false), Preset::Tiled);
+        // A small window: the main pane gives way so the others keep their minimum.
+        let mut s = Layout::new("a", (20, 8));
+        s.split("a", "b", Dir::Horizontal, false, None).unwrap();
+        s.preset(Preset::MainVertical);
+        check(&s);
+        assert!(s.rect("b").unwrap().cols >= MIN_COLS);
+        // Spread: every split equal.
+        let mut e = Layout::new("a", (101, 30));
+        e.split("a", "b", Dir::Horizontal, false, Some(Amount::Cells(10)))
+            .unwrap();
+        e.split("a", "c", Dir::Horizontal, false, Some(Amount::Cells(10)))
+            .unwrap();
+        e.spread();
+        let w: Vec<u16> = e.rects().iter().map(|x| x.1.cols).collect();
+        assert!(
+            w.iter().max().unwrap() - w.iter().min().unwrap() <= 1,
+            "{w:?}"
+        );
+        assert_eq!(
+            Preset::parse("main-horizontal-mirrored"),
+            Some(Preset::MainHorizontalMirrored)
+        );
     }
 
     #[test]

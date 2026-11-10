@@ -483,6 +483,8 @@ struct App {
     help: Option<usize>,
     /// Step 24: what the help view shows instead of the keys (a command's answer).
     info_lines: Option<Vec<String>>,
+    /// Step 25: a `display-message` waiting for the Terminal's topology (pane, message).
+    format_req: Option<(Option<String>, String)>,
     /// Step 24: the command prompt (`Ctrl+B :`) while it is open, and the lines run before.
     prompt: Option<PromptUi>,
     prompt_history: Vec<String>,
@@ -1283,6 +1285,22 @@ impl App {
                     // SAFETY: posts the close message (a detach) to our own window.
                     unsafe { PostMessageW(self.hwnd, WM_CLOSE, 0, 0) };
                 }
+                Ok(Plan::Text(text)) => {
+                    self.show_answer("text", &json!({"text": text}));
+                }
+                Ok(Plan::Format {
+                    terminal,
+                    pane: target_pane,
+                    message,
+                    ..
+                }) => {
+                    // The shown pane when no pane was named.
+                    self.format_req = Some((target_pane.or_else(|| pane.clone()), message));
+                    let fx = self
+                        .model
+                        .host_op("pane.list", json!({"target": terminal}), true);
+                    self.apply(fx);
+                }
                 Ok(Plan::Relative { delta, .. }) => self.window_action(if delta > 0 {
                     Action::WindowNext
                 } else {
@@ -1307,6 +1325,8 @@ impl App {
                             | "buffer.list"
                             | "buffer.get"
                             | "pane.capture"
+                            | "window.options"
+                            | "hook.list"
                     );
                     let fx = self.model.host_op(method, params, show);
                     self.apply(fx);
@@ -1317,7 +1337,19 @@ impl App {
 
     /// Step 24: a command's answer in the help view.
     fn show_answer(&mut self, method: &str, r: &Value) {
+        if method == "pane.list"
+            && let Some((pane, message)) = self.format_req.take()
+        {
+            // Step 25: `display-message` shows its expanded text in the banner.
+            let v = crate::tmuxcmd::vars(r, pane.as_deref());
+            self.notice = Some(crate::tmuxcmd::format(&message, &v));
+            self.rebuild_banner();
+            return;
+        }
         let name = match method {
+            "text" => "list-commands",
+            "window.options" => "show-options",
+            "hook.list" => "show-hooks",
             "pane.list" => "list-panes",
             "window.list" => "list-windows",
             "terminal.list" => "list-sessions",
@@ -1331,6 +1363,26 @@ impl App {
             "pane.list" | "window.list" => crate::topology_table(r, method == "pane.list"),
             "buffer.list" => crate::buffer_table(r).trim_start().to_string(),
             "buffer.get" => r["data"].as_str().unwrap_or("").to_string(),
+            "text" => r["text"].as_str().unwrap_or("").to_string(),
+            "window.options" => r["options"]
+                .as_object()
+                .map(|o| {
+                    o.iter()
+                        .map(|(k, v)| format!("{k} {}", if v == true { "on" } else { "off" }))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default(),
+            "hook.list" => r["hooks"]
+                .as_object()
+                .map(|o| {
+                    o.iter()
+                        .map(|(k, v)| format!("{k} -> {}", v.as_str().unwrap_or("")))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "(no hooks)".into()),
             "pane.capture" => r["lines"]
                 .as_array()
                 .map(|l| {
@@ -2799,10 +2851,14 @@ impl App {
             Some(t) if self.model.phase.shows_pane() => {
                 let program = self.pane.screen().title().trim().to_string();
                 // Step 21: which internal window and pane is shown, when there are several.
-                let name = match &t.place {
+                let mut name = match &t.place {
                     Some(p) => format!("{} [{p}]", t.name),
                     None => t.name.clone(),
                 };
+                // Step 25: tmux's status line window list with its alert flags.
+                if let Some(s) = &t.status {
+                    name = format!("{name} {{{s}}}");
+                }
                 if program.is_empty() || program == t.name {
                     format!("{name} — Subak")
                 } else {
@@ -3380,6 +3436,37 @@ impl App {
                 ("window.select_layout", json!({"layout": "even-vertical"}))
             }
             Action::LayoutTiled => ("window.select_layout", json!({"layout": "tiled"})),
+            Action::LayoutMainHorizontal => {
+                ("window.select_layout", json!({"layout": "main-horizontal"}))
+            }
+            Action::LayoutMainVertical => {
+                ("window.select_layout", json!({"layout": "main-vertical"}))
+            }
+            Action::LayoutNext => ("window.select_layout", json!({"layout": "next"})),
+            Action::LayoutMainHorizontalMirrored => (
+                "window.select_layout",
+                json!({"layout": "main-horizontal-mirrored"}),
+            ),
+            Action::LayoutMainVerticalMirrored => (
+                "window.select_layout",
+                json!({"layout": "main-vertical-mirrored"}),
+            ),
+            Action::LayoutSpread => ("window.select_layout", json!({"layout": "spread"})),
+            Action::PaneLast => {
+                let Some(tid) = self.model.terminal().map(|t| t.id.clone()) else {
+                    return;
+                };
+                ("pane.select", json!({"target": format!("{tid}:.{{last}}")}))
+            }
+            Action::WindowLast => {
+                let Some(tid) = self.model.terminal().map(|t| t.id.clone()) else {
+                    return;
+                };
+                (
+                    "window.select",
+                    json!({"target": format!("{tid}:{{last}}")}),
+                )
+            }
             Action::PaneResizeUp5 => ("pane.adjust", json!({"direction": "up", "cells": 5})),
             Action::PaneResizeDown5 => ("pane.adjust", json!({"direction": "down", "cells": 5})),
             Action::PaneResizeLeft5 => ("pane.adjust", json!({"direction": "left", "cells": 5})),
@@ -3414,6 +3501,14 @@ impl App {
             | Action::LayoutEvenHorizontal
             | Action::LayoutEvenVertical
             | Action::LayoutTiled
+            | Action::LayoutMainHorizontal
+            | Action::LayoutMainVertical
+            | Action::LayoutNext
+            | Action::LayoutMainHorizontalMirrored
+            | Action::LayoutMainVerticalMirrored
+            | Action::LayoutSpread
+            | Action::PaneLast
+            | Action::WindowLast
             | Action::PaneResizeUp5
             | Action::PaneResizeDown5
             | Action::PaneResizeLeft5
@@ -3441,6 +3536,8 @@ impl App {
             }
             Action::SendPrefix => self.send_prefix(),
             Action::CommandPrompt => self.open_prompt(),
+            // Step 25, tmux `C-b i`: the default `display-message` in the banner.
+            Action::WindowInfo => self.run_prompt("display-message"),
             Action::CopyEnter => self.enter_copy_mode(),
             Action::CopyExit => self.leave_copy_mode(),
             Action::CopyBeginSelection => {
@@ -6241,6 +6338,7 @@ pub fn run(o: Options) -> ExitCode {
         border_drag: None,
         help: None,
         info_lines: None,
+        format_req: None,
         prompt: None,
         prompt_history: Vec::new(),
         copy_mode: false,

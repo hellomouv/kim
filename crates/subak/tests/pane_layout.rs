@@ -563,7 +563,7 @@ fn rotate_and_basic_layouts_rearrange_without_ending_anything() {
         Some("result_layout"),
     );
     assert_eq!(d["would_change"]["changed"], true);
-    s.fails(&["window", "layout", "rot", "main-vertical"], "usage");
+    s.fails(&["window", "layout", "rot", "spiral"], "usage");
     s.fails(&["window", "rotate", "rot", "sideways"], "usage");
     for p in pids {
         assert!(alive(p));

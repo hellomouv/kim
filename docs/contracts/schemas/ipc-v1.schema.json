@@ -148,6 +148,8 @@
         {"$ref": "#/$defs/event_pane_removed"},
         {"$ref": "#/$defs/event_pane_selected"},
         {"$ref": "#/$defs/event_window_layout"},
+        {"$ref": "#/$defs/event_window_alert"},
+        {"$ref": "#/$defs/event_window_options"},
         {"$ref": "#/$defs/event_other"}
       ]
     },
@@ -177,13 +179,57 @@
               "pane.created",
               "pane.removed",
               "pane.selected",
-              "window.layout"
+              "window.layout",
+              "window.alert",
+              "window.options"
             ]
           }
         },
         "data": {"type": "object"}
       }
     },
+    "event_window_alert": {
+      "description": "Step 25: output (monitor-activity) or a bell (monitor-bell) in a window that is not shown; once until the window is shown again.",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "window.alert"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "window_id", "pane_id", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "window_id": {"$ref": "#/$defs/window_id"},
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "kind": {"enum": ["activity", "bell"]}
+          }
+        }
+      }
+    },
+    "event_window_options": {
+      "description": "Step 25: a window's options changed (window.set_option).",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "window.options"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "window_id", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "window_id": {"$ref": "#/$defs/window_id"},
+            "options": {"$ref": "#/$defs/window_options"}
+          }
+        }
+      }
+    },
+    "window_options": {"type": "object", "required": ["synchronize-panes", "monitor-activity", "monitor-bell"], "additionalProperties": false, "properties": {"synchronize-panes": {"type": "boolean"}, "monitor-activity": {"type": "boolean"}, "monitor-bell": {"type": "boolean"}}},
     "event_window_layout": {
       "type": "object",
       "required": ["type", "seq", "event", "data"],
@@ -614,6 +660,19 @@
           "description": "Step 22: the zoomed pane, which fills the window while the others keep their places unseen; null when none. Hosts before Step 22 omit it.",
           "anyOf": [{"$ref": "#/$defs/pane_id"}, {"type": "null"}]
         },
+        "options": {
+          "description": "Step 25: the window's tmux options. Hosts before Step 25 omit it.",
+          "type": "object",
+          "required": ["synchronize-panes", "monitor-activity", "monitor-bell"],
+          "additionalProperties": false,
+          "properties": {
+            "synchronize-panes": {"type": "boolean"},
+            "monitor-activity": {"type": "boolean"},
+            "monitor-bell": {"type": "boolean"}
+          }
+        },
+        "activity": {"description": "Step 25: output while the window was not shown (monitor-activity).", "type": "boolean"},
+        "bell": {"description": "Step 25: a bell while the window was not shown (monitor-bell).", "type": "boolean"},
         "panes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pane"}}
       }
     },
@@ -691,6 +750,7 @@
         "busy": {"type": "boolean"},
         "clients": {"type": "integer", "minimum": 0},
         "active_window": {"$ref": "#/$defs/window_id"},
+        "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}},
         "failure": {
           "anyOf": [
@@ -1046,6 +1106,29 @@
         "preview": {"type": "string"}
       }
     },
+    "result_window_options": {
+      "description": "Step 25: window.options (tmux show-window-options) and window.set_option (set-window-option; `option` and `value` are the one set).",
+      "type": "object",
+      "required": ["terminal_id", "window_id", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "terminal_id": {"$ref": "#/$defs/terminal_id"},
+        "window_id": {"$ref": "#/$defs/window_id"},
+        "option": {"enum": ["synchronize-panes", "monitor-activity", "monitor-bell"]},
+        "value": {"type": "boolean"},
+        "options": {"$ref": "#/$defs/window_options"}
+      }
+    },
+    "result_hooks": {
+      "description": "Step 25: hook.set and hook.list (tmux set-hook, show-hooks): hook name to the tmux command line the Host runs after its event; hook.list also names the hooks Subak has.",
+      "type": "object",
+      "required": ["hooks"],
+      "additionalProperties": false,
+      "properties": {
+        "hooks": {"description": "At most 32.", "type": "object", "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 1024}},
+        "available": {"type": "array", "items": {"type": "string"}}
+      }
+    },
     "result_buffer_list": {
       "description": "Step 24: buffer.list (tmux list-buffers), newest first; buffers live in the Host's memory only.",
       "type": "object",
@@ -1105,6 +1188,7 @@
         "name": {"$ref": "#/$defs/terminal_name"},
         "state": {"$ref": "#/$defs/terminal_state"},
         "active_window": {"$ref": "#/$defs/window_id"},
+        "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}}
       }
     },

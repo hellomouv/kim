@@ -274,6 +274,36 @@ pub enum Command {
     ShowBuffer {
         buffer: Option<String>,
     },
+    // Step 25.
+    SetWindowOption {
+        target: Option<String>,
+        option: String,
+        value: Option<bool>,
+    },
+    ShowWindowOptions {
+        target: Option<String>,
+    },
+    LastWindow {
+        target: Option<String>,
+    },
+    LastPane {
+        target: Option<String>,
+    },
+    NextLayout {
+        target: Option<String>,
+        forward: bool,
+    },
+    DisplayMessage {
+        target: Option<String>,
+        print: bool,
+        message: String,
+    },
+    SetHook {
+        name: String,
+        command: Option<String>,
+    },
+    ShowHooks,
+    ListCommands,
 }
 
 impl Command {
@@ -310,11 +340,20 @@ impl Command {
             Self::DeleteBuffer { .. } => "delete-buffer",
             Self::ListBuffers => "list-buffers",
             Self::ShowBuffer { .. } => "show-buffer",
+            Self::SetWindowOption { .. } => "set-window-option",
+            Self::ShowWindowOptions { .. } => "show-window-options",
+            Self::LastWindow { .. } => "last-window",
+            Self::LastPane { .. } => "last-pane",
+            Self::NextLayout { forward: true, .. } => "next-layout",
+            Self::NextLayout { .. } => "previous-layout",
+            Self::DisplayMessage { .. } => "display-message",
+            Self::SetHook { .. } => "set-hook",
+            Self::ShowHooks => "show-hooks",
+            Self::ListCommands => "list-commands",
         }
     }
 
-    /// Ends processes (the CLI asks, or needs `--yes`).
-    #[cfg(test)]
+    /// Ends processes (the CLI asks, or needs `--yes`; a hook may not contain one).
     pub fn destructive(&self) -> bool {
         matches!(
             self,
@@ -355,6 +394,17 @@ pub const COMMANDS: &[(&str, &[&str])] = &[
     ("delete-buffer", &["deleteb"]),
     ("list-buffers", &["lsb"]),
     ("show-buffer", &["showb"]),
+    // Step 25.
+    ("set-window-option", &["setw", "set-option", "set"]),
+    ("show-window-options", &["showw", "show-options", "show"]),
+    ("last-window", &["last"]),
+    ("last-pane", &["lastp"]),
+    ("next-layout", &["nextl"]),
+    ("previous-layout", &["prevl"]),
+    ("display-message", &["display"]),
+    ("set-hook", &[]),
+    ("show-hooks", &[]),
+    ("list-commands", &["lscm"]),
 ];
 
 /// The canonical name of `word`, or `None`.
@@ -404,7 +454,7 @@ fn spec(name: &str) -> Spec {
         "resize-pane" => s("LRUDZ", "t", Rest::Optional),
         "swap-pane" => s("UD", "st", Rest::None),
         "rotate-window" => s("UD", "t", Rest::None),
-        "select-layout" => s("", "t", Rest::One),
+        "select-layout" => s("Enp", "t", Rest::Optional),
         "break-pane" => s("d", "sn", Rest::None),
         "join-pane" => s("hvbd", "lst", Rest::None),
         "send-keys" => s("l", "t", Rest::Many),
@@ -413,6 +463,13 @@ fn spec(name: &str) -> Spec {
         "paste-buffer" => s("d", "bt", Rest::None),
         "set-buffer" => s("a", "b", Rest::One),
         "delete-buffer" | "show-buffer" => s("", "b", Rest::None),
+        "set-window-option" => s("wgqu", "t", Rest::Many),
+        "show-window-options" => s("wgv", "t", Rest::Optional),
+        "last-window" | "last-pane" | "next-layout" | "previous-layout" => s("", "t", Rest::None),
+        "display-message" => s("p", "t", Rest::Optional),
+        "set-hook" => s("gu", "t", Rest::Many),
+        "show-hooks" => s("g", "t", Rest::None),
+        "list-commands" => s("", "", Rest::None),
         _ => s("", "", Rest::None),
     }
 }
@@ -460,19 +517,16 @@ fn size(v: &str) -> Result<Size, Error> {
 
 /// A target as Subak reads it; tmux's relative and special forms are refused (never guessed).
 fn target(v: &str) -> Result<String, Error> {
-    let special = v.starts_with(['{', '!', '%', '@', '$', '=', '~'])
-        || v.contains(['{', '}'])
-        || v.ends_with([':', '.'])
-        || v.contains(":+")
-        || v.contains(":-")
-        || v.contains(".+")
-        || v.contains(".-");
+    // Step 25: tmux's tokens work after a Terminal (`work:{last}`, `work:+1`, `work:1.{left-of}`,
+    // `work:.!`); a target never starts with one, and tmux's own ids (`%3`, `@1`, `$0`), `=` and
+    // `~` are refused: Subak never guesses which Terminal is meant.
+    let special = v.starts_with(['{', '!', '%', '@', '$', '=', '~', '+', '-', '.', ':', '^']);
     if v.is_empty() || special {
         return Err(Error::new(
             "bad_target",
             format!("the target `{v}` is not one Subak reads"),
         )
-        .hint("name a Terminal, `terminal:window`, `terminal:window.pane` or an id (t-/w-/p-…); tmux's relative forms are not supported"));
+        .hint("name a Terminal first: `work`, `work:1`, `work:1.0`, `work:{last}`, `work:.{left-of}`, or an id (t-/w-/p-…)"));
     }
     Ok(v.to_string())
 }
@@ -692,16 +746,116 @@ fn parse_one(words: &[String]) -> Result<Command, Error> {
             down: has('D'),
         },
         "select-layout" => {
-            let l = one();
-            if !matches!(l.as_str(), "even-horizontal" | "even-vertical" | "tiled") {
-                return Err(Error::new("bad_value", format!("unknown layout `{l}`"))
-                    .hint("even-horizontal, even-vertical or tiled (more presets with Step 25)"));
+            let l = if has('E') {
+                "spread".to_string()
+            } else if has('n') {
+                "next".to_string()
+            } else if has('p') {
+                "previous".to_string()
+            } else {
+                one()
+            };
+            if !matches!(
+                l.as_str(),
+                "even-horizontal"
+                    | "even-vertical"
+                    | "main-horizontal"
+                    | "main-horizontal-mirrored"
+                    | "main-vertical"
+                    | "main-vertical-mirrored"
+                    | "tiled"
+                    | "spread"
+                    | "next"
+                    | "previous"
+            ) {
+                return Err(Error::new("bad_value", format!("unknown layout `{l}`")).hint(
+                    "even-horizontal, even-vertical, main-horizontal, main-vertical (-mirrored), tiled; -E spreads, -n/-p cycle (layout strings are not supported yet)",
+                ));
             }
             Command::SelectLayout {
                 target: t('t')?,
                 layout: l,
             }
         }
+        "set-window-option" => {
+            if has('g') {
+                return Err(Error::new(
+                    "unsupported_flag",
+                    "global options (-g) are not supported; set the option on a window",
+                ));
+            }
+            let (option, value) = match rest.as_slice() {
+                [o] if has('u') => (o.clone(), Some(false)),
+                [o] => (o.clone(), None),
+                [o, v] => (
+                    o.clone(),
+                    Some(match v.as_str() {
+                        "on" | "1" | "yes" | "true" => true,
+                        "off" | "0" | "no" | "false" => false,
+                        _ => {
+                            return Err(Error::new("bad_value", format!("invalid value `{v}`"))
+                                .hint("on or off (omit it to toggle)"));
+                        }
+                    }),
+                ),
+                _ => {
+                    return Err(Error::new(
+                        "missing_argument",
+                        "set-window-option takes an option and on/off",
+                    ));
+                }
+            };
+            if !matches!(
+                option.as_str(),
+                "synchronize-panes" | "monitor-activity" | "monitor-bell"
+            ) {
+                return Err(Error::new("bad_value", format!("unknown option `{option}`"))
+                    .hint("synchronize-panes, monitor-activity, monitor-bell (more options are listed in TMUX_COMPATIBILITY §9)"));
+            }
+            Command::SetWindowOption {
+                target: t('t')?,
+                option,
+                value,
+            }
+        }
+        "show-window-options" => Command::ShowWindowOptions { target: t('t')? },
+        "last-window" => Command::LastWindow { target: t('t')? },
+        "last-pane" => Command::LastPane { target: t('t')? },
+        "next-layout" => Command::NextLayout {
+            target: t('t')?,
+            forward: true,
+        },
+        "previous-layout" => Command::NextLayout {
+            target: t('t')?,
+            forward: false,
+        },
+        "display-message" => Command::DisplayMessage {
+            target: t('t')?,
+            print: has('p'),
+            message: rest.first().cloned().unwrap_or_else(|| {
+                "[#{session_name}] #{window_index}:#{window_name} pane #{pane_index}".into()
+            }),
+        },
+        "set-hook" => {
+            let name = rest
+                .first()
+                .cloned()
+                .ok_or_else(|| Error::new("missing_argument", "set-hook needs a hook name"))?;
+            let command = if has('u') {
+                None
+            } else {
+                Some(rest[1..].join(" ")).filter(|c| !c.is_empty())
+            };
+            if !has('u') && command.is_none() {
+                return Err(Error::new(
+                    "missing_argument",
+                    "set-hook needs a command (or -u to remove the hook)",
+                ));
+            }
+            Command::SetHook { name, command }
+        }
+        "show-hooks" => Command::ShowHooks,
+        "list-commands" => Command::ListCommands,
         "break-pane" => Command::BreakPane {
             source: t('s')?,
             name: val('n'),
@@ -763,6 +917,17 @@ pub enum Plan {
     Relative { terminal: String, delta: i64 },
     /// Done by the window itself (copy mode, detach); refused by `subak command`.
     Local(&'static str),
+    /// Step 25: a message (`display-message`) expanded with the formats of a Terminal's pane:
+    /// the caller reads `terminal` (`terminal.info`) and expands `message` for `pane` (a target
+    /// part or id; `None`: the active pane).
+    Format {
+        terminal: String,
+        pane: Option<String>,
+        message: String,
+        print: bool,
+    },
+    /// Step 25: text the caller shows as it is (`list-commands`).
+    Text(String),
 }
 
 fn need(v: Option<&String>, what: &str) -> Result<String, Error> {
@@ -975,7 +1140,259 @@ pub fn plan(cmd: &Command, ctx: &Context) -> Result<Plan, Error> {
         Command::DeleteBuffer { buffer } => req("buffer.delete", json!({"name": buffer})),
         Command::ListBuffers => req("buffer.list", json!({})),
         Command::ShowBuffer { buffer } => req("buffer.get", json!({"name": buffer})),
+        Command::SetWindowOption {
+            target,
+            option,
+            value,
+        } => req(
+            "window.set_option",
+            json!({"target": window(target)?, "option": option, "value": value}),
+        ),
+        Command::ShowWindowOptions { target } => {
+            req("window.options", json!({"target": window(target)?}))
+        }
+        Command::LastWindow { target } => req(
+            "window.select",
+            json!({"target": format!("{}:{{last}}", terminal(target)?)}),
+        ),
+        Command::LastPane { target } => req(
+            "pane.select",
+            json!({"target": format!("{}:.{{last}}", terminal(target)?)}),
+        ),
+        Command::NextLayout { target, forward } => req(
+            "window.select_layout",
+            json!({"target": window(target)?, "layout": if *forward { "next" } else { "previous" }}),
+        ),
+        Command::DisplayMessage {
+            target,
+            print,
+            message,
+        } => {
+            let (term, pane) = match target {
+                Some(t) if !t.starts_with("p-") && !t.starts_with("w-") => (
+                    t.split(':').next().unwrap_or(t).to_string(),
+                    t.split_once(':').map(|(_, r)| r.to_string()),
+                ),
+                Some(id) => (terminal(&None)?, Some(id.clone())),
+                None => (
+                    terminal(&None)?,
+                    ctx.pane.clone().filter(|p| p.starts_with("p-")),
+                ),
+            };
+            Plan::Format {
+                terminal: term,
+                pane,
+                message: message.clone(),
+                print: *print,
+            }
+        }
+        Command::SetHook { name, command } => {
+            req("hook.set", json!({"name": name, "command": command}))
+        }
+        Command::ShowHooks => req("hook.list", json!({})),
+        Command::ListCommands => Plan::Text(
+            COMMANDS
+                .iter()
+                .map(|(n, a)| {
+                    if a.is_empty() {
+                        (*n).to_string()
+                    } else {
+                        format!("{n} ({})", a.join(", "))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
     })
+}
+
+/// Step 25: the format variables of one pane of a Terminal object (`terminal.info`): the pane
+/// named by `pane` (`p-…`, or `window.pane`/`window` after the Terminal), else the active one.
+pub fn vars(
+    t: &serde_json::Value,
+    pane: Option<&str>,
+) -> std::collections::BTreeMap<String, String> {
+    let windows = t["windows"].as_array().cloned().unwrap_or_default();
+    let active_w = t["active_window"].as_str().unwrap_or("");
+    let (wi, pi) = pick(&windows, active_w, pane);
+    let w = &windows[wi];
+    let panes = w["panes"].as_array().cloned().unwrap_or_default();
+    let p = &panes[pi];
+    let mut v = std::collections::BTreeMap::new();
+    let s = |x: &serde_json::Value| match x {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    };
+    let flag = |b: bool| if b { "1" } else { "0" }.to_string();
+    let w_active = w["id"].as_str() == Some(active_w);
+    let mut flags = String::new();
+    if w_active {
+        flags.push('*');
+    } else if t["last_window"].is_string() && w["id"] == t["last_window"] {
+        flags.push('-');
+    }
+    if w["activity"] == true {
+        flags.push('#');
+    }
+    if w["bell"] == true {
+        flags.push('!');
+    }
+    if !w["zoomed"].is_null() {
+        flags.push('Z');
+    }
+    let program = p["executable"]
+        .as_str()
+        .or_else(|| p["command"]["program"].as_str())
+        .unwrap_or("");
+    let program = program.rsplit(['\\', '/']).next().unwrap_or(program);
+    for (k, val) in [
+        ("session_name", s(&t["name"])),
+        (
+            "session_id",
+            s(if t["id"].is_null() {
+                &t["terminal_id"]
+            } else {
+                &t["id"]
+            }),
+        ),
+        ("session_windows", windows.len().to_string()),
+        ("window_index", s(&w["index"])),
+        ("window_name", s(&w["name"])),
+        ("window_id", s(&w["id"])),
+        ("window_panes", panes.len().to_string()),
+        ("window_active", flag(w_active)),
+        ("window_flags", flags),
+        ("window_zoomed_flag", flag(!w["zoomed"].is_null())),
+        ("window_activity_flag", flag(w["activity"] == true)),
+        ("window_bell_flag", flag(w["bell"] == true)),
+        ("window_width", s(&w["size"]["cols"])),
+        ("window_height", s(&w["size"]["rows"])),
+        ("pane_index", s(&p["index"])),
+        ("pane_id", s(&p["id"])),
+        ("pane_pid", s(&p["pid"])),
+        ("pane_width", s(&p["size"]["cols"])),
+        ("pane_height", s(&p["size"]["rows"])),
+        ("pane_left", s(&p["rect"]["x"])),
+        ("pane_top", s(&p["rect"]["y"])),
+        ("pane_active", flag(w["active_pane"] == p["id"])),
+        (
+            "pane_current_command",
+            program.trim_end_matches(".exe").to_string(),
+        ),
+        (
+            "pane_synchronized",
+            flag(w["options"]["synchronize-panes"] == true),
+        ),
+        ("pane_dead", flag(p["running"] == false)),
+    ] {
+        v.insert(k.to_string(), val);
+    }
+    v
+}
+
+/// The window and pane positions a format is about.
+fn pick(windows: &[serde_json::Value], active_w: &str, pane: Option<&str>) -> (usize, usize) {
+    let active = |ws: &[serde_json::Value], wi: usize| {
+        ws[wi]["panes"]
+            .as_array()
+            .and_then(|ps| ps.iter().position(|p| p["id"] == ws[wi]["active_pane"]))
+            .unwrap_or(0)
+    };
+    let wa = windows
+        .iter()
+        .position(|w| w["id"] == active_w)
+        .unwrap_or(0);
+    let Some(target) = pane.filter(|p| !p.is_empty()) else {
+        return (wa, active(windows, wa));
+    };
+    for (wi, w) in windows.iter().enumerate() {
+        if let Some(pi) = w["panes"]
+            .as_array()
+            .and_then(|ps| ps.iter().position(|p| p["id"] == target))
+        {
+            return (wi, pi);
+        }
+    }
+    let (win, pn) = target
+        .split_once('.')
+        .map_or((target, None), |(a, b)| (a, Some(b)));
+    let wi = win
+        .parse::<u64>()
+        .ok()
+        .and_then(|n| windows.iter().position(|w| w["index"] == n))
+        .or_else(|| windows.iter().position(|w| w["name"] == win))
+        .unwrap_or(wa);
+    let pi = pn
+        .and_then(|n| n.parse::<u64>().ok())
+        .and_then(|n| {
+            windows[wi]["panes"]
+                .as_array()
+                .and_then(|ps| ps.iter().position(|p| p["index"] == n))
+        })
+        .unwrap_or_else(|| active(windows, wi));
+    (wi, pi)
+}
+
+/// Step 25: expands tmux formats: `#{name}`, `#{?name,yes,no}` (true when not empty and not
+/// `0`), the short forms `#S #I #W #P #D #F #T`, and `##`. Unknown names expand to nothing (as in
+/// tmux).
+pub fn format(fmt: &str, vars: &std::collections::BTreeMap<String, String>) -> String {
+    let get = |k: &str| vars.get(k).cloned().unwrap_or_default();
+    let mut out = String::new();
+    let chars: Vec<char> = fmt.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c != '#' || i + 1 >= chars.len() {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        let n = chars[i + 1];
+        i += 2;
+        match n {
+            '#' => out.push('#'),
+            'S' => out.push_str(&get("session_name")),
+            'I' => out.push_str(&get("window_index")),
+            'W' => out.push_str(&get("window_name")),
+            'P' => out.push_str(&get("pane_index")),
+            'D' => out.push_str(&get("pane_id")),
+            'F' => out.push_str(&get("window_flags")),
+            'T' => {}
+            '{' => {
+                let mut depth = 1;
+                let start = i;
+                while i < chars.len() && depth > 0 {
+                    match chars[i] {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                let body: String = chars[start..i.saturating_sub(1)].iter().collect();
+                if let Some(cond) = body.strip_prefix('?') {
+                    let mut parts = cond.splitn(3, ',');
+                    let (name, yes, no) = (
+                        parts.next().unwrap_or(""),
+                        parts.next().unwrap_or(""),
+                        parts.next().unwrap_or(""),
+                    );
+                    let v = get(name);
+                    let pick = if !v.is_empty() && v != "0" { yes } else { no };
+                    out.push_str(&format(pick, vars));
+                } else {
+                    out.push_str(&get(&body));
+                }
+            }
+            other => {
+                out.push('#');
+                out.push(other);
+            }
+        }
+    }
+    out
 }
 
 /// The bytes of one `send-keys` word (tmux key names): `Enter`, `Escape`, `Tab`, `BSpace`,
@@ -1231,7 +1648,7 @@ mod tests {
         assert_eq!(kind("rename-window a b"), "missing_argument");
         assert_eq!(kind("list-panes extra"), "extra_argument");
         assert_eq!(kind("swap-pane"), "missing_argument");
-        assert_eq!(kind("select-layout main-vertical"), "bad_value");
+        assert_eq!(kind("select-layout spiral"), "bad_value");
         assert_eq!(kind("send-keys -X cancel"), "unsupported_flag");
         let e = parse("split-window -f").unwrap_err();
         assert!(e.hint.unwrap().contains("Step 25"));
@@ -1302,6 +1719,115 @@ mod tests {
             panic!()
         };
         assert_eq!(method, "buffer.list");
+    }
+
+    #[test]
+    fn step_25_commands_tokens_and_formats() {
+        let ctx = Context {
+            terminal: Some("t-1".into()),
+            window: Some("w-1".into()),
+            pane: Some("p-1".into()),
+            yes: false,
+        };
+        let one = |l: &str| plan(&parse(l).unwrap()[0], &ctx).unwrap();
+        let Plan::Request { method, params } = one("setw synchronize-panes on") else {
+            panic!()
+        };
+        assert_eq!(
+            (method, params["value"].as_bool()),
+            ("window.set_option", Some(true))
+        );
+        let Plan::Request { params, .. } = one("set -w monitor-activity") else {
+            panic!()
+        };
+        assert!(params["value"].is_null(), "no value toggles");
+        let Plan::Request { method, params } = one("last-window") else {
+            panic!()
+        };
+        assert_eq!(
+            (method, params["target"].as_str()),
+            ("window.select", Some("t-1:{last}"))
+        );
+        let Plan::Request { params, .. } = one("lastp") else {
+            panic!()
+        };
+        assert_eq!(params["target"], "t-1:.{last}");
+        let Plan::Request { params, .. } = one("selectl -E") else {
+            panic!()
+        };
+        assert_eq!(params["layout"], "spread");
+        let Plan::Request { params, .. } = one("nextl") else {
+            panic!()
+        };
+        assert_eq!(params["layout"], "next");
+        let Plan::Request { params, .. } = one("select-layout main-vertical") else {
+            panic!()
+        };
+        assert_eq!(params["layout"], "main-vertical");
+        assert!(matches!(
+            one("display -p '#S'"),
+            Plan::Format { print: true, .. }
+        ));
+        let Plan::Request { method, params } =
+            one("set-hook after-split-window 'select-layout tiled'")
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (method, params["command"].as_str()),
+            ("hook.set", Some("select-layout tiled"))
+        );
+        let Plan::Request { params, .. } = one("set-hook -u alert-bell") else {
+            panic!()
+        };
+        assert!(params["command"].is_null());
+        assert!(matches!(one("lscm"), Plan::Text(t) if t.contains("split-window (splitw)")));
+        // Tokens after a Terminal pass; a bare token or tmux ids are refused.
+        assert!(parse("select-window -t 'work:{last}'").is_ok());
+        assert!(parse("select-pane -t work:.{left-of}").is_ok());
+        assert!(parse("select-window -t work:+1").is_ok());
+        assert_eq!(parse("select-window -t !").unwrap_err().kind, "bad_target");
+        assert_eq!(parse("select-pane -t %3").unwrap_err().kind, "bad_target");
+        assert_eq!(
+            parse("setw -g monitor-bell off").unwrap_err().kind,
+            "unsupported_flag"
+        );
+        assert_eq!(parse("setw status on").unwrap_err().kind, "bad_value");
+        assert_eq!(
+            parse("setw synchronize-panes maybe").unwrap_err().kind,
+            "bad_value"
+        );
+        assert_eq!(parse("set-hook").unwrap_err().kind, "missing_argument");
+        // Formats.
+        let t = serde_json::json!({"id": "t-1", "name": "work", "active_window": "w-1",
+        "windows": [{"id": "w-1", "index": 0, "name": "cmd", "active_pane": "p-2",
+            "zoomed": null, "activity": false, "bell": true,
+            "options": {"synchronize-panes": true}, "size": {"cols": 80, "rows": 24},
+            "panes": [
+                {"id": "p-1", "index": 0, "pid": 10, "size": {"cols": 40, "rows": 24}, "rect": {"x": 0, "y": 0}, "executable": "C:\\Windows\\cmd.exe", "running": true},
+                {"id": "p-2", "index": 1, "pid": 11, "size": {"cols": 39, "rows": 24}, "rect": {"x": 41, "y": 0}, "command": {"program": "pwsh.exe"}, "running": true}
+            ]}]});
+        let v = vars(&t, None);
+        assert_eq!(
+            format(
+                "#S:#I.#P #{pane_current_command} #{?pane_synchronized,sync,} ##",
+                &v
+            ),
+            "work:0.1 pwsh sync #"
+        );
+        assert_eq!(format("#{window_flags}", &v), "*!");
+        let v0 = vars(&t, Some("p-1"));
+        assert_eq!(
+            format(
+                "#{pane_width}x#{pane_height} #{?pane_active,yes,no} #{nope}",
+                &v0
+            ),
+            "40x24 no "
+        );
+        assert_eq!(
+            format("#{pane_current_command}", &vars(&t, Some("0.0"))),
+            "cmd"
+        );
     }
 
     #[test]

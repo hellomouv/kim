@@ -588,9 +588,11 @@ pub fn layout(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
         },
         Cmd::WindowLayout => {
             let l = second.unwrap_or("");
-            if !matches!(l, "even-horizontal" | "even-vertical" | "tiled") {
+            if crate::layout::Preset::parse(l).is_none()
+                && !matches!(l, "next" | "previous" | "spread")
+            {
                 return Err(CliError::usage(format!("unknown layout `{l}`"))
-                    .hint("even-horizontal, even-vertical or tiled (more presets with Step 25)"));
+                    .hint("even-horizontal, even-vertical, main-horizontal, main-vertical (-mirrored), tiled, next, previous or spread"));
             }
             ("window.select_layout", json!({"layout": l}))
         }
@@ -701,6 +703,10 @@ pub fn command(a: &Args, endpoint: &str) -> Result<Value, CliError> {
                     json!({"command": name, "method": "window.select", "params": {"terminal": terminal, "delta": delta}})
                 }
                 Plan::Local(what) => json!({"command": name, "method": null, "local": what}),
+                Plan::Format { terminal, .. } => {
+                    json!({"command": name, "method": "pane.list", "params": {"target": terminal}})
+                }
+                Plan::Text(_) => json!({"command": name, "method": null, "local": "text"}),
             })
             .collect();
         return Ok(json!({"dry_run": true, "would_run": would}));
@@ -762,6 +768,22 @@ pub fn command(a: &Args, endpoint: &str) -> Result<Value, CliError> {
                 ("window.select", r)
             }
             Plan::Local(_) => unreachable!("refused above"),
+            // Step 25: `display-message` expands formats with the Terminal's topology.
+            Plan::Format {
+                terminal,
+                pane,
+                message,
+                ..
+            } => {
+                let r = s
+                    .request("pane.list", &json!({"target": terminal}))
+                    .map(|t| {
+                        let v = tmuxcmd::vars(&t, pane.as_deref());
+                        json!({"message": tmuxcmd::format(&message, &v)})
+                    });
+                ("format", r)
+            }
+            Plan::Text(text) => ("text", Ok(json!({"text": text}))),
         };
         match result {
             Ok(r) => results.push(json!({"command": name, "method": method, "result": r})),

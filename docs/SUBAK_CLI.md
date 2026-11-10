@@ -506,6 +506,29 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.17 Advanced tmux commands (Step 25)
+
+[ADR 0059](adr/0059-subak-advanced-tmux-behaviours.md). `subak command` also runs:
+
+| Command | Effect |
+| --- | --- |
+| `select-layout main-horizontal\|main-vertical[-mirrored]`, `-E`, `-n`, `-p`; `next-layout`, `previous-layout` | tmux's presets (main pane 24 rows / 80 columns), spread, cycle; also `subak window layout <w> <preset\|next\|previous\|spread>` |
+| `setw [-t w] synchronize-panes\|monitor-activity\|monitor-bell [on\|off]` (`set -w`, `set-option`) | a window option; no value toggles; `-g` is refused |
+| `show-options [-t w]` (`showw`) | the window's options |
+| `last-window`, `last-pane` | the previous window or pane |
+| `display-message -p [-t target] '<format>'` | prints `#{session_name}`, `#S:#I.#P`, `#{?pane_synchronized,on,off}`, … (method `format`) |
+| `set-hook [-u] <hook> '<tmux commands>'`, `show-hooks` | hooks the Host runs after its events (no `kill-*`) |
+| `list-commands` (`lscm`) | the commands Subak reads (method `text`) |
+
+Targets take tmux's tokens after a Terminal (`work:{last}`, `work:+1`, `work:.{left-of}`,
+`work:1.!`); a bare token is still refused.
+
+```text
+> subak command --target work 'select-layout main-vertical; setw synchronize-panes on'
+> subak command --target work 'set-hook after-split-window "select-layout tiled"'
+> subak command --json --target work 'display -p "#S:#I.#P #{window_flags}"'
+```
+
 ## 4. Typical sessions
 
 ```console

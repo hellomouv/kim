@@ -834,6 +834,8 @@ pub struct Screen {
     shift: u8,
     tabs: Vec<bool>,
     title: String,
+    /// Step 25: BEL controls executed so far (never the BEL that ends an OSC string).
+    bells: u64,
     cursor_style: u8,
     last_char: Option<char>,
     /// The OSC 8 hyperlink printed characters get.
@@ -865,6 +867,7 @@ impl Screen {
             shift: 0,
             tabs: default_tabs(cols),
             title: String::new(),
+            bells: 0,
             cursor_style: 0,
             last_char: None,
             link: None,
@@ -939,6 +942,12 @@ impl Screen {
     /// The window title (OSC 0/2).
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    /// Step 25: how many bells (BEL, 0x07, as a control) the screen has seen (tmux
+    /// `monitor-bell`); the BEL ending an OSC string is not one.
+    pub fn bells(&self) -> u64 {
+        self.bells
     }
 
     /// The hyperlink that characters printed now get (OSC 8).
@@ -1417,6 +1426,7 @@ impl Screen {
                 }
                 self.index();
             }
+            0x07 => self.bells += 1,
             0x0d => self.carriage_return(),
             0x0e => self.shift = 1,
             0x0f => self.shift = 0,
@@ -3215,5 +3225,18 @@ mod tests {
         // with what ConPTY delivers (~1 MiB/s); release builds run at ~68 MiB/s.
         assert!(rate > 1.0, "{rate:.1} MiB/s");
         assert!(s.memory_bytes() < HISTORY_BYTES + 512 * 1024);
+    }
+
+    /// Step 25: a BEL control counts as a bell; the BEL ending an OSC title does not.
+    #[test]
+    fn bells_count_controls_not_osc_terminators() {
+        let mut s = Screen::new(20, 3, Limits::default());
+        s.feed(b"ab");
+        assert_eq!(s.bells(), 1);
+        s.feed(b"]0;title");
+        assert_eq!(s.bells(), 1, "an OSC terminator is no bell");
+        assert_eq!(s.title(), "title");
+        s.feed(b"");
+        assert_eq!(s.bells(), 3);
     }
 }

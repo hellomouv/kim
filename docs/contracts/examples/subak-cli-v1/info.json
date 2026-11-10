@@ -9,6 +9,7 @@
       "failure": null,
       "id": "t-000000000002",
       "last_exit": null,
+      "last_window": null,
       "name": "work",
       "profile": null,
       "remain_on_exit": false,
@@ -16,7 +17,9 @@
       "windows": [
         {
           "active_pane": "p-000000000003",
+          "activity": false,
           "automatic_name": true,
+          "bell": false,
           "id": "w-000000000001",
           "index": 0,
           "layout": {
@@ -24,6 +27,11 @@
             "type": "pane"
           },
           "name": "cmd",
+          "options": {
+            "monitor-activity": false,
+            "monitor-bell": true,
+            "synchronize-panes": false
+          },
           "panes": [
             {
               "clients": 0,

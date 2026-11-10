@@ -397,6 +397,58 @@ pub struct Window {
     /// Step 22: the split tree over `panes` and the window's size; `None` only while a window
     /// is being made and has no pane yet.
     pub layout: Option<Layout>,
+    /// Step 25: tmux window options (`synchronize-panes`, `monitor-activity`, `monitor-bell`).
+    pub options: WindowOptions,
+    /// Step 25: alerts since the window was last shown (tmux `#`, `!` in the window list).
+    pub activity: bool,
+    pub bell: bool,
+    /// Step 25: the window's previously active pane (tmux `last-pane`, `{last}`).
+    pub last_pane: Option<String>,
+}
+
+/// tmux's window options Subak has (Step 25, ADR 0059).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WindowOptions {
+    /// Input to the active pane goes to every pane of the window.
+    pub synchronize_panes: bool,
+    /// Output in a window that is not shown flags it (`activity`).
+    pub monitor_activity: bool,
+    /// A bell in a window that is not shown flags it (`bell`); on by default, as in tmux.
+    pub monitor_bell: bool,
+}
+
+impl WindowOptions {
+    pub fn new() -> Self {
+        Self {
+            monitor_bell: true,
+            ..Self::default()
+        }
+    }
+
+    /// The options as tmux names them, for `show-options` and Window objects.
+    pub fn json(&self) -> Value {
+        json!({
+            "synchronize-panes": self.synchronize_panes,
+            "monitor-activity": self.monitor_activity,
+            "monitor-bell": self.monitor_bell,
+        })
+    }
+
+    /// Sets one option by its tmux name (`on`/`off`, or toggled when `value` is `None`).
+    pub fn set(&mut self, name: &str, value: Option<bool>) -> Result<bool, String> {
+        let slot = match name {
+            "synchronize-panes" => &mut self.synchronize_panes,
+            "monitor-activity" => &mut self.monitor_activity,
+            "monitor-bell" => &mut self.monitor_bell,
+            _ => {
+                return Err(format!(
+                    "unknown window option `{name}` (Subak has synchronize-panes, monitor-activity, monitor-bell)"
+                ));
+            }
+        };
+        *slot = value.unwrap_or(!*slot);
+        Ok(*slot)
+    }
 }
 
 impl Window {
@@ -492,6 +544,8 @@ pub struct Terminal {
     pub remain_on_exit: bool,
     pub windows: Vec<Window>,
     pub active_window: usize,
+    /// Step 25: the previously active window's id (tmux `last-window`, `{last}`).
+    pub last_window: Option<String>,
     /// Set while its processes are being ended: the strongest cause so far.
     pub ending: Option<EndCause>,
     pub failure: Option<Failure>,
@@ -571,7 +625,16 @@ impl Terminal {
     /// Makes window `wi` the active one; whether that changed anything.
     pub fn select_window(&mut self, wi: usize) -> bool {
         let changed = self.active_window != wi;
+        if changed && let Some(old) = self.windows.get(self.active_window) {
+            // Step 25: `last-window` and `{last}`.
+            self.last_window = Some(old.id.clone());
+        }
         self.active_window = wi;
+        // Showing a window clears its alerts (tmux).
+        if let Some(w) = self.windows.get_mut(wi) {
+            w.activity = false;
+            w.bell = false;
+        }
         changed
     }
 
@@ -579,6 +642,10 @@ impl Terminal {
     /// active one (tmux `select-pane` shows the pane). Returns (window changed, pane changed).
     pub fn select_pane(&mut self, wi: usize, pi: usize) -> (bool, bool) {
         let pane = self.windows[wi].active_pane != pi;
+        if pane {
+            let w = &mut self.windows[wi];
+            w.last_pane = w.panes.get(w.active_pane).map(|p| p.id.clone());
+        }
         self.windows[wi].active_pane = pi;
         (self.select_window(wi), pane)
     }
@@ -914,7 +981,12 @@ impl Registry {
                 }],
                 active_pane: 0,
                 layout: Some(Layout::new(&pid, spec.size)),
+                options: WindowOptions::new(),
+                activity: false,
+                bell: false,
+                last_pane: None,
             }],
+            last_window: None,
             active_window: 0,
             ending: None,
             failure: None,
@@ -1020,10 +1092,41 @@ impl Registry {
             Some((w, p)) => (w, Some(p)),
             None => (rest, None),
         };
-        if win.is_empty() {
-            return Err(bad("the window part after `:` is empty"));
-        }
-        let wi = if let Ok(n) = win.parse::<usize>() {
+        // Step 25 (ADR 0059): tmux's window tokens. `work:` is the active window.
+        let n = t.windows.len();
+        let token = match win {
+            "" | "{current}" | "@" => Some(Some(t.active_window)),
+            "{last}" | "!" => Some(
+                t.last_window
+                    .as_ref()
+                    .and_then(|id| t.windows.iter().position(|w| &w.id == id)),
+            ),
+            "{next}" | "+" => Some(Some((t.active_window + 1) % n)),
+            "{previous}" | "-" => Some(Some((t.active_window + n - 1) % n)),
+            "{start}" | "^" => Some(Some(0)),
+            "{end}" | "$" => Some(Some(n - 1)),
+            _ => None,
+        };
+        let wi = if let Some(found) = token {
+            found.ok_or_else(|| {
+                IpcError::new(
+                    ErrorCode::TargetNotFound,
+                    format!("`{}` has no previous window yet", t.name.display),
+                )
+            })?
+        } else if let Some(off) = win
+            .strip_prefix('+')
+            .or_else(|| win.strip_prefix('-'))
+            .and_then(|o| o.parse::<usize>().ok())
+        {
+            // `+2`, `-1`: offsets from the active window, wrapping.
+            let o = off % n;
+            if win.starts_with('+') {
+                (t.active_window + o) % n
+            } else {
+                (t.active_window + n - o) % n
+            }
+        } else if let Some(i) = if let Ok(n) = win.parse::<usize>() {
             t.windows.iter().position(|w| w.index == n)
         } else if is_id(win, 'w') {
             t.windows.iter().position(|w| w.id == win)
@@ -1045,8 +1148,11 @@ impl Registry {
                 })));
             }
             matches.first().copied()
-        }
-        .ok_or_else(|| not_found(target))?;
+        } {
+            i
+        } else {
+            return Err(not_found(target));
+        };
         let w = &t.windows[wi];
         let Some(pane) = pane else {
             return Ok(Resolved {
@@ -1056,12 +1162,59 @@ impl Registry {
                 level: Level::Window,
             });
         };
-        let pi = if let Ok(n) = pane.parse::<usize>() {
-            w.panes.iter().position(|p| p.index == n)
-        } else if is_id(pane, 'p') {
-            w.panes.iter().position(|p| p.id == pane)
-        } else {
-            return Err(bad("a pane is an index or a p- id"));
+        let np = w.panes.len();
+        use crate::layout::Side;
+        let geo = |side: Side| {
+            w.layout()
+                .neighbour(&w.panes[w.active_pane].id, side)
+                .and_then(|id| w.panes.iter().position(|p| p.id == id))
+        };
+        // The pane whose place is at an edge or corner of the window (`{top-left}` …).
+        let corner = |left: bool, top: bool, right: bool, bottom: bool| {
+            let rects = w.layout().rects();
+            let (cols, rows) = w.layout().size();
+            rects
+                .iter()
+                .filter(|(_, r)| {
+                    (!left || r.x == 0)
+                        && (!top || r.y == 0)
+                        && (!right || r.x + r.cols == cols)
+                        && (!bottom || r.y + r.rows == rows)
+                })
+                .min_by_key(|(_, r)| (r.y, r.x))
+                .and_then(|(id, _)| w.panes.iter().position(|p| &p.id == id))
+        };
+        let pi = match pane {
+            "" | "{active}" | "@" => Some(w.active_pane),
+            "{last}" | "!" => w
+                .last_pane
+                .as_ref()
+                .and_then(|id| w.panes.iter().position(|p| &p.id == id)),
+            "{next}" | "+" => Some((w.active_pane + 1) % np),
+            "{previous}" | "-" => Some((w.active_pane + np - 1) % np),
+            "{up-of}" => geo(Side::Up),
+            "{down-of}" => geo(Side::Down),
+            "{left-of}" => geo(Side::Left),
+            "{right-of}" => geo(Side::Right),
+            "{top}" => corner(false, true, false, false),
+            "{bottom}" => corner(false, false, false, true),
+            "{left}" => corner(true, false, false, false),
+            "{right}" => corner(false, false, true, false),
+            "{top-left}" => corner(true, true, false, false),
+            "{top-right}" => corner(false, true, true, false),
+            "{bottom-left}" => corner(true, false, false, true),
+            "{bottom-right}" => corner(false, false, true, true),
+            _ => {
+                if let Ok(n) = pane.parse::<usize>() {
+                    w.panes.iter().position(|p| p.index == n)
+                } else if is_id(pane, 'p') {
+                    w.panes.iter().position(|p| p.id == pane)
+                } else {
+                    return Err(bad(
+                        "a pane is an index, a p- id or a token ({last}, {next}, {left-of}, …)",
+                    ));
+                }
+            }
         }
         .ok_or_else(|| not_found(target))?;
         Ok(Resolved {
@@ -1139,6 +1292,7 @@ pub fn terminal_json(t: &Terminal, live: &dyn Fn(&Pane) -> Live) -> Value {
         "busy": busy,
         "clients": clients,
         "active_window": t.windows[t.active_window].id,
+        "last_window": t.last_window,
         "windows": windows,
         "failure": t.failure.as_ref().map(|f| json!({
             "code": "spawn_failed", "reason": f.reason, "message": f.message,
@@ -1180,6 +1334,9 @@ pub fn window_json(
         "layout": w.layout().json(),
         "size": {"cols": w.layout().size().0, "rows": w.layout().size().1},
         "zoomed": w.layout().zoomed(),
+        "options": w.options.json(),
+        "activity": w.activity,
+        "bell": w.bell,
         "panes": panes,
     })
 }
@@ -1486,9 +1643,29 @@ mod tests {
         ] {
             assert_eq!(code(missing), ErrorCode::TargetNotFound, "{missing}");
         }
-        for malformed in ["", "서버:", "서버:0.x"] {
+        for malformed in ["", "서버:0.x"] {
             assert_eq!(code(malformed), ErrorCode::InvalidParams, "{malformed:?}");
         }
+        // Step 25: tmux tokens after a Terminal.
+        assert_eq!(
+            at("서버:").level,
+            Level::Window,
+            "`t:` is the active window"
+        );
+        assert_eq!(at("서버:{next}").window, 0, "one window wraps to itself");
+        assert_eq!(at("서버:+1").window, 0);
+        assert_eq!(at("서버:.{active}").level, Level::Pane);
+        assert_eq!(at("서버:0.{top-left}").pane, 0);
+        assert_eq!(
+            code("서버:{last}"),
+            ErrorCode::TargetNotFound,
+            "no previous window yet"
+        );
+        assert_eq!(
+            code("서버:.!"),
+            ErrorCode::TargetNotFound,
+            "no previous pane yet"
+        );
         assert_eq!(r.resolve_terminal("work").unwrap(), 0);
         assert_eq!(
             r.resolve_terminal(&pid).unwrap_err().code,
@@ -1534,6 +1711,10 @@ mod tests {
             panes: Vec::new(),
             active_pane: 0,
             layout: None,
+            options: WindowOptions::new(),
+            activity: false,
+            bell: false,
+            last_pane: None,
         }
     }
 

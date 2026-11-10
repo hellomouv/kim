@@ -520,8 +520,8 @@
     },
     {
       "name": "window.layout",
-      "usage": "subak window layout <terminal | terminal:window | w-id> <even-horizontal | even-vertical | tiled> [--dry-run] [--json]",
-      "summary": "Arrange a window's panes evenly side by side, stacked or tiled (tmux select-layout)",
+      "usage": "subak window layout <terminal | terminal:window | w-id> <even-horizontal | even-vertical | main-horizontal[-mirrored] | main-vertical[-mirrored] | tiled | next | previous | spread> [--dry-run] [--json]",
+      "summary": "Arrange a window's panes with a tmux layout preset, the next or previous one, or spread them evenly (tmux select-layout, next-layout, select-layout -E)",
       "effect": "write",
       "network": false,
       "dry_run": true,
@@ -531,7 +531,7 @@
     {
       "name": "command",
       "usage": "subak command [--target <target>] [--yes] [--dry-run] [--json] '<tmux command>[; <tmux command>]…' (also `subak tmux`, or the words after --)",
-      "summary": "Run tmux command lines (split-window, select-pane, send-keys, break-pane, join-pane, set-buffer, list-panes, …) on a Terminal; kill-* need --yes",
+      "summary": "Run tmux command lines (split-window, select-pane, send-keys, break-pane, join-pane, set-buffer, list-panes, setw, set-hook, display-message -p, last-window, …) on a Terminal; kill-* need --yes",
       "effect": "write",
       "network": false,
       "dry_run": true,

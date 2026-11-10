@@ -219,6 +219,7 @@ mod tests {
             program: "cmd.exe".into(),
             history_limit: 2000,
             place: None,
+            status: None,
             active_pane: None,
             layout: None,
             windows: Vec::new(),

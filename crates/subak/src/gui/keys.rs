@@ -95,6 +95,16 @@ pub enum Action {
     LayoutEvenHorizontal,
     LayoutEvenVertical,
     LayoutTiled,
+    /// Step 25.
+    LayoutMainHorizontal,
+    LayoutMainVertical,
+    LayoutNext,
+    WindowLast,
+    PaneLast,
+    LayoutMainHorizontalMirrored,
+    LayoutMainVerticalMirrored,
+    LayoutSpread,
+    WindowInfo,
     PaneResizeUp5,
     PaneResizeDown5,
     PaneResizeLeft5,
@@ -115,7 +125,7 @@ pub enum Action {
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 85] = [
+    pub const ALL: [(Action, &'static str); 94] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -160,6 +170,21 @@ impl Action {
         (Action::LayoutEvenHorizontal, "layout.even-horizontal"),
         (Action::LayoutEvenVertical, "layout.even-vertical"),
         (Action::LayoutTiled, "layout.tiled"),
+        (
+            Action::LayoutMainHorizontalMirrored,
+            "layout.main-horizontal-mirrored",
+        ),
+        (
+            Action::LayoutMainVerticalMirrored,
+            "layout.main-vertical-mirrored",
+        ),
+        (Action::LayoutSpread, "layout.spread"),
+        (Action::WindowInfo, "window.info"),
+        (Action::LayoutMainHorizontal, "layout.main-horizontal"),
+        (Action::LayoutMainVertical, "layout.main-vertical"),
+        (Action::LayoutNext, "layout.next"),
+        (Action::WindowLast, "window.last"),
+        (Action::PaneLast, "pane.last"),
         (Action::PaneResizeUp5, "pane.resize-up-5"),
         (Action::PaneResizeDown5, "pane.resize-down-5"),
         (Action::PaneResizeLeft5, "pane.resize-left-5"),
@@ -1108,6 +1133,19 @@ mod tests {
                 Action::LayoutEvenVertical,
             ),
             (press(u32::from(b'5'), Mods::ALT), Action::LayoutTiled),
+            (
+                press(u32::from(b'3'), Mods::ALT),
+                Action::LayoutMainHorizontal,
+            ),
+            (
+                press(u32::from(b'4'), Mods::ALT),
+                Action::LayoutMainVertical,
+            ),
+            (typed(u32::from(b'L'), Mods::NONE, 'l'), Action::WindowLast),
+            (
+                press(u32::from(b'7'), Mods::ALT),
+                Action::LayoutMainVerticalMirrored,
+            ),
             (press(vk::UP, Mods::ALT), Action::PaneResizeUp5),
             (press(vk::RIGHT, Mods::CTRL), Action::PaneResizeRight),
             (typed(u32::from(b'R'), Mods::NONE, 'r'), Action::Refresh),

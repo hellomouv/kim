@@ -62,6 +62,9 @@ pub const DEFAULT_SIZE: (u16, u16) = (120, 30);
 pub const DEFAULT_IDLE_EXIT_S: u64 = 10;
 /// Most connections (in handshake or established) served at once; more get `busy`.
 pub const MAX_CONNECTIONS: usize = 64;
+
+/// The connection id hooks run under (Step 25): no real connection has it (they start at 1).
+const HOOK_CONN: u64 = 0;
 /// Most Terminals (live and stored) one Host owns; more get `busy`.
 pub const MAX_TERMINALS: usize = 256;
 /// Most panes one Terminal holds across its windows (Step 21); more get `busy`.
@@ -400,6 +403,9 @@ impl PaneRt {
 
 #[derive(Default)]
 struct Stats {
+    /// Step 25: hook command lines run and refused.
+    hooks_run: u64,
+    hooks_failed: u64,
     connections_total: u64,
     rejected_identity: u64,
     rejected_limit: u64,
@@ -453,7 +459,48 @@ struct State {
     buffers: Vec<PasteBuffer>,
     /// The number of the next automatic buffer name (`buffer0`, `buffer1`, …).
     next_buffer: u64,
+    /// Step 25: tmux hooks: hook name → a tmux command line run by the Host (memory only).
+    hooks: BTreeMap<String, String>,
+    /// Step 25: runs of hooks waiting for the hook thread, and whether one is running (its own
+    /// events never trigger hooks: no loops).
+    hook_tx: Option<mpsc::Sender<HookRun>>,
+    in_hook: bool,
 }
+
+/// One hook run (Step 25): the command line and where its event happened.
+#[derive(Debug, Clone)]
+struct HookRun {
+    hook: String,
+    line: String,
+    terminal: Option<String>,
+    window: Option<String>,
+    pane: Option<String>,
+}
+
+/// tmux's hook names Subak runs, and the event each follows (Step 25, ADR 0059).
+pub const HOOKS: &[(&str, &str)] = &[
+    ("after-new-window", "window.created"),
+    ("after-split-window", "pane.created"),
+    ("pane-exited", "pane.exited"),
+    ("after-select-pane", "pane.selected"),
+    ("after-select-window", "window.selected"),
+    ("window-renamed", "window.renamed"),
+    ("session-renamed", "terminal.renamed"),
+    ("session-created", "terminal.created"),
+    ("session-closed", "terminal.removed"),
+    ("window-layout-changed", "window.layout"),
+    ("alert-activity", "window.alert:activity"),
+    ("alert-bell", "window.alert:bell"),
+    ("window-created", "window.created"),
+    ("window-closed", "window.removed"),
+    ("pane-created", "pane.created"),
+    ("window-pane-changed", "pane.selected"),
+    ("session-window-changed", "window.selected"),
+];
+
+/// At most this many hooks, and this long a hook's command line.
+pub const MAX_HOOKS: usize = 32;
+pub const MAX_HOOK_LINE: usize = 1024;
 
 /// One paste buffer (Step 24).
 #[derive(Debug, Clone)]
@@ -591,6 +638,31 @@ impl State {
                 c.event(name, data);
             }
         }
+        // Step 25: a hook for this event runs its tmux command line on the hook thread.
+        if self.in_hook || self.hooks.is_empty() {
+            return;
+        }
+        let key = match name {
+            "window.alert" => format!("window.alert:{}", data["kind"].as_str().unwrap_or("")),
+            n => n.to_string(),
+        };
+        for (hook, event) in HOOKS {
+            if *event == key
+                && let Some(line) = self.hooks.get(*hook)
+                && let Some(tx) = &self.hook_tx
+            {
+                let s = |k: &str| data[k].as_str().map(String::from);
+                let _ = tx.send(HookRun {
+                    hook: (*hook).to_string(),
+                    line: line.clone(),
+                    terminal: s("terminal_id")
+                        .or_else(|| data["terminal"]["id"].as_str().map(String::from)),
+                    window: s("window_id")
+                        .or_else(|| data["window"]["id"].as_str().map(String::from)),
+                    pane: s("pane_id").or_else(|| data["pane"]["id"].as_str().map(String::from)),
+                });
+            }
+        }
     }
 
     fn state_changed(&mut self, terminal_id: &str, previous: &str, cause: Option<EndCause>) {
@@ -683,6 +755,15 @@ impl State {
     }
 }
 
+/// What `window.select_layout` arranges (Step 25: also `next`, `previous`, `spread`).
+#[derive(Debug, Clone, Copy)]
+enum Pick {
+    Preset(layout::Preset),
+    Next,
+    Previous,
+    Spread,
+}
+
 /// The layout methods of Step 22 ([`Host::layout_op`]).
 #[derive(Debug, Clone, Copy)]
 enum LayoutOp {
@@ -759,6 +840,9 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             stats: Stats::default(),
             buffers: Vec::new(),
             next_buffer: 0,
+            hooks: BTreeMap::new(),
+            hook_tx: None,
+            in_hook: false,
             initial: None,
         }),
         events: ev_tx,
@@ -800,6 +884,17 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
         host.lock().initial = Some(created["terminal_id"].as_str().unwrap_or("").to_string());
     }
 
+    // Step 25: the hook thread runs hooks' command lines one after another.
+    let (hook_tx, hook_rx) = mpsc::channel::<HookRun>();
+    host.lock().hook_tx = Some(hook_tx);
+    thread::spawn({
+        let host = Arc::clone(&host);
+        move || {
+            for run in hook_rx {
+                host.run_hook(&run);
+            }
+        }
+    });
     let stopper = listener.stopper();
     let acceptor = thread::spawn({
         let host = Arc::clone(&host);
@@ -1609,7 +1704,9 @@ impl Host {
                 return;
             };
             let mark = pane.screen.history().total_lines;
+            let bells = pane.screen.bells();
             pane.screen.feed(&buf[..n]);
+            let rang = pane.screen.bells() > bells;
             let seq = pane.seq;
             pane.seq += n as u64;
             let frame: Arc<[u8]> = proto::encode_data(rt.stream, seq, 0, &buf[..n]).into();
@@ -1625,6 +1722,33 @@ impl Host {
                     att.lag = Some(since);
                     st.stats.output_frames_skipped += 1;
                 }
+            }
+            // Step 25, tmux `monitor-activity` / `monitor-bell`: output or a bell in a window
+            // that is not shown flags it once, until it is shown.
+            let alert = st.reg.get_mut(&rt.terminal_id).and_then(|t| {
+                let active = t.active_window;
+                let (wi, w) = t
+                    .windows
+                    .iter_mut()
+                    .enumerate()
+                    .find(|(_, w)| w.panes.iter().any(|p| p.id == rt.pane_id))?;
+                if wi == active {
+                    return None;
+                }
+                let kind = if rang && w.options.monitor_bell && !w.bell {
+                    w.bell = true;
+                    "bell"
+                } else if w.options.monitor_activity && !w.activity {
+                    w.activity = true;
+                    "activity"
+                } else {
+                    return None;
+                };
+                Some((t.id.clone(), w.id.clone(), kind))
+            });
+            if let Some((tid, wid, kind)) = alert {
+                let data = json!({"terminal_id": tid, "window_id": wid, "pane_id": rt.pane_id, "kind": kind});
+                st.notify("terminals", "window.alert", &data);
             }
         }
     }
@@ -1943,7 +2067,12 @@ impl Host {
         };
         // Only an interactively attached cli/gui connection reaches a pane; nothing else does.
         if let Some(r) = rt {
+            // Step 25, tmux `synchronize-panes`: the window's other running panes get it too.
+            let others = self.synced(&r);
             let _ = r.pty.write_input(bytes);
+            for o in others {
+                let _ = o.pty.write_input(bytes);
+            }
         }
     }
 
@@ -1993,6 +2122,11 @@ impl Host {
             "buffer.get" => Reply::Now(self.buffer_get(p)),
             "buffer.delete" => Reply::Now(self.buffer_delete(p)),
             "buffer.paste" => Reply::Now(self.buffer_paste(p)),
+            // Step 25 (ADR 0059): window options and hooks.
+            "window.set_option" => Reply::Now(self.set_option(p)),
+            "window.options" => Reply::Now(self.window_options(p)),
+            "hook.set" => Reply::Now(self.hook_set(p)),
+            "hook.list" => Reply::Now(Ok(self.hook_list())),
             "window.select_layout" => Reply::Now(self.layout_op(p, LayoutOp::Preset)),
             "window.list" => Reply::Now(self.topology(p, false)),
             "pane.list" => Reply::Now(self.topology(p, true)),
@@ -3305,6 +3439,10 @@ impl Host {
                     panes: Vec::new(),
                     active_pane: 0,
                     layout: None,
+                    options: session::WindowOptions::new(),
+                    activity: false,
+                    bell: false,
+                    last_pane: None,
                 })
             } else {
                 t.window_pos(&wid).expect("checked above")
@@ -3407,6 +3545,7 @@ impl Host {
             "name": t.name.display,
             "state": t.state.as_str(),
             "active_window": t.windows[t.active_window].id,
+            "last_window": t.last_window,
             "windows": windows,
         }))
     }
@@ -3520,6 +3659,143 @@ impl Host {
         Ok(out)
     }
 
+    /// `window.set_option` (tmux `set-window-option`): `synchronize-panes`, `monitor-activity`,
+    /// `monitor-bell` of the target window (a Terminal: its active window), `value` true/false
+    /// or omitted to toggle.
+    fn set_option(&self, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let name = optional_string(p, "option")?
+            .ok_or_else(|| IpcError::param("option", "option is required"))?;
+        let value = match &p["value"] {
+            Value::Null => None,
+            Value::Bool(b) => Some(*b),
+            _ => {
+                return Err(IpcError::param(
+                    "value",
+                    "value is true, false or omitted (toggle)",
+                ));
+            }
+        };
+        let mut st = self.lock();
+        let r = st.reg.resolve(target)?;
+        let t = &mut st.reg.terminals[r.terminal];
+        let tid = t.id.clone();
+        let w = &mut t.windows[r.window];
+        let now = w
+            .options
+            .set(name, value)
+            .map_err(|m| IpcError::param("option", m))?;
+        let (wid, options) = (w.id.clone(), w.options.json());
+        let data = json!({"terminal_id": tid, "window_id": wid, "options": options});
+        st.notify("terminals", "window.options", &data);
+        Ok(
+            json!({"terminal_id": tid, "window_id": wid, "option": name, "value": now, "options": options}),
+        )
+    }
+
+    /// `window.options` (tmux `show-window-options`).
+    fn window_options(&self, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let st = self.lock();
+        let r = st.reg.resolve(target)?;
+        let t = &st.reg.terminals[r.terminal];
+        let w = &t.windows[r.window];
+        Ok(json!({"terminal_id": t.id, "window_id": w.id, "options": w.options.json()}))
+    }
+
+    /// `hook.set` (tmux `set-hook`): the tmux command line `command` runs after `name`'s event
+    /// (null removes it). Hooks run tmux commands only, never a shell; their own events never
+    /// trigger hooks.
+    fn hook_set(&self, p: &Value) -> Result<Value, IpcError> {
+        let name = optional_string(p, "name")?
+            .ok_or_else(|| IpcError::param("name", "name is required"))?;
+        if !HOOKS.iter().any(|(h, _)| *h == name) {
+            return Err(IpcError::param(
+                "name",
+                format!(
+                    "unknown hook `{name}`; Subak runs {}",
+                    HOOKS.iter().map(|h| h.0).collect::<Vec<_>>().join(", ")
+                ),
+            ));
+        }
+        let mut st = self.lock();
+        match optional_string(p, "command")? {
+            None => {
+                st.hooks.remove(name);
+            }
+            Some(line) => {
+                if line.len() > MAX_HOOK_LINE {
+                    return Err(IpcError::param(
+                        "command",
+                        "a hook's command line has at most 1024 bytes",
+                    ));
+                }
+                let cmds = crate::tmuxcmd::parse(line).map_err(|e| {
+                    IpcError::param("command", format!("not a tmux command line: {}", e.message))
+                })?;
+                if let Some(c) = cmds.iter().find(|c| c.destructive()) {
+                    return Err(IpcError::param(
+                        "command",
+                        format!(
+                            "a hook cannot run `{}`: hooks never end processes",
+                            c.name()
+                        ),
+                    ));
+                }
+                if !st.hooks.contains_key(name) && st.hooks.len() >= MAX_HOOKS {
+                    return Err(IpcError::new(ErrorCode::Busy, "at most 32 hooks"));
+                }
+                st.hooks.insert(name.to_string(), line.to_string());
+            }
+        }
+        let hooks = st.hooks.clone();
+        Ok(json!({"hooks": hooks}))
+    }
+
+    /// `hook.list` (tmux `show-hooks`).
+    fn hook_list(&self) -> Value {
+        let st = self.lock();
+        json!({"hooks": st.hooks, "available": HOOKS.iter().map(|h| h.0).collect::<Vec<_>>()})
+    }
+
+    /// Runs one hook (the hook thread): each command of its line in the event's context, as a
+    /// cli client would; a refusal stops the line and is counted, never shown to anyone.
+    fn run_hook(self: &Arc<Self>, run: &HookRun) {
+        use crate::tmuxcmd::{self, Context, Plan};
+        let Ok(cmds) = tmuxcmd::parse(&run.line) else {
+            return;
+        };
+        let ctx = Context {
+            terminal: run.terminal.clone(),
+            window: run.window.clone(),
+            pane: run.pane.clone().or_else(|| run.terminal.clone()),
+            // A hook never gives consent: `kill-*` in a hook is refused (nothing is ended
+            // without the user asking for it right then).
+            yes: false,
+        };
+        self.lock().in_hook = true;
+        for c in &cmds {
+            let Ok(Plan::Request { method, params }) = tmuxcmd::plan(c, &ctx) else {
+                break;
+            };
+            let req = Request {
+                id: 0,
+                method: method.to_string(),
+                params,
+            };
+            let ok = matches!(self.handle(HOOK_CONN, &req), Reply::Now(Ok(_)));
+            let mut st = self.lock();
+            if ok {
+                st.stats.hooks_run += 1;
+            } else {
+                st.stats.hooks_failed += 1;
+                break;
+            }
+        }
+        self.lock().in_hook = false;
+        let _ = &run.hook;
+    }
+
     /// The running pane a target means (a Terminal or window: its active pane), for input.
     fn input_pane(&self, p: &Value) -> Result<(Arc<PaneRt>, String), IpcError> {
         let target = target(p)?;
@@ -3549,6 +3825,28 @@ impl Host {
     }
 
     /// Writes input to a pane as if a client typed it (counted as input, never logged).
+    /// Step 25 (tmux `synchronize-panes`): the other running panes of `rt`'s window when the
+    /// window synchronizes its panes' input; none otherwise.
+    fn synced(&self, r: &PaneRt) -> Vec<Arc<PaneRt>> {
+        let st = self.lock();
+        st.reg
+            .get(&r.terminal_id)
+            .and_then(|t| {
+                t.windows
+                    .iter()
+                    .find(|w| w.panes.iter().any(|p| p.id == r.pane_id))
+            })
+            .filter(|w| w.options.synchronize_panes)
+            .map(|w| {
+                w.panes
+                    .iter()
+                    .filter(|p| p.id != r.pane_id)
+                    .filter_map(|p| st.rt.get(&p.id).cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn write_to(&self, rt: &PaneRt, bytes: &[u8]) -> Result<(), IpcError> {
         if let Some(o) = self.lock().out.get_mut(&rt.pane_id) {
             o.input_bytes += bytes.len() as u64;
@@ -3590,6 +3888,10 @@ impl Host {
             );
         }
         self.write_to(&rt, &bytes)?;
+        // As in tmux, keys sent to a synchronized window reach all its panes.
+        for o in self.synced(&rt) {
+            let _ = self.write_to(&o, &bytes);
+        }
         Ok(json!({"pane_id": pane_id, "terminal_id": rt.terminal_id, "bytes": bytes.len()}))
     }
 
@@ -3798,6 +4100,10 @@ impl Host {
                     panes: Vec::new(),
                     active_pane: 0,
                     layout: None,
+                    options: session::WindowOptions::new(),
+                    activity: false,
+                    bell: false,
+                    last_pane: None,
                 },
                 select,
             )
@@ -3959,16 +4265,18 @@ impl Host {
             _ => true,
         };
         let preset = match op {
-            LayoutOp::Preset => Some(
-                optional_string(p, "layout")?
-                    .and_then(layout::Preset::parse)
-                    .ok_or_else(|| {
-                        IpcError::param(
-                            "layout",
-                            "layout must be even-horizontal, even-vertical or tiled",
-                        )
-                    })?,
-            ),
+            LayoutOp::Preset => Some(match optional_string(p, "layout")? {
+                Some("next") => Pick::Next,
+                Some("previous") => Pick::Previous,
+                Some("spread") => Pick::Spread,
+                Some(l) => Pick::Preset(layout::Preset::parse(l).ok_or_else(|| {
+                    IpcError::param(
+                        "layout",
+                        "layout is even-horizontal, even-vertical, main-horizontal(-mirrored), main-vertical(-mirrored), tiled, next, previous or spread",
+                    )
+                })?),
+                None => return Err(IpcError::param("layout", "layout is required")),
+            }),
             _ => None,
         };
         let target = target(p)?;
@@ -4070,7 +4378,16 @@ impl Host {
                     Ok(0)
                 }
                 LayoutOp::Preset => {
-                    l.preset(preset.expect("parsed above"));
+                    match preset.expect("parsed above") {
+                        Pick::Preset(p) => l.preset(p),
+                        Pick::Next => {
+                            l.cycle(true);
+                        }
+                        Pick::Previous => {
+                            l.cycle(false);
+                        }
+                        Pick::Spread => l.spread(),
+                    }
                     Ok(0)
                 }
             })

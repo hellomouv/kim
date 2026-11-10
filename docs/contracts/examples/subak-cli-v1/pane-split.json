@@ -6,7 +6,9 @@
     "terminal_id": "t-000000000002",
     "window": {
       "active_pane": "p-000000000001",
+      "activity": false,
       "automatic_name": false,
+      "bell": false,
       "id": "w-000000000003",
       "index": 1,
       "layout": {
@@ -32,6 +34,11 @@
         "type": "split"
       },
       "name": "logs",
+      "options": {
+        "monitor-activity": false,
+        "monitor-bell": true,
+        "synchronize-panes": false
+      },
       "panes": [
         {
           "clients": 0,

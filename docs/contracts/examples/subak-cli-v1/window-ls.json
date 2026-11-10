@@ -2,20 +2,28 @@
   "command": "window.ls",
   "data": {
     "active_window": "w-000000000001",
+    "last_window": "w-000000000002",
     "name": "work",
     "state": "running",
-    "terminal_id": "t-000000000002",
+    "terminal_id": "t-000000000003",
     "windows": [
       {
-        "active_pane": "p-000000000003",
+        "active_pane": "p-000000000004",
+        "activity": false,
         "automatic_name": true,
-        "id": "w-000000000004",
+        "bell": false,
+        "id": "w-000000000002",
         "index": 0,
         "layout": {
-          "pane": "p-000000000003",
+          "pane": "p-000000000004",
           "type": "pane"
         },
         "name": "cmd",
+        "options": {
+          "monitor-activity": false,
+          "monitor-bell": true,
+          "synchronize-panes": false
+        },
         "panes": [
           {
             "clients": 0,
@@ -42,7 +50,7 @@
               "persisted": false,
               "total_lines": 0
             },
-            "id": "p-000000000003",
+            "id": "p-000000000004",
             "index": 0,
             "output_bytes": 1024,
             "pid": 4242,
@@ -71,7 +79,9 @@
       },
       {
         "active_pane": "p-000000000005",
+        "activity": false,
         "automatic_name": false,
+        "bell": false,
         "id": "w-000000000001",
         "index": 1,
         "layout": {
@@ -79,6 +89,11 @@
           "type": "pane"
         },
         "name": "logs",
+        "options": {
+          "monitor-activity": false,
+          "monitor-bell": true,
+          "synchronize-panes": false
+        },
         "panes": [
           {
             "clients": 0,

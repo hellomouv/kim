@@ -164,7 +164,11 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `pane.swap` | `{target, with? (a pane) \| direction? (next\|previous), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
 | `pane.zoom` | `{target, zoom? (true\|false; omitted: toggle), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
 | `window.rotate` | `{target (any level: its window), direction? (up\|down; default up), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
-| `window.select_layout` | `{target (any level: its window), layout (even-horizontal\|even-vertical\|tiled), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
+| `window.select_layout` | `{target (any level: its window), layout (even-horizontal\|even-vertical\|main-horizontal[-mirrored]\|main-vertical[-mirrored]\|tiled\|next\|previous\|spread), dry_run?}` | `result_layout` | cli, gui, mcp* | **22**, **25** (main-*, next, previous, spread) |
+| `window.set_option` | `{target (any level: its window), option (synchronize-panes\|monitor-activity\|monitor-bell), value? (bool; omitted toggles)}` | `result_window_options` | cli, gui | **25** |
+| `window.options` | `{target}` | `result_window_options` | cli, gui, mcp | **25** |
+| `hook.set` | `{name, command? (a tmux command line; null removes)}` | `result_hooks` | cli, gui | **25** |
+| `hook.list` | — | `result_hooks` with `available` | cli, gui, mcp | **25** |
 | `pane.attach` | `{target?, interactive?, size?, history_lines?}` | `{stream_id, pane_id, terminal_id, seq, interactive, pane: {id, pid, size}, replay_bytes, snapshot: {bytes, frames, history_lines, alternate, size}}`, then the snapshot data frames and live output | cli, gui, mcp* | **09**, **10**, **13** |
 | `pane.detach` | `{stream_id?}` | `{}` | cli, gui, mcp | **09**, **10** |
 | `client.detach` | `{target?, client_id?, dry_run?}` (at least one of `target`, `client_id`) | `{detached: [attachment], terminal}` or `{dry_run: true, would_detach, terminal}` | cli, gui, mcp* | **12** |
@@ -415,6 +419,22 @@ Semantics in [ADR 0058](../adr/0058-subak-tmux-commands-copy-mode-and-buffers.md
   `buffer.paste` types it into a running pane with line ends as carriage returns. A missing buffer
   is `target_not_found`.
 
+### 4.7 Window options, alerts, target tokens and hooks (Step 25)
+
+Semantics in [ADR 0059](../adr/0059-subak-advanced-tmux-behaviours.md); feature
+`terminal.options`.
+
+- **Targets** take tmux's tokens after a Terminal: `work:` `work:{last}` `work:!` `work:+2`
+  `work:{end}`; `work:.{last}` `work:1.{left-of}` `work:.{top-left}` … A Terminal object has
+  `last_window` (null until another window was shown).
+- **Window objects** have `options` (`synchronize-panes`, `monitor-activity`, `monitor-bell`),
+  `activity` and `bell`. With `synchronize-panes`, interactive input and `pane.send_keys` reach
+  every running pane of the window (`buffer.paste` does not).
+- **Alerts:** output or a BEL in a window that is not shown sets its flag once and sends
+  `window.alert`; showing the window clears it.
+- **Hooks** run tmux command lines (ADR 0059 §5) on a Host thread after their event; never a shell,
+  never `kill-*`; at most 32, 1024 bytes each, memory only.
+
 ## 5. Events (v1)
 
 Each event is sent in the same critical section as the change it reports, so a client that
@@ -437,6 +457,8 @@ subscribes and then lists sees every later change exactly once, after its list.
 | `pane.created` | `terminals` | `{terminal_id, window_id, pane: Pane}` | 21 |
 | `pane.removed` | `terminals` | `{terminal_id, window_id, pane_id, reason}`; `reason` is `exited` or `killed`; after the pane's `pane.exited` | 21 |
 | `pane.selected` | `terminals` | `{terminal_id, window_id, pane_id}`: a window's active pane changed | 21 |
+| `window.alert` | `terminals` | `{terminal_id, window_id, pane_id, kind: "activity" \| "bell"}`: a window that is not shown had output or a bell (once until it is shown) | 25 |
+| `window.options` | `terminals` | `{terminal_id, window_id, options}`: `window.set_option` changed an option | 25 |
 
 Later Steps: `claude.state_changed`.
 

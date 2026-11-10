@@ -62,6 +62,10 @@ pub struct TermInfo {
     /// Terminal has more than one window or pane (`None` otherwise, so nothing changes for the
     /// usual single-pane Terminal).
     pub place: Option<String>,
+    /// Step 25: tmux's window list (`0:cmd* 1:logs#`) with its flags (`*` shown, `-` last,
+    /// `#` activity, `!` bell, `Z` zoomed), when the Terminal has more than one window or a
+    /// window has an alert.
+    pub status: Option<String>,
     /// Step 21: the id of the Terminal's active pane (its active window's active pane).
     pub active_pane: Option<String>,
     /// Step 22: the active window's layout when it has more than one pane.
@@ -191,6 +195,7 @@ impl TermInfo {
                 if panes == 1 { "" } else { "s" },
             )
         });
+        let status = window_list(t);
         let program = pane["executable"]
             .as_str()
             .or_else(|| pane["command"]["program"].as_str())
@@ -211,6 +216,7 @@ impl TermInfo {
                 .and_then(|n| usize::try_from(n).ok())
                 .unwrap_or(2000),
             place,
+            status,
             active_pane: pane["id"].as_str().map(String::from),
             layout: WinLayout::from_window(window),
             windows: windows
@@ -329,7 +335,7 @@ pub enum Effect {
         history: usize,
     },
     /// Remember this Terminal as the one shown last (preferences).
-    Remember(TermInfo),
+    Remember(Box<TermInfo>),
     /// Try to connect again after this delay (never starting a Host).
     Reconnect(Duration),
     /// Connect again now, starting a Host on demand (the user retried a failed start).
@@ -497,6 +503,7 @@ impl Model {
             program: String::new(),
             history_limit: 2000,
             place: None,
+            status: None,
             active_pane: None,
             layout: None,
             windows: Vec::new(),
@@ -1186,6 +1193,7 @@ impl Model {
                         program: String::new(),
                         history_limit: 2000,
                         place: None,
+                        status: None,
                         active_pane: None,
                         layout: None,
                         windows: Vec::new(),
@@ -1220,7 +1228,7 @@ impl Model {
                     id: term.id.clone(),
                     name: term.name.clone(),
                 };
-                out.push(Effect::Remember(term.clone()));
+                out.push(Effect::Remember(Box::new(term.clone())));
                 // The snapshot frames follow; until then the view starts fresh at their size.
                 let (cols, rows) = match (size["cols"].as_u64(), size["rows"].as_u64()) {
                     (Some(c), Some(r)) => (
@@ -1435,11 +1443,13 @@ impl Model {
         if let Phase::Attached { term, .. } | Phase::Ended { term, .. } | Phase::Attaching(term) =
             &mut self.phase
             && (term.place != t.place
+                || term.status != t.status
                 || term.active_pane != t.active_pane
                 || term.layout != t.layout
                 || term.windows != t.windows)
         {
             term.place.clone_from(&t.place);
+            term.status.clone_from(&t.status);
             term.active_pane.clone_from(&t.active_pane);
             term.layout.clone_from(&t.layout);
             term.windows.clone_from(&t.windows);
@@ -1553,6 +1563,7 @@ impl Model {
                     program: String::new(),
                     history_limit: 2000,
                     place: None,
+                    status: None,
                     active_pane: None,
                     layout: None,
                     windows: Vec::new(),
@@ -1717,7 +1728,7 @@ impl Model {
                 if let Some(n) = text(&d["name"]) {
                     self.update(&tid, |t| t.name.clone_from(&n));
                     if shown && let Phase::Attached { term, .. } = &self.phase {
-                        out.push(Effect::Remember(term.clone()));
+                        out.push(Effect::Remember(Box::new(term.clone())));
                     }
                     out.push(Effect::Phase);
                     out.push(Effect::Tabs);
@@ -1808,7 +1819,8 @@ impl Model {
             // Step 21: a window or pane appeared, went, was renamed or selected: the list says
             // what the tabs and the title show, and which pane to show (see `follow`).
             "window.created" | "window.renamed" | "window.removed" | "window.selected"
-            | "pane.created" | "pane.removed" | "pane.selected" | "window.layout" => {
+            | "pane.created" | "pane.removed" | "pane.selected" | "window.layout"
+            | "window.alert" | "window.options" => {
                 if self
                     .tabs
                     .iter()
@@ -1827,6 +1839,44 @@ impl Model {
         }
         out
     }
+}
+
+/// Step 25: tmux's status-line window list of a Terminal object (`0:cmd* 1:logs-#`): `*` the
+/// active window, `-` the last one, `#` activity, `!` a bell, `Z` a zoomed pane. `None` for a
+/// single window without alerts, so nothing changes for the usual Terminal.
+pub fn window_list(t: &Value) -> Option<String> {
+    let windows = t["windows"].as_array()?;
+    let alert = windows
+        .iter()
+        .any(|w| w["activity"] == true || w["bell"] == true);
+    if windows.len() < 2 && !alert {
+        return None;
+    }
+    let last = t["last_window"].as_str();
+    Some(
+        windows
+            .iter()
+            .map(|w| {
+                let mut f = String::new();
+                if w["id"] == t["active_window"] {
+                    f.push('*');
+                } else if last.is_some() && w["id"].as_str() == last {
+                    f.push('-');
+                }
+                if w["activity"] == true {
+                    f.push('#');
+                }
+                if w["bell"] == true {
+                    f.push('!');
+                }
+                if !w["zoomed"].is_null() && w.get("zoomed").is_some() {
+                    f.push('Z');
+                }
+                format!("{}:{}{f}", w["index"], w["name"].as_str().unwrap_or("?"))
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 #[cfg(test)]

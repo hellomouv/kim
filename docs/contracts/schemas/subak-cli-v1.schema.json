@@ -337,6 +337,7 @@
         "name": {"$ref": "#/$defs/terminal_name"},
         "state": {"$ref": "#/$defs/terminal_state"},
         "active_window": {"$ref": "#/$defs/window_id"},
+        "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}}
       }
     },
@@ -1156,6 +1157,19 @@
             }
           ]
         },
+        "options": {
+          "description": "Step 25: the window's tmux options. Hosts before Step 25 omit it.",
+          "type": "object",
+          "required": ["synchronize-panes", "monitor-activity", "monitor-bell"],
+          "additionalProperties": false,
+          "properties": {
+            "synchronize-panes": {"type": "boolean"},
+            "monitor-activity": {"type": "boolean"},
+            "monitor-bell": {"type": "boolean"}
+          }
+        },
+        "activity": {"description": "Step 25: output while the window was not shown (monitor-activity).", "type": "boolean"},
+        "bell": {"description": "Step 25: a bell while the window was not shown (monitor-bell).", "type": "boolean"},
         "panes": {
           "type": "array",
           "minItems": 1,
@@ -1311,6 +1325,7 @@
         "active_window": {
           "$ref": "#/$defs/window_id"
         },
+        "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {
           "type": "array",
           "minItems": 1,

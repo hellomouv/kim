@@ -1326,3 +1326,49 @@ own.
 | `crates/subak/tests/tmux_commands.rs` | the real Host: chains, `break-pane`/`join-pane` keeping the process, `send-keys`, the pane context (`SUBAK_PANE_ID`), dry runs, errors, `--yes`; buffers: order, redacted previews, paste as input, the limit |
 | `crates/subak/tests/gui_window.rs::the_command_prompt_and_copy_mode_work_on_the_shown_terminal` | the off-screen window: the prompt, an answer view, an unknown command, copy mode swallowing keys, a copied line, `Ctrl+B ]` |
 | `e2e/tests/step24_tmux_commands.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |
+
+## 17. Advanced tmux behaviours in the window (Step 25)
+
+[ADR 0059](adr/0059-subak-advanced-tmux-behaviours.md).
+
+### 17.1 Keys
+
+| Keys | Action |
+| --- | --- |
+| `Ctrl+B Alt+3` / `Alt+4` | `main-horizontal` / `main-vertical` layout |
+| `Ctrl+B Alt+6` / `Alt+7` | the mirrored main layouts |
+| `Ctrl+B Space` | the next layout preset (tmux's order) |
+| `Ctrl+B E` | spread the panes out evenly |
+| `Ctrl+B l` / `Ctrl+B ;` | the previous window / pane |
+| `Ctrl+B i` | where you are (`display-message`) in the banner |
+
+The prompt (`Ctrl+B :`) runs the new commands too: `setw synchronize-panes on`, `show-options`
+and `show-hooks` (answers in the pane's place), `display-message '#S:#I.#P'` (the banner),
+`set-hook …`, `last-window`, `list-commands`.
+
+### 17.2 Window list and alerts
+
+When a Terminal has several windows or a window has an alert, the title shows tmux's window list,
+e.g. `work [window 0:cmd pane 0 (2 windows, 2 panes)] {0:cmd* 1:logs-!}`: `*` shown, `-` the
+previous window, `#` output (`monitor-activity`), `!` a bell (`monitor-bell`, on by default),
+`Z` a zoomed pane. Showing a window clears its flags. A drawn status line is a follow-up (F4,
+#97).
+
+### 17.3 Manual check (maintainer)
+
+1. `Ctrl+B "` twice, then `Ctrl+B Alt+4`: one pane on the left, two stacked on the right;
+   `Ctrl+B Space` cycles.
+2. `Ctrl+B :` `setw synchronize-panes on` Enter, type `echo hi` Enter: every pane runs it.
+3. `Ctrl+B c`, `Ctrl+B l`: back and forth. In window 1 run `timeout 3 & echo ^G` (type Ctrl+G),
+   switch away quickly: the title shows `1:cmd-!`.
+
+### 17.4 Tests
+
+| Test | What it checks |
+| --- | --- |
+| `crates/subak/src/layout.rs::tests::main_presets_cycle_and_spread` | main presets, mirrored, the cycle, small windows, spread |
+| `crates/subak/src/tmuxcmd.rs::tests::step_25_commands_tokens_and_formats` | the new commands, tokens, refusals, formats |
+| `crates/subak/src/session.rs::tests::targets_resolve_names_ids_and_indexes_exactly` | tokens resolved by the Host |
+| `crates/subak-term/src/screen.rs::tests::bells_count_controls_not_osc_terminators` | bells vs OSC terminators |
+| `crates/subak/tests/tmux_advanced.rs` | the real Host: layouts, synchronized input, last window/pane, tokens, formats, alerts, hooks |
+| `e2e/tests/step25_advanced_tmux.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |
