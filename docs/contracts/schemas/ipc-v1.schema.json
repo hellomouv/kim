@@ -147,6 +147,7 @@
         {"$ref": "#/$defs/event_pane_created"},
         {"$ref": "#/$defs/event_pane_removed"},
         {"$ref": "#/$defs/event_pane_selected"},
+        {"$ref": "#/$defs/event_window_layout"},
         {"$ref": "#/$defs/event_other"}
       ]
     },
@@ -175,11 +176,22 @@
               "window.selected",
               "pane.created",
               "pane.removed",
-              "pane.selected"
+              "pane.selected",
+              "window.layout"
             ]
           }
         },
         "data": {"type": "object"}
+      }
+    },
+    "event_window_layout": {
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "window.layout"},
+        "data": {"$ref": "#/$defs/data_window_layout"}
       }
     },
     "event_terminal_created": {
@@ -553,6 +565,14 @@
         "size": {"$ref": "#/$defs/size"},
         "clients": {"type": "integer", "minimum": 0},
         "output_bytes": {"type": "integer", "minimum": 0},
+        "rect": {
+          "description": "Step 22: the pane's place in its window's layout (the whole window while it is zoomed). Hosts before Step 22 omit it.",
+          "$ref": "#/$defs/rect"
+        },
+        "visible": {
+          "description": "Step 22: false while another pane of the window is zoomed. Hosts before Step 22 omit it.",
+          "type": "boolean"
+        },
         "history": {
           "description": "Step 13: the pane's history counters while the Host keeps its screen (also for a stopped Terminal); null before it started. Hosts before Step 13 omit it.",
           "anyOf": [{"type": "null"}, {"$ref": "#/$defs/history"}]
@@ -585,13 +605,62 @@
         "name": {"type": "string", "minLength": 1},
         "automatic_name": {"type": "boolean"},
         "active_pane": {"$ref": "#/$defs/pane_id"},
-        "layout": {
+        "layout": {"$ref": "#/$defs/layout"},
+        "size": {
+          "description": "Step 22: the window's size (the latest interactive client's); its panes share it. Hosts before Step 22 omit it.",
+          "$ref": "#/$defs/size"
+        },
+        "zoomed": {
+          "description": "Step 22: the zoomed pane, which fills the window while the others keep their places unseen; null when none. Hosts before Step 22 omit it.",
+          "anyOf": [{"$ref": "#/$defs/pane_id"}, {"type": "null"}]
+        },
+        "panes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pane"}}
+      }
+    },
+    "layout": {
+      "description": "Step 22 (ADR 0056): a window's split tree. A horizontal split puts its children side by side (tmux -h), a vertical one stacks them (tmux -v); siblings are one cell apart. size is a child's share of its split (0-1), cells its extent along the split.",
+      "oneOf": [
+        {
           "type": "object",
           "required": ["type", "pane"],
           "additionalProperties": false,
           "properties": {"type": {"const": "pane"}, "pane": {"$ref": "#/$defs/pane_id"}}
         },
-        "panes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pane"}}
+        {
+          "type": "object",
+          "required": ["type", "direction", "children"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "split"},
+            "direction": {"enum": ["horizontal", "vertical"]},
+            "children": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "required": ["size", "node"],
+                "additionalProperties": false,
+                "properties": {
+                  "size": {"type": "number", "minimum": 0, "maximum": 1},
+                  "cells": {"type": "integer", "minimum": 1},
+                  "node": {"$ref": "#/$defs/layout"}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "rect": {
+      "description": "Step 22: where a pane is in its window, in cells from the window's top-left corner.",
+      "type": "object",
+      "required": ["x", "y", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {"type": "integer", "minimum": 0},
+        "y": {"type": "integer", "minimum": 0},
+        "cols": {"type": "integer", "minimum": 1},
+        "rows": {"type": "integer", "minimum": 1}
       }
     },
     "terminal": {
@@ -862,7 +931,18 @@
         "cwd": {"type": ["string", "null"]},
         "env": {"$ref": "#/$defs/env_names"},
         "size": {"$ref": "#/$defs/size"},
-        "history_limit": {"type": "integer", "minimum": 0, "maximum": 100000}
+        "history_limit": {"type": "integer", "minimum": 0, "maximum": 100000},
+        "split": {
+          "description": "Step 22: pane.split only: the pane it splits and how.",
+          "type": "object",
+          "required": ["pane_id", "direction", "before"],
+          "additionalProperties": false,
+          "properties": {
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "direction": {"enum": ["horizontal", "vertical"]},
+            "before": {"type": "boolean"}
+          }
+        }
       }
     },
     "selection": {
@@ -894,10 +974,64 @@
       }
     },
     "result_window_create": {
-      "description": "Step 21: the result of window.create and pane.create: the new pane, the window that holds it, and whether it became the active one.",
+      "description": "Step 21: the result of window.create, pane.create and (Step 22) pane.split: the new pane, the window that holds it, and whether it became the active one.",
       "oneOf": [
         {"type": "object", "required": ["terminal_id", "window_id", "pane_id", "selected", "window"], "additionalProperties": false, "properties": {"terminal_id": {"$ref": "#/$defs/terminal_id"}, "window_id": {"$ref": "#/$defs/window_id"}, "pane_id": {"$ref": "#/$defs/pane_id"}, "selected": {"type": "boolean"}, "window": {"$ref": "#/$defs/window"}}},
         {"type": "object", "required": ["dry_run", "would_create"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_create": {"$ref": "#/$defs/would_create_pane"}}}
+      ]
+    },
+    "layout_panes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "index", "rect", "visible"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "#/$defs/pane_id"},
+          "index": {"type": "integer", "minimum": 0},
+          "rect": {"$ref": "#/$defs/rect"},
+          "visible": {"type": "boolean"}
+        }
+      }
+    },
+    "data_window_layout": {
+      "description": "Step 22 (ADR 0056): a window's layout after it changed (split, resize, swap, zoom, a pane gone, a client's new size).",
+      "type": "object",
+      "required": ["terminal_id", "window_id", "active_pane", "layout", "size", "zoomed", "panes"],
+      "additionalProperties": false,
+      "properties": {
+        "terminal_id": {"$ref": "#/$defs/terminal_id"},
+        "window_id": {"$ref": "#/$defs/window_id"},
+        "active_pane": {"$ref": "#/$defs/pane_id"},
+        "layout": {"$ref": "#/$defs/layout"},
+        "size": {"$ref": "#/$defs/size"},
+        "zoomed": {"anyOf": [{"$ref": "#/$defs/pane_id"}, {"type": "null"}]},
+        "panes": {"$ref": "#/$defs/layout_panes"}
+      }
+    },
+    "layout_change": {
+      "type": "object",
+      "required": ["terminal_id", "window_id", "active_pane", "layout", "size", "zoomed", "panes", "pane_id", "changed"],
+      "additionalProperties": false,
+      "properties": {
+        "terminal_id": {"$ref": "#/$defs/terminal_id"},
+        "window_id": {"$ref": "#/$defs/window_id"},
+        "active_pane": {"$ref": "#/$defs/pane_id"},
+        "layout": {"$ref": "#/$defs/layout"},
+        "size": {"$ref": "#/$defs/size"},
+        "zoomed": {"anyOf": [{"$ref": "#/$defs/pane_id"}, {"type": "null"}]},
+        "panes": {"$ref": "#/$defs/layout_panes"},
+        "pane_id": {"$ref": "#/$defs/pane_id"},
+        "changed": {"type": "boolean"},
+        "moved": {"type": "integer", "minimum": 0}
+      }
+    },
+    "result_layout": {
+      "description": "Step 22: the result of pane.adjust (moved: cells the border moved), pane.swap, pane.zoom, window.rotate and window.select_layout: the window's layout afterwards; with dry_run, the layout it would have.",
+      "oneOf": [
+        {"$ref": "#/$defs/layout_change"},
+        {"type": "object", "required": ["dry_run", "would_change"], "additionalProperties": false, "properties": {"dry_run": {"const": true}, "would_change": {"$ref": "#/$defs/layout_change"}}}
       ]
     },
     "result_topology": {

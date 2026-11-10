@@ -17,7 +17,7 @@
 //! when they cannot ask. Only after that consent does the client send `force`, which the Host
 //! requires to end a Terminal that runs more than an idle shell.
 
-use crate::cli::{Args, EnvArg};
+use crate::cli::{Args, Cmd, EnvArg};
 use crate::client::{self, Connected, Failure, Plan, Session, Why, confirm};
 use crate::output::{CliError, Code};
 use crate::{pty, session};
@@ -524,6 +524,94 @@ pub fn create_in(a: &Args, endpoint: &str, window: bool) -> Result<Value, CliErr
     require(endpoint)?.request_within(method, &params, CREATE_TIMEOUT)
 }
 
+/// `pane split <target>` (Step 22, tmux `split-window`): a new pane with its own process next
+/// to the target pane (or the active pane of a target window or Terminal), `--vertical`
+/// (stacked, the default) or `--horizontal` (side by side), `--before` it, at `--cells` or
+/// `--percent` of the split pane (default half).
+pub fn split(a: &Args, endpoint: &str) -> Result<Value, CliError> {
+    let command = match a.command.split_first() {
+        Some((program, args)) => json!({"program": program, "args": args}),
+        None => Value::Null,
+    };
+    let params = json!({
+        "target": target(a),
+        "direction": if a.split == Some(true) { "horizontal" } else { "vertical" },
+        "before": a.before,
+        "cells": a.cells,
+        "percent": a.percent,
+        "command": command,
+        "command_line": a.command_line,
+        "cwd": a.cwd,
+        "env": env_param(a)?,
+        "history_limit": a.history_limit,
+        "select": !a.no_select,
+        "dry_run": a.dry_run,
+    });
+    require(endpoint)?.request_within("pane.split", &params, CREATE_TIMEOUT)
+}
+
+/// `pane resize <pane> <left|right|up|down> [cells]` (tmux `resize-pane -L/-R/-U/-D`),
+/// `pane swap <pane> <other|next|previous>` (`swap-pane`) and `pane zoom <pane> [on|off]`
+/// (`resize-pane -Z`, a toggle by default): the layout changes, every process keeps running.
+pub fn layout(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
+    let second = a.positional.get(1).map(String::as_str);
+    let (method, mut params) = match cmd {
+        Cmd::PaneResize => {
+            let dir = second.unwrap_or("");
+            if !matches!(dir, "left" | "right" | "up" | "down") {
+                return Err(CliError::usage(format!("invalid direction `{dir}`"))
+                    .hint("left, right, up or down"));
+            }
+            let cells = match a.positional.get(2) {
+                None => 1,
+                Some(n) => n
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|n| (1..=1000).contains(n))
+                    .ok_or_else(|| {
+                        CliError::usage(format!("invalid number of cells `{n}`")).hint("1 to 1000")
+                    })?,
+            };
+            ("pane.adjust", json!({"direction": dir, "cells": cells}))
+        }
+        Cmd::PaneSwap => match second {
+            Some(d @ ("next" | "previous")) => ("pane.swap", json!({"direction": d})),
+            Some(other) => ("pane.swap", json!({"with": other})),
+            None => return Err(CliError::usage("`pane swap` needs the other pane")),
+        },
+        Cmd::WindowRotate => match second {
+            None | Some("up") => ("window.rotate", json!({"direction": "up"})),
+            Some("down") => ("window.rotate", json!({"direction": "down"})),
+            Some(x) => {
+                return Err(CliError::usage(format!("invalid direction `{x}`")).hint("up or down"));
+            }
+        },
+        Cmd::WindowLayout => {
+            let l = second.unwrap_or("");
+            if !matches!(l, "even-horizontal" | "even-vertical" | "tiled") {
+                return Err(CliError::usage(format!("unknown layout `{l}`"))
+                    .hint("even-horizontal, even-vertical or tiled (more presets with Step 25)"));
+            }
+            ("window.select_layout", json!({"layout": l}))
+        }
+        _ => {
+            let zoom = match second {
+                None => Value::Null,
+                Some("on") => json!(true),
+                Some("off") => json!(false),
+                Some(x) => {
+                    return Err(CliError::usage(format!("invalid zoom `{x}`"))
+                        .hint("on or off (omit it to toggle)"));
+                }
+            };
+            ("pane.zoom", json!({"zoom": zoom}))
+        }
+    };
+    params["target"] = json!(target(a));
+    params["dry_run"] = json!(a.dry_run);
+    require(endpoint)?.request(method, &params)
+}
+
 /// `window ls <terminal>` and `pane ls <terminal|window>`.
 pub fn topology(a: &Args, endpoint: &str, panes: bool) -> Result<Value, CliError> {
     let method = if panes { "pane.list" } else { "window.list" };
@@ -532,9 +620,22 @@ pub fn topology(a: &Args, endpoint: &str, panes: bool) -> Result<Value, CliError
 
 /// `window select <window>` and `pane select <pane>`: the active window or pane every client
 /// sees. No process changes.
+///
+/// Step 22: `pane select <pane> <left|right|up|down|next|previous>` selects the pane next to it.
 pub fn select(a: &Args, endpoint: &str, pane: bool) -> Result<Value, CliError> {
     let method = if pane { "pane.select" } else { "window.select" };
-    require(endpoint)?.request(method, &json!({"target": target(a), "dry_run": a.dry_run}))
+    let mut params = json!({"target": target(a), "dry_run": a.dry_run});
+    if let Some(d) = a.positional.get(1) {
+        if !matches!(
+            d.as_str(),
+            "left" | "right" | "up" | "down" | "next" | "previous"
+        ) {
+            return Err(CliError::usage(format!("invalid direction `{d}`"))
+                .hint("left, right, up, down, next or previous"));
+        }
+        params["direction"] = json!(d);
+    }
+    require(endpoint)?.request(method, &params)
 }
 
 /// `window rename <window> <name>`.
@@ -626,7 +727,7 @@ enum Verb {
 
 /// `stop | kill | rm <target>`: shows the plan with `--dry-run`; otherwise asks for consent (or
 /// `--yes`) whenever processes would end or the Terminal would be removed.
-pub fn end(a: &Args, endpoint: &str, cmd: crate::cli::Cmd) -> Result<Value, CliError> {
+pub fn end(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
     use crate::cli::Cmd;
     let verb = match cmd {
         Cmd::Stop => Verb::Stop,

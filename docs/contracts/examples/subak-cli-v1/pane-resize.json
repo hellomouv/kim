@@ -1,0 +1,65 @@
+{
+  "command": "pane.resize",
+  "data": {
+    "active_pane": "p-000000000001",
+    "changed": true,
+    "layout": {
+      "children": [
+        {
+          "cells": 64,
+          "node": {
+            "pane": "p-000000000002",
+            "type": "pane"
+          },
+          "size": 0.533
+        },
+        {
+          "cells": 55,
+          "node": {
+            "pane": "p-000000000001",
+            "type": "pane"
+          },
+          "size": 0.458
+        }
+      ],
+      "direction": "horizontal",
+      "type": "split"
+    },
+    "moved": 4,
+    "pane_id": "p-000000000002",
+    "panes": [
+      {
+        "id": "p-000000000002",
+        "index": 0,
+        "rect": {
+          "cols": 64,
+          "rows": 30,
+          "x": 0,
+          "y": 0
+        },
+        "visible": true
+      },
+      {
+        "id": "p-000000000001",
+        "index": 1,
+        "rect": {
+          "cols": 55,
+          "rows": 30,
+          "x": 0,
+          "y": 0
+        },
+        "visible": true
+      }
+    ],
+    "size": {
+      "cols": 120,
+      "rows": 30
+    },
+    "terminal_id": "t-000000000003",
+    "window_id": "w-000000000004",
+    "zoomed": null
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

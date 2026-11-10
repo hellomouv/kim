@@ -412,13 +412,13 @@ Step 21 ([ADR 0054](adr/0054-subak-internal-windows-and-panes.md),
 [SESSION_MODEL §1–§5](SESSION_MODEL.md)). A Terminal (a GUI tab) holds **internal windows**, each
 with **panes**; every pane runs its own process. Windows are numbered from 0 (a new one takes the
 lowest free index), panes from 0 within their window (renumbered when one goes). The active window
-and each window's active pane are the Host's, the same for every client; until Step 22 a window
-shows one pane, its active one.
+and each window's active pane are the Host's, the same for every client. Since Step 22 the panes
+of a window share it by a layout (§3.15).
 
 | Command | Effect | What it does |
 | --- | --- | --- |
 | `subak window new <terminal> [--name <name>] [--no-select] [--cwd …] [--env …] [--unset-env …] [--size …] [--history-limit …] [-- <program> [args…] \| --command-line <line>] [--dry-run]` | write | A new window with one pane running `<program>` (default `%ComSpec%`), in a running Terminal; named after the program unless `--name`; it becomes the active window unless `--no-select` (tmux `new-window [-d] [-n]`). Never starts a Host |
-| `subak pane new <terminal\|window> [same options, no --name]` | write | A new pane in a window (a Terminal target: its active window) |
+| `subak pane new <terminal\|window> [same options, no --name]` | write | A new pane in a window (a Terminal target: its active window): a vertical split of its active pane (§3.15) |
 | `subak window ls <terminal>`, `subak pane ls <terminal\|window>` | read | The windows (index, name, id, panes, active pane), or every pane (`window.pane`, id, pid, state, program); `*` marks the active ones |
 | `subak window select <window> [--dry-run]`, `subak pane select <pane> [--dry-run]` | write | The active window, or a window's active pane (and that window), for every client; no process changes |
 | `subak window rename <window> <name> [--dry-run]` | write | A window's name; need not be unique, not only digits |
@@ -442,6 +442,34 @@ change in a Terminal that is not running is `invalid_state` (exit 7), as is the 
 window or pane (`details.reason`); a busy pane without consent is `confirmation_required` (exit 7).
 A pane whose program exits leaves its window while others run; the exit of the last running pane
 ends the Terminal as before.
+
+### 3.15 Splits and the layout (`subak pane split|resize|swap|zoom`)
+
+Step 22 ([ADR 0056](adr/0056-subak-pane-splits-and-layout.md)). A window's panes share its area
+by a **layout** the Host keeps (tmux terms: `--horizontal` side by side, `--vertical` stacked).
+The window's size is the latest interactive client's; every pane's program sees exactly its share.
+
+| Command | Effect | What it does |
+| --- | --- | --- |
+| `subak pane split <pane\|window\|terminal> [--horizontal\|--vertical] [--before] [--cells N\|--percent N] [--no-select] [--cwd …] [--env …] [--unset-env …] [--history-limit …] [-- <program> [args…] \| --command-line <line>] [--dry-run]` | write | Split the pane (a window or Terminal target: its active pane) and start a new pane next to it, at half of it by default (tmux `split-window`). A pane too small (each needs 2×2 cells) is `invalid_state` with `need`/`have` |
+| `subak pane resize <pane> <left\|right\|up\|down> [cells] [--dry-run]` | write | Move the pane's border that way (default 1 cell; tmux `resize-pane -L/-R/-U/-D`): into the neighbour on that side, else the opposite border moves. `moved` says how far |
+| `subak pane swap <pane> <other\|next\|previous> [--dry-run]` | write | Swap two panes of one window (tmux `swap-pane`); processes stay with their panes |
+| `subak pane zoom <pane> [on\|off] [--dry-run]` | write | The pane fills the window; the others keep running, unseen (tmux `resize-pane -Z`, a toggle by default). Selecting another pane unzooms |
+| `subak pane select <pane> [left\|right\|up\|down\|next\|previous]` | write | Also the pane next to it (by geometry or index; wraps) |
+| `subak window rotate <window\|terminal> [up\|down] [--dry-run]` | write | Every pane moves one place along the pane order (tmux `rotate-window`) |
+| `subak window layout <window\|terminal> <even-horizontal\|even-vertical\|tiled> [--dry-run]` | write | Arrange the panes evenly (tmux `select-layout`; the other presets with Step 25) |
+
+tmux spellings: `split-window`, `resize-pane`, `swap-pane`, `rotate-window`, `select-layout`. `pane ls` shows each pane's size and
+place (`40x24@41,0`, `(hidden)` while another is zoomed).
+
+```text
+> subak pane split work --horizontal
+split: created pane 0:cmd.1 (w-db5581297310 p-6d709b67a392, pid 114752); it is now the active one
+> subak pane resize work:0.0 right 10
+moved the border by 10 cell(s) in window w-db5581297310 (81x24); every process keeps running
+  pane 0  p-0edbf0899ea1  50x24@0,0
+  pane 1* p-6d709b67a392  30x24@51,0
+```
 
 ## 4. Typical sessions
 

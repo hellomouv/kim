@@ -32,6 +32,14 @@
 //! shown pane's program ending while others run) the window detaches that pane and attaches the
 //! new active one; nothing ends. Which window and pane is shown is in the title
 //! ([`TermInfo::place`]). Keys to switch them are Step 23's prefix table.
+//!
+//! **Splits (Step 22, ADR 0056).** When the shown window has several visible panes, the window
+//! draws them all at the places of the Host's layout ([`TermInfo::layout`]): the active pane is
+//! the interactive attachment (keys, selection, search), every other visible pane a read-only
+//! view attached for drawing only ([`Model::views`]). A zoomed window shows its zoomed pane alone,
+//! and panes nobody sees are not attached. The window asks for the whole grid; the Host gives each
+//! pane its share. Splitting, moving focus, resizing, zooming and closing a pane are requests to
+//! the Host ([`Model::pane_op`]); the layout comes back with the next list.
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -56,6 +64,86 @@ pub struct TermInfo {
     pub place: Option<String>,
     /// Step 21: the id of the Terminal's active pane (its active window's active pane).
     pub active_pane: Option<String>,
+    /// Step 22: the active window's layout when it has more than one pane.
+    pub layout: Option<WinLayout>,
+}
+
+/// Where one pane of the shown window is, in cells of the window's grid (Step 22).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Slot {
+    pub id: String,
+    pub x: u16,
+    pub y: u16,
+    pub cols: u16,
+    pub rows: u16,
+    /// False while another pane of the window is zoomed.
+    pub visible: bool,
+}
+
+impl Slot {
+    pub fn contains(&self, col: u16, row: u16) -> bool {
+        col >= self.x && row >= self.y && col < self.x + self.cols && row < self.y + self.rows
+    }
+}
+
+/// The shown window's layout (Step 22): its size and its panes' places.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WinLayout {
+    pub window_id: String,
+    pub size: (u16, u16),
+    pub zoomed: Option<String>,
+    pub slots: Vec<Slot>,
+}
+
+impl WinLayout {
+    pub fn slot(&self, id: &str) -> Option<&Slot> {
+        self.slots.iter().find(|s| s.id == id)
+    }
+
+    /// More than one pane is drawn.
+    pub fn split(&self) -> bool {
+        self.slots.iter().filter(|s| s.visible).count() > 1
+    }
+
+    fn from_window(w: &Value) -> Option<Self> {
+        let panes = w["panes"].as_array()?;
+        if panes.len() < 2 {
+            return None;
+        }
+        let n = |v: &Value| v.as_u64().and_then(|n| u16::try_from(n).ok());
+        let slots = panes
+            .iter()
+            .map(|p| {
+                let r = &p["rect"];
+                Some(Slot {
+                    id: p["id"].as_str()?.to_string(),
+                    x: n(&r["x"])?,
+                    y: n(&r["y"])?,
+                    cols: n(&r["cols"])?,
+                    rows: n(&r["rows"])?,
+                    visible: p["visible"] != false,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(Self {
+            window_id: w["id"].as_str()?.to_string(),
+            size: (n(&w["size"]["cols"])?, n(&w["size"]["rows"])?),
+            zoomed: w["zoomed"].as_str().map(String::from),
+            slots,
+        })
+    }
+}
+
+/// A read-only view of a visible pane other than the active one (Step 22).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaneViewState {
+    pub pane_id: String,
+    /// Its stream once attached.
+    pub stream: Option<u32>,
+    in_snapshot: bool,
+    snapshot_size: Option<(u16, u16)>,
+    /// The attach was refused: not asked again until the layout changes.
+    failed: bool,
 }
 
 impl TermInfo {
@@ -120,6 +208,7 @@ impl TermInfo {
                 .unwrap_or(2000),
             place,
             active_pane: pane["id"].as_str().map(String::from),
+            layout: WinLayout::from_window(window),
         })
     }
 }
@@ -205,6 +294,8 @@ pub struct Confirm {
     pub program: String,
     /// Processes in its job.
     pub processes: u64,
+    /// Step 22: the busy pane to end (`pane.kill` with `force`) instead of the whole Terminal.
+    pub pane: Option<String>,
 }
 
 /// What the window must do after the model handled something.
@@ -234,6 +325,8 @@ pub enum Effect {
     Confirm(Confirm),
     /// The rename the user asked for finished (`Err`: why it was refused).
     Renamed(Result<(), String>),
+    /// Step 22: the read-only pane views changed (added, attached, gone).
+    Views,
 }
 
 /// What a data frame is for.
@@ -270,9 +363,20 @@ enum Pending {
     Resize,
     Detach,
     Create,
-    Kill { id: String, name: String },
-    Remove { id: String, name: String },
+    Kill {
+        id: String,
+        name: String,
+    },
+    Remove {
+        id: String,
+        name: String,
+    },
     Rename,
+    /// Step 22: a read-only view of this pane.
+    View(String),
+    /// Step 22: a layout request (`pane.split`, `pane.select`, …) from a key or a click, and
+    /// its target pane.
+    PaneOp(&'static str, String),
 }
 
 /// Retry delays after a disconnect: 0.5, 1, 2, 4, 8 s, then every 10 s.
@@ -309,6 +413,8 @@ pub struct Model {
     /// Terminals hidden in this window's last run (`gui.json`, Step 18): they go to `hidden`
     /// instead of the tabs when the first list arrives.
     pre_hidden: Vec<String>,
+    /// Step 22: the read-only views of the shown window's other visible panes.
+    views: Vec<PaneViewState>,
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -332,6 +438,7 @@ impl Model {
             host_stopping: None,
             connected: false,
             pre_hidden: Vec::new(),
+            views: Vec::new(),
         }
     }
 
@@ -370,6 +477,7 @@ impl Model {
             history_limit: 2000,
             place: None,
             active_pane: None,
+            layout: None,
         };
         self.show(t, &mut out);
         out.push(self.request("terminal.list", json!({"detail": "full"}), Pending::List));
@@ -500,6 +608,7 @@ impl Model {
     /// The connection ended (the Host stopped or crashed, or the pipe broke).
     pub fn on_disconnected(&mut self) -> Vec<Effect> {
         self.connected = false;
+        self.views.clear();
         self.pending.clear();
         self.closing.clear();
         self.awaiting = None;
@@ -852,7 +961,7 @@ impl Model {
 
     /// A control message (response or event) arrived.
     pub fn on_control(&mut self, m: &Value) -> Vec<Effect> {
-        match m["type"].as_str() {
+        let mut out = match m["type"].as_str() {
             Some("response") => {
                 let Some(p) = m["id"].as_u64().and_then(|id| self.pending.remove(&id)) else {
                     return Vec::new();
@@ -865,7 +974,131 @@ impl Model {
             }
             Some("event") => self.on_event(m["event"].as_str().unwrap_or(""), &m["data"]),
             _ => Vec::new(),
+        };
+        self.sync_views(&mut out);
+        out
+    }
+
+    /// Step 22: the shown window's layout while it shows more than one pane live.
+    pub fn layout(&self) -> Option<&WinLayout> {
+        match &self.phase {
+            Phase::Attached { term, .. } => term.layout.as_ref().filter(|l| l.split()),
+            _ => None,
         }
+    }
+
+    /// Step 22: where the active (interactive) pane is drawn, when the window is split.
+    pub fn active_slot(&self) -> Option<&Slot> {
+        let Phase::Attached { pane_id, .. } = &self.phase else {
+            return None;
+        };
+        self.layout()?.slot(pane_id)
+    }
+
+    /// Step 22: the read-only views of the other visible panes.
+    pub fn views(&self) -> &[PaneViewState] {
+        &self.views
+    }
+
+    /// Step 22: a data frame of a read-only view: its pane and what to do with it.
+    pub fn view_data(&mut self, stream: u32, snapshot: bool) -> Option<(String, Frame)> {
+        let v = self.views.iter_mut().find(|v| v.stream == Some(stream))?;
+        let begins = snapshot && !v.in_snapshot;
+        v.in_snapshot = snapshot;
+        if begins {
+            let (cols, rows) = v.snapshot_size.take().unwrap_or((80, 24));
+            return Some((
+                v.pane_id.clone(),
+                Frame::Reset {
+                    cols,
+                    rows,
+                    history: 0,
+                },
+            ));
+        }
+        Some((v.pane_id.clone(), Frame::Feed))
+    }
+
+    /// Step 22: attaches a read-only view of each visible pane other than the active one, and
+    /// detaches views nobody sees any more (another tab, a zoom, a pane gone).
+    fn sync_views(&mut self, out: &mut Vec<Effect>) {
+        let want: Vec<String> = match (&self.phase, self.connected) {
+            (Phase::Attached { pane_id, .. }, true) => self
+                .layout()
+                .map(|l| {
+                    l.slots
+                        .iter()
+                        .filter(|s| s.visible && s.id != *pane_id)
+                        .map(|s| s.id.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        // The pane the window's own (interactive) attachment is on or goes to: the Host keeps
+        // one attachment per stream and connection, so its view is forgotten, never detached
+        // (that would end the interactive attachment that replaced it).
+        let main = match &self.phase {
+            Phase::Attached { pane_id, .. } => Some(pane_id.clone()),
+            Phase::Attaching(t) => t.active_pane.clone(),
+            _ => None,
+        };
+        let mut changed = false;
+        let gone: Vec<PaneViewState> = self
+            .views
+            .iter()
+            .filter(|v| !want.contains(&v.pane_id))
+            .cloned()
+            .collect();
+        for v in gone {
+            self.views.retain(|x| x.pane_id != v.pane_id);
+            if let Some(s) = v.stream
+                && main.as_deref() != Some(v.pane_id.as_str())
+            {
+                out.push(self.request("pane.detach", json!({"stream_id": s}), Pending::Detach));
+            }
+            changed = true;
+        }
+        for id in want {
+            if self.views.iter().any(|v| v.pane_id == id) {
+                continue;
+            }
+            out.push(self.request(
+                "pane.attach",
+                json!({"target": id, "interactive": false, "history_lines": 0}),
+                Pending::View(id.clone()),
+            ));
+            self.views.push(PaneViewState {
+                pane_id: id,
+                stream: None,
+                in_snapshot: false,
+                snapshot_size: None,
+                failed: false,
+            });
+            changed = true;
+        }
+        if changed {
+            out.push(Effect::Views);
+        }
+    }
+
+    /// Step 22: a layout request for the active pane (or `target`), from a key or a click:
+    /// `pane.split`, `pane.select`, `pane.adjust`, `pane.zoom`, `pane.kill`. A refusal is a
+    /// notice; the result arrives as the next layout.
+    pub fn pane_op(&mut self, method: &'static str, mut params: Value) -> Vec<Effect> {
+        if !self.connected {
+            return vec![Effect::Notice(
+                "Not connected to the Subak Host; nothing was changed".into(),
+            )];
+        }
+        let Phase::Attached { pane_id, .. } = &self.phase else {
+            return Vec::new();
+        };
+        if params["target"].is_null() {
+            params["target"] = json!(pane_id);
+        }
+        let target = params["target"].as_str().unwrap_or("").to_string();
+        vec![self.request(method, params, Pending::PaneOp(method, target))]
     }
 
     fn on_result(&mut self, p: Pending, r: &Value) -> Vec<Effect> {
@@ -914,6 +1147,7 @@ impl Model {
                         history_limit: 2000,
                         place: None,
                         active_pane: None,
+                        layout: None,
                     });
                 term.id = tid.to_string();
                 if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
@@ -985,7 +1219,32 @@ impl Model {
                 self.close_tab(&id, &mut out);
             }
             Pending::Rename => out.push(Effect::Renamed(Ok(()))),
-            Pending::Subscribe | Pending::Resize | Pending::Detach => {}
+            Pending::View(id) => {
+                let stream = r["stream_id"].as_u64().and_then(|s| u32::try_from(s).ok());
+                let size = &r["snapshot"]["size"];
+                let snap = match (size["cols"].as_u64(), size["rows"].as_u64()) {
+                    (Some(c), Some(r)) => u16::try_from(c).ok().zip(u16::try_from(r).ok()),
+                    _ => None,
+                };
+                match self.views.iter_mut().find(|v| v.pane_id == id) {
+                    Some(v) => {
+                        v.stream = stream;
+                        v.snapshot_size = snap;
+                        out.push(Effect::Views);
+                    }
+                    // Not wanted any more: let it go.
+                    None => {
+                        if let Some(s) = stream {
+                            out.push(self.request(
+                                "pane.detach",
+                                json!({"stream_id": s}),
+                                Pending::Detach,
+                            ));
+                        }
+                    }
+                }
+            }
+            Pending::PaneOp(..) | Pending::Subscribe | Pending::Resize | Pending::Detach => {}
         }
         out
     }
@@ -1038,6 +1297,7 @@ impl Model {
                         name,
                         program: e["details"]["program"].as_str().unwrap_or("").to_string(),
                         processes: e["details"]["processes"].as_u64().unwrap_or(0),
+                        pane: None,
                     })),
                     // Already gone: its tab goes.
                     "target_not_found" => self.close_tab(&id, &mut out),
@@ -1056,6 +1316,44 @@ impl Model {
                 }
             }
             Pending::Rename => out.push(Effect::Renamed(Err(format!("{message} ({code})")))),
+            Pending::View(id) => {
+                if let Some(v) = self.views.iter_mut().find(|v| v.pane_id == id) {
+                    v.failed = true;
+                }
+            }
+            // A busy pane: the window asks before `force`, as for a busy Terminal (ADR 0042).
+            Pending::PaneOp("pane.kill", target) if code == "busy" => {
+                let pane = &e["details"]["panes"][0];
+                let name = format!(
+                    "pane {} of `{}`",
+                    pane["index"]
+                        .as_u64()
+                        .map_or_else(|| "?".into(), |i| i.to_string()),
+                    self.terminal().map_or("", |t| t.name.as_str())
+                );
+                out.push(Effect::Confirm(Confirm {
+                    id: self.terminal().map_or(String::new(), |t| t.id.clone()),
+                    name,
+                    program: pane["program"].as_str().unwrap_or("").to_string(),
+                    processes: e["details"]["processes"].as_u64().unwrap_or(0),
+                    pane: Some(target),
+                }));
+            }
+            Pending::PaneOp(method, _) => {
+                let what = match method {
+                    "pane.split" => "The pane was not split",
+                    "pane.kill" => "The pane was not closed",
+                    "pane.adjust" => "The pane was not resized",
+                    "pane.zoom" => "The pane was not zoomed",
+                    _ => "The pane was not changed",
+                };
+                let busy = if code == "busy" {
+                    " (it runs a program; end it there, or use `subak pane kill`)"
+                } else {
+                    ""
+                };
+                out.push(Effect::Notice(format!("{what}: {message} ({code}){busy}")));
+            }
             Pending::Subscribe | Pending::Resize | Pending::Detach => {}
         }
         out
@@ -1074,10 +1372,13 @@ impl Model {
         // The shown Terminal's place stays current (the title names the window and pane).
         if let Phase::Attached { term, .. } | Phase::Ended { term, .. } | Phase::Attaching(term) =
             &mut self.phase
-            && (term.place != t.place || term.active_pane != t.active_pane)
+            && (term.place != t.place
+                || term.active_pane != t.active_pane
+                || term.layout != t.layout)
         {
             term.place.clone_from(&t.place);
             term.active_pane.clone_from(&t.active_pane);
+            term.layout.clone_from(&t.layout);
             out.push(Effect::Phase);
         }
         if !t.running() {
@@ -1188,6 +1489,7 @@ impl Model {
                     history_limit: 2000,
                     place: None,
                     active_pane: None,
+                    layout: None,
                 });
                 if shown.stored() {
                     self.set(Phase::Stored(shown), out);
@@ -1439,7 +1741,7 @@ impl Model {
             // Step 21: a window or pane appeared, went, was renamed or selected: the list says
             // what the tabs and the title show, and which pane to show (see `follow`).
             "window.created" | "window.renamed" | "window.removed" | "window.selected"
-            | "pane.created" | "pane.removed" | "pane.selected" => {
+            | "pane.created" | "pane.removed" | "pane.selected" | "window.layout" => {
                 if self
                     .tabs
                     .iter()
@@ -1866,7 +2168,8 @@ mod tests {
                 id: "t-a".into(),
                 name: "claude".into(),
                 program: "claude.exe".into(),
-                processes: 3
+                processes: 3,
+                pane: None,
             })]
         );
         assert_eq!(names(&m), ["claude", "other"]);

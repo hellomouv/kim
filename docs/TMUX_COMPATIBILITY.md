@@ -149,16 +149,16 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Select the previous layout | `previous-layout` (`prevl`) | Cycle layout presets backwards | planned | 25 | — |
 | Select the previous window | `previous-window` (`prev`) | Focus the previous Window | planned | 23 | — |
 | Rename a window | `rename-window` (`renamew`) | Rename the internal Window (SUBAK-FR-010): `subak window rename <window> <name>` (also `rename-window`) / IPC `window.rename`; the id stays, names need not be unique, not only digits | implemented | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
-| Resize or zoom a pane | `resize-pane` (`resizep`) | Resize a split by cells or `%`; `-Z` zoom; `-M` mouse drag | planned | 22 | — |
+| Resize or zoom a pane | `resize-pane` (`resizep`) | Resize a split by cells or `%`; `-Z` zoom; `-M` mouse drag. *Partial:* `subak pane resize <pane> <left|right|up|down> [cells]` (also `resize-pane`) / IPC `pane.adjust`, `subak pane zoom` / `pane.zoom` (`-Z`), and dragging a border in the window (`-M`); `-x`/`-y` absolute sizes and `%` later | partial | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11), `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Resize a window | `resize-window` (`resizew`) | Manual Window size (with `window-size`) | planned | 25 | — |
 | Restart a pane's process | `respawn-pane` (`respawnp`) | Start a new process in a dead Pane; `-k` kills a live one (confirmed) | planned | 25 | — |
 | Restart a window's process | `respawn-window` (`respawnw`) | As `respawn-pane` for a Window | planned | 25 | — |
-| Rotate panes | `rotate-window` (`rotatew`) | Rotate Pane positions (`-U`, `-D`) | planned | 22 | — |
-| Select a layout | `select-layout` (`selectl`) | Basic layouts in 22; presets, layout strings and `-o` undo in 25 | planned | 22, 25 | — |
-| Select a pane | `select-pane` (`selectp`) | Focus a Pane, incl. `-L`/`-R`/`-U`/`-D`; `-T` title; `-m`/`-M` mark (24); `-d`/`-e` input off/on (25). *Partial:* `subak pane select <pane>` (also `select-pane`) / IPC `pane.select` by index or id, for every client (the GUI follows); directions with Step 22's layout, `-T` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
+| Rotate panes | `rotate-window` (`rotatew`) | Rotate Pane positions (`-U`, `-D`). *Partial:* `subak window rotate <window> [up|down]` (also `rotate-window`) / IPC `window.rotate`; `-Z` (keep zoom) later | partial | 22 | `crates/subak/tests/pane_layout.rs::rotate_and_basic_layouts_rearrange_without_ending_anything` (2026-11-11) |
+| Select a layout | `select-layout` (`selectl`) | Basic layouts in 22; presets, layout strings and `-o` undo in 25. *Partial:* `subak window layout <window> <even-horizontal|even-vertical|tiled>` (also `select-layout`) / IPC `window.select_layout` | partial | 22, 25 | `crates/subak/tests/pane_layout.rs::rotate_and_basic_layouts_rearrange_without_ending_anything` (2026-11-11) |
+| Select a pane | `select-pane` (`selectp`) | Focus a Pane, incl. `-L`/`-R`/`-U`/`-D`; `-T` title; `-m`/`-M` mark (24); `-d`/`-e` input off/on (25). *Partial:* `subak pane select <pane>` (also `select-pane`) / IPC `pane.select` by index or id, for every client (the GUI follows); since Step 22 also `subak pane select <pane> <left|right|up|down|next|previous>` / `direction` (by the layout, wrapping), `Alt+Arrow` and a click in the window; `-T` later | partial | 21, 22 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
 | Select a window | `select-window` (`selectw`) | Focus a Window by index, ID or name; `-T` toggles to last. *Partial:* `subak window select <window>` (also `select-window`) / IPC `window.select` by index, name or id, for every client (the GUI follows); `-T`, `-l`, `-n`, `-p` later | partial | 21 | `crates/subak/tests/windows_panes.rs::only_an_intentional_kill_ends_and_only_its_target` (2026-11-04) |
-| Split a pane | `split-window` (`splitw`) | Split `-h`/`-v`, `-l` size or `%`, `-b` before, `-f` full width; GUI split (SUBAK-FR-035) | planned | 22 | — |
-| Swap panes | `swap-pane` (`swapp`) | Swap Pane positions (`-U`, `-D`, `-s`/`-t`) | planned | 22 | — |
+| Split a pane | `split-window` (`splitw`) | Split `-h`/`-v`, `-l` size or `%`, `-b` before, `-f` full width; GUI split (SUBAK-FR-035). *Partial:* `subak pane split <target> [--horizontal|--vertical] [--before] [--cells N|--percent N] [--no-select] [-- <program> …]` (also `split-window`) / IPC `pane.split`, and `Alt+Shift+Plus` / `Alt+Shift+Minus` in the window; `-f` later | partial | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11), `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
+| Swap panes | `swap-pane` (`swapp`) | Swap Pane positions (`-U`, `-D`, `-s`/`-t`). *Partial:* `subak pane swap <pane> <other|next|previous>` (also `swap-pane`) / IPC `pane.swap` within one window; across windows with `join-pane` (Step 24) | partial | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11) |
 | Swap windows | `swap-window` (`swapw`) | Swap Window indexes | planned | 25 | — |
 | Unlink a window | `unlink-window` (`unlinkw`) | Remove a linked Window from one Terminal | planned | 25 | — |
 
@@ -229,7 +229,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Session and first window names | `new-session -s name -n name` | Terminal name and first Window name. *Partial:* the Terminal name (`subak new <name>`); the first window is named after its program and renamed with `subak window rename` (Step 21); `-n` later | partial | 12 | `crates/subak/tests/subak_cli.rs::a_user_creates_attaches_detaches_lists_renames_and_kills_with_the_cli_only` (2026-11-04) |
 | Start directory, environment, size | `new-session -c`, `-e VAR=val`, `-x`, `-y` | Profile cwd and environment (SUBAK-FR-011); default size. *Partial:* `--cwd`, `--size` and `--env NAME=VALUE` / `--env NAME` / `--unset-env NAME` (Step 11, [PTY_PROCESSES §3](PTY_PROCESSES.md)); profiles with Step 33 | partial | 11 | `crates/subak/tests/session_lifecycle.rs::names_are_unique_ignoring_case_and_composition_and_renames_keep_ids`, `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 | Print the created object | `new-session -P -F format`, `new-window -P` | `--json` output (KIM-FR-010); `-F` formats in Step 25. *Partial:* `subak new --json` prints the created Terminal (`subak-cli-v1`) | partial | 12 | `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
-| Command given as argv (no shell) | `new-window vi file`, `split-window cmd args` | Start the program directly without a shell. *Partial:* `subak window new|pane new … -- <program> [args…]` (each word quoted, no shell); `split-window` with Step 22 | partial | 21 | `crates/subak/tests/windows_panes.rs::exits_stop_and_kill_follow_the_hierarchy` (2026-11-04) |
+| Command given as argv (no shell) | `new-window vi file`, `split-window cmd args` | Start the program directly without a shell. *Partial:* `subak window new|pane new|pane split … -- <program> [args…]` (each word quoted, no shell) | partial | 21, 22 | `crates/subak/tests/windows_panes.rs::exits_stop_and_kill_follow_the_hierarchy` (2026-11-04) |
 | Session groups | `new-session -t target-session` | *Rationale:* grouped sessions share windows with independent current windows; linked windows (Step 25) come first | deferred | post-26 | — |
 | Detach other clients | `attach-session -d`, `new-session -D` | Detach every other client of the Terminal | planned | 12 | — |
 | Detach all others or a whole session | `detach-client -a`, `-s target-session` | Detach selected clients. *Partial:* `-s` as `subak detach <terminal>`, `-t` as `--client <id>`; `-a` (all but the current client) not yet | partial | 12 | `crates/subak/tests/subak_cli.rs::client_detach_over_ipc_ends_only_attachments_and_tells_the_detached_client` (2026-11-04) |
@@ -238,8 +238,8 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Kill all other sessions, windows or panes | `kill-session -a`, `kill-window -a`, `kill-pane -a` | Multi-target delete, confirmed when busy | planned | 25 | — |
 | Clear alert flags | `kill-session -C` | Clear bell/activity/silence flags | planned | 25 | — |
 | Window placement and reuse | `new-window -a`, `-b`, `-d`, `-k`, `-S` | Insert after/before, do not focus, replace, select existing. *Partial:* `-d` as `--no-select`; `-a`, `-b`, `-k`, `-S` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
-| Split size, side and span | `split-window -l N`, `-l N%`, `-b`, `-f`, `-d` | Split options | planned | 22 | — |
-| Keep zoom while navigating | `-Z` on `select-pane`, `last-pane`, `swap-pane`, `rotate-window`, `split-window` | Zoom-preserving navigation | planned | 22 | — |
+| Split size, side and span | `split-window -l N`, `-l N%`, `-b`, `-f`, `-d` | Split options. *Partial:* `--cells N`, `--percent N`, `--before`, `--no-select`; `-f` (full width) later | partial | 22 | `crates/subak/tests/pane_layout.rs::directional_focus_minimum_sizes_dry_runs_and_refusals` (2026-11-11) |
+| Keep zoom while navigating | `-Z` on `select-pane`, `last-pane`, `swap-pane`, `rotate-window`, `split-window` | Zoom-preserving navigation. *Rationale for the move:* Step 22 unzooms on every such change, as tmux does without `-Z`; keeping the zoom is an option of Step 25 | planned | 25 | — |
 | Capture options | `capture-pane -p -e -J -N -S -E -a -b -C -M -P -q -T` | Text (`-p`), styles (`-e`), joined lines (`-J`), ranges (`-S`/`-E`), alternate screen (`-a`). *Partial:* `-p` (always), `-e` = `--vt`, `-J` = `--join`, `-S`/`-E` = `--start`/`--end` with the same numbering and `-`; `-N`, `-a`, `-b`, `-C`, `-M`, `-P`, `-q`, `-T` later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak/src/screen.rs::tests::capture_ranges_join_and_edges` (2026-11-04) |
 | Copy-mode entry options | `copy-mode -u -d -e -H -M -q -S -s -k` | Scroll on entry, exit at bottom, mouse entry, quit all modes | planned | 24 | — |
 | List filters and sort order | `list-* -f filter -O order -r` | CLI filter and sort; format filters in Step 25 | planned | 25 | — |
@@ -341,8 +341,8 @@ when `mouse` is on.
 | Middle-click pastes | `MouseDown2Pane` → `paste -p` | Middle-click pastes the latest buffer | planned | 24 | — |
 | Double-click copies a word | `DoubleClick1Pane` → `select-word; copy-pipe-and-cancel` | Same gesture. *Partial:* word selection and its copy text in the client view (Windows Terminal's word delimiters, wide characters once); the gesture and the clipboard are the GUI's (Step 16; plain text and, on request, HTML Format since Step 19), which copies on an explicit copy rather than on the click (copy-on-select is off, Step 20 adds the option) | partial | 15, 24 | `crates/subak-term/tests/view.rs::word_and_block_selection` (2026-11-04) |
 | Triple-click copies a line | `TripleClick1Pane` → `select-line; copy-pipe-and-cancel` | Same gesture. *Partial:* line selection (soft-wrapped rows as one line) and its copy text in the client view; the gesture and the clipboard are the GUI's (Steps 16, 19) | partial | 15, 24 | `crates/subak-term/tests/view.rs::copy_joins_soft_wrapped_rows_but_not_hard_line_breaks` (2026-11-04) |
-| Click a border selects the pane | `MouseDown1Border` → `select-pane -t=` | Same gesture | planned | 22 | — |
-| Drag a border resizes | `MouseDrag1Border` → `resize-pane -M` | Drag the split divider | planned | 22 | — |
+| Click a border selects the pane | `MouseDown1Border` → `select-pane -t=` | Same gesture. *Rationale for the move:* in Step 22 a press on a border starts a border drag; selecting the pane with it comes with the mouse options of Step 25 | planned | 25 | — |
+| Drag a border resizes | `MouseDrag1Border` → `resize-pane -M` | Drag the split divider: one `pane.adjust` per cell crossed | implemented | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Click the window list selects a window | `MouseDown1Status` → `switch-client -t=` | Click a Window in the in-tab window list | planned | 25 | — |
 | Ctrl-click the window list swaps windows | `C-MouseDown1Status` → `swap-window -t@` | Same gesture | planned | 25 | — |
 | Wheel over the window list changes window | `WheelUpStatus`, `WheelDownStatus` → `previous-window`, `next-window` | Same gesture | planned | 25 | — |
@@ -501,13 +501,13 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Pane-number overlay | `display-panes-active-colour`, `display-panes-border-style`, `display-panes-colour`, `display-panes-format`, `display-panes-time` | Same | planned | 25 | — |
 | Fill character outside a smaller window | `fill-character` | Same | planned | 25 | — |
 | Preset layout sizes | `main-pane-height`, `main-pane-width`, `other-pane-height`, `other-pane-width` | Same | planned | 25 | — |
-| Tiled layout columns | `tiled-layout-max-columns` | Same | planned | 22 | — |
+| Tiled layout columns | `tiled-layout-max-columns` | Same (Step 22 tiles with as many columns as the square root of the count, rounded up) | planned | 25 | — |
 | Menu appearance | `menu-border-lines`, `menu-border-style`, `menu-selected-style`, `menu-style` | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
 | Popup appearance | `popup-border-lines`, `popup-border-style`, `popup-style` | *Rationale:* `display-popup` deferred | deferred | post-26 | — |
 | Copy-mode key style | `mode-keys` | Same | planned | 24 | — |
 | Alert monitoring | `monitor-activity`, `monitor-bell`, `monitor-silence` | Same | planned | 25 | — |
 | First pane index | `pane-base-index` | Same; panes are numbered from 0 (tmux's default) since Step 21, the option later | planned | 25 | — |
-| Active-pane border indicators | `pane-border-indicators` | Same | planned | 22 | — |
+| Active-pane border indicators | `pane-border-indicators` | Same. *Partial:* the active pane's border is drawn in the accent colour (fixed; the option later) | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Pane scrollbars | `pane-scrollbars`, `pane-scrollbars-position`, `pane-scrollbars-timeout` | Native GUI scrollbar | planned | 13 | — |
 | Per-object status styles and pane lists (new in 3.8) | `pane-status-style`, `pane-status-current-style`, `session-status-style`, `session-status-current-style`, `window-pane-status-format`, `window-pane-current-status-format` | Same | planned | 25 | — |
 | Tree-mode appearance | `tree-mode-border-style`, `tree-mode-preview-style`, `tree-mode-selection-style` | Same | planned | 25 | — |
@@ -526,7 +526,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Alternate screen | `alternate-screen` | Same | planned | 13 | — |
 | Copy-mode position text | `copy-mode-position-format` | Same | planned | 24 | — |
 | Cursor colour and style | `cursor-colour`, `cursor-style` | Same | planned | 25 | — |
-| Pane borders | `pane-border-style`, `pane-active-border-style`, `pane-border-lines` | Native dividers with equivalent styles | planned | 22 | — |
+| Pane borders | `pane-border-style`, `pane-active-border-style`, `pane-border-lines` | Native dividers with equivalent styles. *Partial:* one-cell gaps with a thin divider from the theme (`border_subtle`, the active pane's `accent`); styles later | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Pane status lines | `pane-border-status`, `pane-border-format` | Same | planned | 25 | — |
 | Pane colour palette | `pane-colours` | Same | planned | 25 | — |
 | Scrollbar style | `pane-scrollbars-style` | Same | planned | 13 | — |
@@ -827,17 +827,17 @@ a family is scheduled in detail.
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Even-horizontal layout | `even-horizontal` | Same | planned | 22 | — |
-| Even-vertical layout | `even-vertical` | Same | planned | 22 | — |
-| Tiled layout | `tiled` | Same | planned | 22 | — |
+| Even-horizontal layout | `even-horizontal` | Same: `subak window layout <window> even-horizontal` / `window.select_layout` | implemented | 22 | `crates/subak/tests/pane_layout.rs::rotate_and_basic_layouts_rearrange_without_ending_anything` (2026-11-11) |
+| Even-vertical layout | `even-vertical` | Same: `subak window layout <window> even-vertical` / `window.select_layout` | implemented | 22 | `crates/subak/tests/pane_layout.rs::rotate_and_basic_layouts_rearrange_without_ending_anything` (2026-11-11) |
+| Tiled layout | `tiled` | Same: `subak window layout <window> tiled` / `window.select_layout` | implemented | 22 | `crates/subak/tests/pane_layout.rs::rotate_and_basic_layouts_rearrange_without_ending_anything` (2026-11-11) |
 | Main-horizontal layout | `main-horizontal` | Same | planned | 25 | — |
 | Main-horizontal-mirrored layout | `main-horizontal-mirrored` | Same | planned | 25 | — |
 | Main-vertical layout | `main-vertical` | Same | planned | 25 | — |
 | Main-vertical-mirrored layout | `main-vertical-mirrored` | Same | planned | 25 | — |
-| Spread panes evenly | `select-layout -E` | Same | planned | 22 | — |
+| Spread panes evenly | `select-layout -E` | Same | planned | 25 | — |
 | Undo the last layout change | `select-layout -o` | Same | planned | 25 | — |
 | Layout strings | `window_layout` format, `select-layout <string>` | Same string format, so layouts can be copied from tmux | planned | 25 | — |
-| Zoom a pane | `resize-pane -Z`, `Z` flag | Same | planned | 22 | — |
+| Zoom a pane | `resize-pane -Z`, `Z` flag | Same: `subak pane zoom`, `pane.zoom`, `Ctrl+Shift+Z` in the window; the zoomed pane fills the window, the others keep their sizes unseen; `zoomed` in window objects | implemented | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11), `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Session names | `new-session -s`, `rename-session` | Terminal names (SUBAK-FR-010) | planned | 10 | — |
 | Window names | `new-window -n`, `rename-window`, `automatic-rename`, `\033k…\033\\` | Same. *Partial:* `subak window new --name`, `subak window rename`; a window is named after its first program until renamed (`automatic_name`); following the foreground program and `\033k…\033\\` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Pane titles | `select-pane -T`, OSC 2, `allow-set-title` | Same | planned | 25 | — |
@@ -940,9 +940,9 @@ whenever a row or Status changes.
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 474 |
-| `partial` | 42 |
-| `implemented` | 11 |
+| `planned` | 461 |
+| `partial` | 50 |
+| `implemented` | 16 |
 | `deferred` | 55 |
 | `unsupported` | 24 |
 | **Total** | **606** |
@@ -950,14 +950,14 @@ whenever a row or Status changes.
 | Section | planned | partial | implemented | deferred | unsupported | Total |
 | --- | --- | --- | --- | --- | --- | --- |
 | §1 Invocation | 4 | 3 | 4 | 2 | 4 | 17 |
-| §2 Commands | 63 | 17 | 2 | 5 | 5 | 92 |
-| §3 Notable command flags | 10 | 7 | 1 | 1 | 1 | 20 |
+| §2 Commands | 58 | 22 | 2 | 5 | 5 | 92 |
+| §3 Notable command flags | 9 | 8 | 1 | 1 | 1 | 20 |
 | §4 Prefix table | 62 | 0 | 0 | 9 | 1 | 72 |
-| §5 Root table (mouse) | 8 | 4 | 0 | 7 | 0 | 19 |
+| §5 Root table (mouse) | 7 | 4 | 1 | 7 | 0 | 19 |
 | §6 Key tables overview | 7 | 0 | 0 | 1 | 0 | 8 |
 | §7 Copy mode | 29 | 0 | 0 | 0 | 0 | 29 |
 | §8 Other pane modes | 5 | 0 | 0 | 2 | 0 | 7 |
-| §9 Options | 78 | 3 | 0 | 9 | 5 | 95 |
+| §9 Options | 76 | 5 | 0 | 9 | 5 | 95 |
 | §10 Formats | 40 | 0 | 0 | 2 | 2 | 44 |
 | §11 Status line and styles | 17 | 0 | 0 | 0 | 0 | 17 |
 | §12 Hooks | 53 | 0 | 0 | 4 | 0 | 57 |
@@ -969,9 +969,9 @@ whenever a row or Status changes.
 | §18 Command chaining and scripting | 12 | 0 | 0 | 0 | 0 | 12 |
 | §19 Control mode | 0 | 0 | 0 | 8 | 0 | 8 |
 | §20 Multiple clients and access control | 5 | 3 | 0 | 2 | 4 | 14 |
-| §21 Layouts, names, alerts, pane lifecycle | 21 | 1 | 0 | 1 | 0 | 23 |
+| §21 Layouts, names, alerts, pane lifecycle | 17 | 1 | 4 | 1 | 0 | 23 |
 | §22 Terminal integration and exit messages | 0 | 2 | 0 | 1 | 0 | 3 |
-| **Total** | **474** | **42** | **11** | **55** | **24** | **606** |
+| **Total** | **461** | **50** | **16** | **55** | **24** | **606** |
 
 Coverage checks for matrix version 1: all 92 commands and their aliases, all 184 options in
 `options-table.c`, all 51 named hooks and all 99 copy-mode commands of tmux 3.8 appear in the

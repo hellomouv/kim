@@ -313,6 +313,12 @@ fn the_cli_schema_embeds_the_ipc_and_capabilities_definitions_unchanged() {
         "result_select",
         "result_window_rename",
         "result_close",
+        // Step 22.
+        "layout",
+        "rect",
+        "layout_panes",
+        "layout_change",
+        "result_layout",
     ] {
         assert_eq!(cli["$defs"][name], ipc["$defs"][name], "$defs.{name}");
     }
@@ -385,6 +391,32 @@ fn window_and_pane_commands_match_their_golden_files() {
     assert!(out.status.success() && stderr.is_empty(), "{stderr}");
     assert!(
         stdout.contains("PANE") && stdout.contains("1.0*"),
+        "{stdout}"
+    );
+    // Step 22 (ADR 0056): a split and a border move answer their documents too.
+    let (code, doc) = sub(
+        ep,
+        &[
+            "pane",
+            "split",
+            "work:logs",
+            "--horizontal",
+            "--cwd",
+            &windows,
+            "--",
+            "cmd.exe",
+            "/d",
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    golden("pane-split", &doc, ep);
+    let (code, doc) = sub(ep, &["pane", "resize", "work:logs.0", "right", "4"]);
+    assert_eq!(code, 0, "{doc}");
+    golden("pane-resize", &doc, ep);
+    let out = human(ep, &["pane", "zoom", "work:logs.1"]);
+    let (stdout, _) = text(&out);
+    assert!(
+        out.status.success() && stdout.contains("zoomed pane"),
         "{stdout}"
     );
     let (code, doc) = sub(ep, &["window", "kill", "work:logs", "--dry-run"]);

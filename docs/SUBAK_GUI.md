@@ -1132,3 +1132,69 @@ first (`subak config show`; keep a copy if you have one): `set E=--endpoint suba
 | `crates/subak/tests/milestone_b.rs` | the Milestone B journey and its measurements ([MILESTONE_B_VALIDATION](MILESTONE_B_VALIDATION.md)) |
 | `crates/subak-term/tests/{render,view}.rs` | line height, padding, bold-as-bright and the light theme in pixels; the font chain (Courier New, Consolas, a missing family); configurable word separators |
 | `e2e/tests/step20_subak_polish.rs` (ignored; `cargo xtask e2e` only) | settings and profiles from the CLI into the window and across a restart; the Milestone B journey |
+
+## 14. Split windows (Step 22)
+
+[ADR 0056](adr/0056-subak-pane-splits-and-layout.md). When the shown internal window has more
+than one visible pane, the window draws all of them at the places of the Host's layout
+([SESSION_MODEL §3](SESSION_MODEL.md)); a window of one pane (or a zoomed pane) looks exactly as
+before.
+
+### 14.1 What you see and do
+
+- **Every visible pane at its place.** The active pane is the one keys, the IME, selection,
+  search, paste and links go to; the others are drawn live but never typed into. A one-cell gap
+  separates panes, with a thin divider; the active pane's dividers are in the accent colour, and
+  the other panes show a hollow cursor.
+- **Keys** (the shortcut contract's `pane.*` actions, scope `app`, rebindable in `hotkeys.json`;
+  the `Ctrl+B` prefix forms are Step 23): `Alt+Shift+Plus` split right (side by side),
+  `Alt+Shift+Minus` split down (stacked) — the new pane runs the Host's default shell and becomes
+  the active one; `Alt+Left/Right/Up/Down` go to the pane on that side (wrapping); `Alt+Shift+Arrow`
+  move the active pane's border (2 columns or 1 row a press, repeating); `Ctrl+Shift+Z` zoom or
+  unzoom. `pane.kill` has no direct key (prefix `x` in Step 23): bound by the user, it ends an
+  idle pane at once and asks first when the pane runs more than a shell, as `Ctrl+W` does for a
+  Terminal. A pane whose program exits gives its space to its neighbour.
+- **Mouse:** a click on another pane makes it the active one (the click is not sent to its
+  program); dragging a divider moves it, one cell at a time.
+- **Sizes:** the window asks the Host for its whole grid; every pane gets its share, and the
+  programs see exactly that (`[Console]::WindowWidth`). Several windows on one Terminal show the
+  same layout; the last one resized sets the size.
+
+### 14.2 How it works
+
+The model keeps the shown window's layout (`TermInfo.layout`, from `terminal.list`, refreshed on
+`window.layout` and the other topology events). The active pane is the window's interactive
+attachment, as before, now sized to its place. Each other visible pane is a **read-only
+attachment** (`interactive: false`, no history) with its own `TermView` and renderer; panes
+nobody sees (another tab, a zoomed window) are detached, so they cost no drawing. The frames are
+composed at their places in one frame per change (the pane renderers keep their own damage), and
+mouse and cursor positions are offset by the active pane's place. Split, focus, resize, zoom and
+kill are IPC requests (`pane.split`, `pane.select` with a `direction`, `pane.adjust`,
+`pane.zoom`, `pane.kill`); a refusal is a banner notice.
+
+### 14.3 Known limits (Step 22)
+
+- No per-pane titles or status line in the dividers; no pane-number overlay (`display-panes`,
+  Step 25).
+- A press on a divider always starts a drag (it does not select a pane).
+- Read-only panes are drawn with the same font and theme; their scrollback is not browsable
+  until they become the active pane (select them first).
+- **Not tested on a visible window with a real mouse yet** (maintainer, manual check below).
+
+### 14.4 Manual check (maintainer)
+
+1. `subak new work`, open it in the window, press `Alt+Shift+Plus` then `Alt+Shift+Minus`: three
+   panes, dividers drawn, the newest active (accent dividers).
+2. `Alt+Left`, type `dir`: only the left pane runs it. Drag a divider: the panes follow; run
+   `mode con` in each pane: Columns/Lines equal the drawn sizes.
+3. `Ctrl+Shift+Z`: one pane fills the window; again: back. Close the window, reopen it: the same
+   layout. `subak pane ls work` in a console shows the same places.
+
+### 14.5 Tests
+
+| Test | What it checks |
+| --- | --- |
+| `crates/subak/src/layout.rs` unit tests | splits, minimums, removal and flattening, window resizes, border moves, swap, zoom, rotate, presets, neighbours, the JSON tree |
+| `crates/subak/tests/pane_layout.rs` | the real Host: pseudo console sizes seen by programs after every split, resize, zoom, swap and close; directional focus, minimums, dry runs and refusals; the layout across clients; rotate and presets; deep splits and their latency |
+| `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` | the off-screen window: both and three panes drawn at their places, read-only views, `Alt+Left`, `Alt+Shift+Plus`, `Alt+Shift+Right`, `Ctrl+Shift+Z`, a divider drag, a click, a pane exit, closing the window keeps every pane |
+| `e2e/tests/step22_pane_layout.rs` (ignored; `cargo xtask e2e` only) | a user splits, resizes, zooms and rearranges panes with the CLI and the programs see their sizes; the window draws and drives the split |

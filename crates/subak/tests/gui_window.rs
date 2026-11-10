@@ -2240,3 +2240,187 @@ fn the_window_follows_internal_windows_and_panes_and_closing_ends_none() {
         "EVIDENCE gui panes: followed window 0 and pane 1.0 selected by the CLI; closing the window kept pids {pids:?}"
     );
 }
+
+/// Step 22 (ADR 0056, `SUBAK-FR-013`, `SUBAK-FR-014`): a split window draws every visible pane
+/// at its place — the active pane live, the others as read-only views — and its keys split,
+/// move the focus, resize and zoom panes through the Host. A click on another pane makes it the
+/// active one, a border drag moves the border. Closing the window ends no pane.
+#[test]
+fn a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom() {
+    const VK_LEFT: u64 = 0x25;
+    const VK_RIGHT: u64 = 0x27;
+    const VK_OEM_PLUS: u64 = 0xBB;
+    let host = Host::start("gui-split", &["--no-shell"]);
+    let ep = host.ep.clone();
+    let (_, left_pid) = new_terminal(&ep, "work");
+    let left = info(&ep, "work")["windows"][0]["panes"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut gui = Gui::start(&ep, Some("work"), &sandbox("split"));
+    gui.state("attached");
+    let grid = gui.dump()["grid"].clone();
+    // A split from the CLI: the window shows both panes; the new one is active.
+    let (code, doc) = sub(
+        &ep,
+        &[
+            "pane",
+            "split",
+            "work",
+            "--horizontal",
+            "--",
+            "cmd.exe",
+            "/k",
+            "echo",
+            "right-pane-ma^rker",
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    let right = doc["data"]["pane_id"].as_str().unwrap().to_string();
+    let d = gui.until("both panes drawn", |d| {
+        d["active_slot"] == right.as_str()
+            && d["side"][left.as_str()]["screen"].is_array()
+            && d["phase"] == "attached"
+    });
+    let slots = d["layout"]["slots"].as_array().unwrap().clone();
+    assert_eq!(slots.len(), 2);
+    let width: u64 = slots.iter().map(|s| s["cols"].as_u64().unwrap()).sum();
+    assert_eq!(
+        width + 1,
+        grid[0].as_u64().unwrap(),
+        "two panes and a border fill the grid"
+    );
+    let rs = slots.iter().find(|s| s["id"] == right.as_str()).unwrap();
+    assert_eq!(
+        d["pane_size"],
+        json!([rs["cols"], rs["rows"]]),
+        "the live view is its place"
+    );
+    assert!(d["split_frame"].is_array());
+    gui.until("the right pane's output", |d| {
+        screen_text(d).contains("right-pane-marker")
+    });
+    // Alt+Left: the Host's active pane moves left; keys go there only.
+    gui.key_with(VK_LEFT, false, false, true);
+    gui.until("left is active", |d| d["active_slot"] == left.as_str());
+    gui.type_text("echo typed-in-le^ft\r");
+    wait_for("typed into the left pane", || {
+        capture(&ep, &left).contains("typed-in-left")
+    });
+    assert!(!capture(&ep, &right).contains("typed-in-left"));
+    // Alt+Shift+Plus: a new pane to the right of the left one (three panes).
+    gui.key_with(VK_OEM_PLUS, false, true, true);
+    let d = gui.until("three panes", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 3)
+    });
+    let third = d["active_slot"].as_str().unwrap().to_string();
+    assert!(third != left && third != right);
+    // Alt+Shift+Right: the active pane's border moves right by two cells.
+    let before = d["layout"]["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == third.as_str())
+        .unwrap()["cols"]
+        .as_u64()
+        .unwrap();
+    gui.key_with(VK_RIGHT, false, true, true);
+    gui.until("the border moved", |d| {
+        d["layout"]["slots"].as_array().is_some_and(|s| {
+            s.iter()
+                .any(|s| s["id"] == third.as_str() && s["cols"].as_u64() == Some(before + 2))
+        })
+    });
+    // Ctrl+Shift+Z: zoomed, the window shows that pane alone at the whole grid; again: back.
+    gui.press(u64::from(b'Z'), true, true);
+    let d = gui.until("zoomed", |d| {
+        d["layout"].is_null() && d["pane_size"] == grid
+    });
+    assert_eq!(d["side"], json!({}), "hidden panes are not attached");
+    gui.press(u64::from(b'Z'), true, true);
+    gui.until("unzoomed", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 3)
+    });
+    // Dragging the border after the left pane three cells right widens it (resize-pane -M).
+    const WM_MOUSEMOVE: u32 = 0x0200;
+    let d = gui.dump();
+    let ls = d["layout"]["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == left.as_str())
+        .unwrap()
+        .clone();
+    let border = ls["cols"].as_u64().unwrap() as usize;
+    gui.post(WM_LBUTTONDOWN, 1, cell_lparam(&d, border, 2));
+    gui.wait("border_drag", |v| v["pane"] == left.as_str());
+    gui.post(WM_MOUSEMOVE, 1, cell_lparam(&d, border + 3, 2));
+    gui.post(WM_LBUTTONUP, 0, cell_lparam(&d, border + 3, 2));
+    gui.wait("border_drag", |v| v["done"] == true);
+    gui.until("the border followed the mouse", |d| {
+        d["layout"]["slots"].as_array().is_some_and(|s| {
+            s.iter()
+                .any(|s| s["id"] == left.as_str() && s["cols"].as_u64() == Some(border as u64 + 3))
+        })
+    });
+    // A click on the right pane makes it the active one.
+    let d = gui.dump();
+    let rs = d["layout"]["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == right.as_str())
+        .unwrap()
+        .clone();
+    let col = (rs["x"].as_u64().unwrap() + rs["cols"].as_u64().unwrap() / 2) as usize;
+    let row = (rs["y"].as_u64().unwrap() + 1) as usize;
+    let lp = cell_lparam(&d, col, row);
+    gui.post(WM_LBUTTONDOWN, 1, lp);
+    gui.post(WM_LBUTTONUP, 0, lp);
+    gui.until("the click selected the right pane", |d| {
+        d["active_slot"] == right.as_str()
+    });
+    // The third pane's shell exits: its space goes to its neighbour; the others keep running.
+    // (`pane.kill` has no direct key: Ctrl+B x with Step 23's prefix.)
+    let (code, doc) = sub(&ep, &["pane", "select", &third]);
+    assert_eq!(code, 0, "{doc}");
+    gui.until("third active", |d| d["active_slot"] == third.as_str());
+    gui.type_text("exit");
+    gui.key(0x0D);
+    gui.until("two panes again", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+    });
+    let (code, doc) = sub(&ep, &["pane", "ls", "work"]);
+    assert_eq!(code, 0, "{doc}");
+    let pids: Vec<u32> = doc["data"]["windows"][0]["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| pid_of(&p["pid"]))
+        .collect();
+    assert_eq!(pids.len(), 2);
+    assert!(pids.contains(&left_pid));
+    // Closing the window only detaches: both panes keep running, the layout stays.
+    assert_eq!(gui.close(), 0);
+    let (_, doc) = sub(&ep, &["pane", "ls", "work"]);
+    assert_eq!(
+        doc["data"]["windows"][0]["panes"].as_array().unwrap().len(),
+        2
+    );
+    for p in &pids {
+        assert!(alive_pid(*p), "pid {p} keeps running");
+    }
+    println!(
+        "EVIDENCE gui split: grid {grid}, two and three panes drawn at their places, Alt+Left, Alt+Shift+Plus, Alt+Shift+Right, Ctrl+Shift+Z twice, a border drag and a click through the Host; pids {pids:?} kept"
+    );
+}
+
+fn alive_pid(pid: u32) -> bool {
+    Proc::try_open(pid).is_some_and(|p| p.alive())
+}

@@ -76,6 +76,13 @@ pub enum Cmd {
     PaneLs,
     PaneSelect,
     PaneKill,
+    // Step 22: splits and the layout.
+    PaneSplit,
+    PaneResize,
+    PaneSwap,
+    PaneZoom,
+    WindowRotate,
+    WindowLayout,
 }
 
 impl Cmd {
@@ -129,6 +136,12 @@ impl Cmd {
             Self::PaneLs => "pane.ls",
             Self::PaneSelect => "pane.select",
             Self::PaneKill => "pane.kill",
+            Self::PaneSplit => "pane.split",
+            Self::PaneResize => "pane.resize",
+            Self::PaneSwap => "pane.swap",
+            Self::PaneZoom => "pane.zoom",
+            Self::WindowRotate => "window.rotate",
+            Self::WindowLayout => "window.layout",
         }
     }
 
@@ -198,7 +211,15 @@ impl Cmd {
             Self::WindowSelect | Self::WindowKill => (&["window"], 1),
             Self::WindowRename => (&["window", "new name"], 2),
             Self::PaneNew | Self::PaneLs => (&["terminal or window"], 1),
-            Self::PaneSelect | Self::PaneKill => (&["pane"], 1),
+            Self::PaneKill => (&["pane"], 1),
+            // Step 22: `pane select <pane> [left|right|up|down|next|previous]`.
+            Self::PaneSelect => (&["pane", "direction"], 1),
+            Self::PaneSplit => (&["pane, window or terminal"], 1),
+            Self::PaneResize => (&["pane", "direction", "cells"], 2),
+            Self::PaneSwap => (&["pane", "other pane, next or previous"], 2),
+            Self::PaneZoom => (&["pane", "on or off"], 1),
+            Self::WindowRotate => (&["window or terminal", "up or down"], 1),
+            Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
     }
@@ -308,6 +329,26 @@ impl Cmd {
                 &["--endpoint", "--dry-run"]
             }
             Self::WindowKill | Self::PaneKill => &["--endpoint", "--dry-run", "--yes"],
+            Self::PaneSplit => &[
+                "--endpoint",
+                "--horizontal",
+                "--vertical",
+                "--before",
+                "--cells",
+                "--percent",
+                "--cwd",
+                "--env",
+                "--unset-env",
+                "--command-line",
+                "--history-limit",
+                "--no-select",
+                "--dry-run",
+            ],
+            Self::PaneResize
+            | Self::PaneSwap
+            | Self::PaneZoom
+            | Self::WindowRotate
+            | Self::WindowLayout => &["--endpoint", "--dry-run"],
         };
         if *self == Self::PaneNew && opt == "--name" {
             return false;
@@ -397,6 +438,13 @@ pub struct Args {
     pub command: Vec<String>,
     /// `window new --name <name>` (Step 21).
     pub name: Option<String>,
+    /// `pane split --horizontal` (true) or `--vertical` (false; the default).
+    pub split: Option<bool>,
+    /// `pane split --before`: the new pane goes left of or above the split one.
+    pub before: bool,
+    /// `pane split --cells <n>` / `--percent <n>`: the new pane's size.
+    pub cells: Option<u64>,
+    pub percent: Option<u64>,
     /// `window new|pane new --no-select`: do not make it the active one (tmux `-d`).
     pub no_select: bool,
 }
@@ -516,6 +564,12 @@ fn terminal_verb(word: &str) -> Option<Cmd> {
         "list-panes" => Cmd::PaneLs,
         "select-pane" => Cmd::PaneSelect,
         "kill-pane" => Cmd::PaneKill,
+        // Step 22.
+        "split-window" => Cmd::PaneSplit,
+        "resize-pane" => Cmd::PaneResize,
+        "swap-pane" => Cmd::PaneSwap,
+        "rotate-window" => Cmd::WindowRotate,
+        "select-layout" => Cmd::WindowLayout,
         _ => return None,
     })
 }
@@ -528,6 +582,8 @@ fn window_verb(word: &str) -> Option<Cmd> {
         "select" => Cmd::WindowSelect,
         "rename" => Cmd::WindowRename,
         "kill" => Cmd::WindowKill,
+        "rotate" => Cmd::WindowRotate,
+        "layout" => Cmd::WindowLayout,
         _ => return None,
     })
 }
@@ -539,6 +595,10 @@ fn pane_verb(word: &str) -> Option<Cmd> {
         "ls" | "list" => Cmd::PaneLs,
         "select" => Cmd::PaneSelect,
         "kill" => Cmd::PaneKill,
+        "split" => Cmd::PaneSplit,
+        "resize" => Cmd::PaneResize,
+        "swap" => Cmd::PaneSwap,
+        "zoom" => Cmd::PaneZoom,
         _ => return None,
     })
 }
@@ -848,6 +908,48 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.no_select = true;
                 opts.push("--no-select");
             }
+            "--horizontal" | "--vertical" => {
+                if a.split.is_some_and(|h| h != (flag == "--horizontal")) {
+                    bad.get_or_insert(CliError::usage(
+                        "give --horizontal (side by side) or --vertical (stacked), not both",
+                    ));
+                }
+                a.split = Some(flag == "--horizontal");
+                opts.push(if flag == "--horizontal" {
+                    "--horizontal"
+                } else {
+                    "--vertical"
+                });
+            }
+            "--before" => {
+                a.before = true;
+                opts.push("--before");
+            }
+            "--cells" | "--percent" => {
+                let name = if flag == "--cells" {
+                    "--cells"
+                } else {
+                    "--percent"
+                };
+                opts.push(name);
+                if let Some(v) = value(name) {
+                    let max = if name == "--cells" { 1000 } else { 99 };
+                    match v.parse::<u64>() {
+                        Ok(n) if (1..=max).contains(&n) => {
+                            if name == "--cells" {
+                                a.cells = Some(n);
+                            } else {
+                                a.percent = Some(n);
+                            }
+                        }
+                        _ => {
+                            bad.get_or_insert(CliError::usage(format!(
+                                "{name} needs a number from 1 to {max}"
+                            )));
+                        }
+                    }
+                }
+            }
             "--replace" => {
                 a.replace = true;
                 opts.push("--replace");
@@ -1073,7 +1175,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 } else {
                     format!("unknown command `{}`", words.join(" "))
                 })
-                .hint("window commands: new, ls, select, rename, kill (see `subak --help`)"),
+                .hint("window commands: new, ls, select, rename, rotate, layout, kill (see `subak --help`)"),
             ));
         }
         ["pane", sub, ..] if pane_verb(sub).is_some() => {
@@ -1087,7 +1189,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 } else {
                     format!("unknown command `{}`", words.join(" "))
                 })
-                .hint("pane commands: new, ls, select, kill (splitting is Step 22; see `subak --help`)"),
+                .hint("pane commands: new, split, ls, select, resize, swap, zoom, kill (see `subak --help`)"),
             ));
         }
         ["terminal", verb, ..] if STEP10_VERBS.contains(verb) => {
@@ -1152,7 +1254,12 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
     }
     a.positional = rest.iter().map(|s| (*s).to_string()).collect();
     let fail = |e: CliError| Err((cmd.name().to_string(), e));
-    if dashdash && !matches!(cmd, Cmd::New | Cmd::WindowNew | Cmd::PaneNew) {
+    if dashdash
+        && !matches!(
+            cmd,
+            Cmd::New | Cmd::WindowNew | Cmd::PaneNew | Cmd::PaneSplit
+        )
+    {
         return fail(CliError::usage(
             "only `new`, `window new` and `pane new` take a program after `--`",
         ));

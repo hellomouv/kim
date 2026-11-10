@@ -430,7 +430,7 @@
         "network": false,
         "opens_window": false,
         "requires_yes": false,
-        "summary": "A new pane with its own process in a window (splitting into a layout is Step 22; a window shows its active pane)",
+        "summary": "A new pane with its own process in a window: a vertical split of the window's active pane (see pane.split)",
         "usage": "subak pane new <terminal | terminal:window | w-id> [--no-select] [--cwd <dir>] [--env NAME[=VALUE]]... [--unset-env NAME]... [--size <cols>x<rows>] [--history-limit <lines>] [--command-line <line> | -- <program> [args...]] [--dry-run] [--json]"
       },
       {
@@ -450,8 +450,8 @@
         "network": false,
         "opens_window": false,
         "requires_yes": false,
-        "summary": "Make a pane its window's active one and that window the Terminal's (tmux select-pane); no process changes",
-        "usage": "subak pane select <terminal:window.pane | p-id> [--dry-run] [--json]"
+        "summary": "Make a pane (or its neighbour in a direction) its window's active one and that window the Terminal's (tmux select-pane); no process changes",
+        "usage": "subak pane select <terminal:window.pane | p-id> [left | right | up | down | next | previous] [--dry-run] [--json]"
       },
       {
         "dry_run": true,
@@ -462,6 +462,66 @@
         "requires_yes": true,
         "summary": "End one pane's processes at once and remove it; every other pane keeps running; the last pane is refused (use kill)",
         "usage": "subak pane kill <terminal:window.pane | p-id> [--dry-run] [--yes] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "pane.split",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Split a pane and start a new pane with its own process next to it, stacked (default) or side by side (tmux split-window); the panes share the window's size",
+        "usage": "subak pane split <terminal | terminal:window | terminal:window.pane | p-id> [--horizontal | --vertical] [--before] [--cells <n> | --percent <n>] [--no-select] [--cwd <dir>] [--env NAME[=VALUE]]... [--unset-env NAME]... [--history-limit <lines>] [--command-line <line> | -- <program> [args...]] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "pane.resize",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Move a pane's border (tmux resize-pane -L/-R/-U/-D); the panes are resized, every process keeps running",
+        "usage": "subak pane resize <terminal:window.pane | p-id> <left | right | up | down> [cells] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "pane.swap",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Swap two panes of a window (tmux swap-pane); processes stay with their panes",
+        "usage": "subak pane swap <terminal:window.pane | p-id> <other pane | next | previous> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "pane.zoom",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Let a pane fill its window, or give it its place back (tmux resize-pane -Z); a toggle by default",
+        "usage": "subak pane zoom <terminal:window.pane | p-id> [on | off] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "window.rotate",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Move every pane of a window one place (tmux rotate-window); processes stay with their panes",
+        "usage": "subak window rotate <terminal | terminal:window | w-id> [up | down] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "window.layout",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Arrange a window's panes evenly side by side, stacked or tiled (tmux select-layout)",
+        "usage": "subak window layout <terminal | terminal:window | w-id> <even-horizontal | even-vertical | tiled> [--dry-run] [--json]"
       }
     ],
     "implementation": "implemented",

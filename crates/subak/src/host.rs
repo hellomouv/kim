@@ -35,6 +35,7 @@
 //! waiter per pane, and the main thread that supervises lifetime and teardown. A panic while
 //! handling one request fails that request with `internal_error`; the Host continues.
 
+use crate::layout;
 use crate::output::{CliError, Code};
 use crate::proto::{
     self, ClientKind, ErrorCode, FLAG_INPUT, FLAG_SNAPSHOT, Frame, IpcError, Refusal, Request,
@@ -490,6 +491,59 @@ impl State {
         session::window_json(t, w, &|p| self.live(p), &mut clients, &mut busy)
     }
 
+    /// Step 22: gives the panes whose layout size changed that size in their screens, and
+    /// returns their pseudo consoles to resize once the lock is released ([`apply_resizes`]).
+    fn resized(&mut self, changed: Vec<(String, (u16, u16))>) -> Vec<(Arc<PaneRt>, (u16, u16))> {
+        let mut out = Vec::new();
+        for (id, size) in changed {
+            resize_model(self, &id, size);
+            if let Some(rt) = self.rt.get(&id) {
+                out.push((Arc::clone(rt), size));
+            }
+        }
+        out
+    }
+
+    /// Step 22: lays the window of `pane_id` out at a client's size (the latest interactive
+    /// client's size is the window's, tmux `window-size latest`); announces a changed layout.
+    fn resize_window(
+        &mut self,
+        tid: &str,
+        pane_id: &str,
+        size: (u16, u16),
+    ) -> Vec<(Arc<PaneRt>, (u16, u16))> {
+        let Some(t) = self.reg.get_mut(tid) else {
+            return Vec::new();
+        };
+        let Some(w) = t
+            .windows
+            .iter_mut()
+            .find(|w| w.panes.iter().any(|p| p.id == pane_id))
+        else {
+            return Vec::new();
+        };
+        let before = w.layout().size();
+        let changed = w.resize(size);
+        let (wid, after) = (w.id.clone(), w.layout().size());
+        // A window of one pane is just that pane's size, as before Step 22: no event.
+        if w.panes.len() > 1 && (before != after || !changed.is_empty()) {
+            self.layout_event(tid, &wid);
+        }
+        self.resized(changed)
+    }
+
+    /// `window.layout` (Step 22): a window's layout, size, zoomed pane and pane places changed.
+    fn layout_event(&mut self, tid: &str, wid: &str) {
+        let Some(t) = self.reg.get(tid) else {
+            return;
+        };
+        let Some(w) = t.windows.iter().find(|w| w.id == wid) else {
+            return;
+        };
+        let data = layout_json(t, w);
+        self.notify("terminals", "window.layout", &data);
+    }
+
     fn rt_of_stream(&self, stream: u32) -> Option<&Arc<PaneRt>> {
         self.rt.values().find(|r| r.stream == stream)
     }
@@ -608,6 +662,18 @@ impl State {
             self.notify("terminals", "pane.selected", &data);
         }
     }
+}
+
+/// The layout methods of Step 22 ([`Host::layout_op`]).
+#[derive(Debug, Clone, Copy)]
+enum LayoutOp {
+    Adjust,
+    Swap,
+    Zoom,
+    /// `window.rotate` (tmux `rotate-window`).
+    Rotate,
+    /// `window.select_layout` (tmux `select-layout`, the basic layouts).
+    Preset,
 }
 
 enum Ev {
@@ -821,6 +887,60 @@ fn flag(params: &Value, name: &str) -> Result<bool, IpcError> {
 /// Resizes the pane's terminal model to `size` and says whether its pseudo console must follow:
 /// not when the model already has that size (a reattach or resize at the same size would make
 /// ConPTY repaint the whole screen for nothing).
+/// The data of `window.layout` and of the layout methods' results (Step 22).
+fn layout_json(t: &session::Terminal, w: &session::Window) -> Value {
+    let l = w.layout();
+    let panes: Vec<Value> = w
+        .panes
+        .iter()
+        .map(|p| {
+            let mut j = json!({"id": p.id, "index": p.index});
+            session::place_json(w, p, &mut j);
+            j
+        })
+        .collect();
+    json!({
+        "terminal_id": t.id,
+        "window_id": w.id,
+        "active_pane": w.panes[w.active_pane].id,
+        "layout": l.json(),
+        "size": {"cols": l.size().0, "rows": l.size().1},
+        "zoomed": l.zoomed(),
+        "panes": panes,
+    })
+}
+
+/// Resizes pseudo consoles after a layout change (outside the lock); the first failure.
+fn apply_resizes(list: &[(Arc<PaneRt>, (u16, u16))]) -> Result<(), IpcError> {
+    let mut first = None;
+    for (rt, (c, r)) in list {
+        if let Err(e) = rt.pty.resize(*c, *r) {
+            first.get_or_insert_with(|| {
+                IpcError::new(ErrorCode::InternalError, format!("resize failed: {e}"))
+            });
+        }
+    }
+    first.map_or(Ok(()), Err)
+}
+
+/// What a layout change was refused for, as an IPC error.
+fn layout_refused(e: &layout::Refused, what: &str) -> IpcError {
+    match e {
+        layout::Refused::NoPane => IpcError::new(
+            ErrorCode::TargetNotFound,
+            format!("the pane is not in that window's layout ({what})"),
+        ),
+        layout::Refused::NoSpace { need, have } => IpcError::new(
+            ErrorCode::InvalidState,
+            format!(
+                "not enough room to {what}: the pane has {have} cells and a split needs {need}"
+            ),
+        )
+        .details(json!({"need": need, "have": have,
+            "hint": "make the window or the pane bigger first (subak pane resize), or close a pane"})),
+    }
+}
+
 fn resize_model(st: &mut State, pane_id: &str, (c, r): (u16, u16)) -> bool {
     match st.out.get_mut(pane_id) {
         Some(o) if o.screen.size() == (c, r) => false,
@@ -1401,7 +1521,7 @@ impl Host {
     /// the model (its window too when it was the last pane there) with its screen, and announces
     /// the new selection when the active pane or window went.
     fn finish_pane(&self, rt: &PaneRt, report: &Value, reason: &str) {
-        {
+        let resizes = {
             let mut st = self.lock();
             Self::release_pane(&mut st, rt, report);
             let removal = st.reg.get_mut(&rt.terminal_id).and_then(|t| {
@@ -1410,11 +1530,20 @@ impl Host {
                 }
                 t.remove_pane(&rt.pane_id)
             });
-            if let Some(r) = removal {
-                st.drop_screen(&rt.pane_id);
-                st.pane_removed(&rt.terminal_id, &rt.pane_id, &r, reason);
+            match removal {
+                Some(r) => {
+                    st.drop_screen(&rt.pane_id);
+                    st.pane_removed(&rt.terminal_id, &rt.pane_id, &r, reason);
+                    // Step 22: its space went to a neighbour (ADR 0056).
+                    if !r.window_removed {
+                        st.layout_event(&rt.terminal_id, &r.window_id);
+                    }
+                    st.resized(r.resized)
+                }
+                None => Vec::new(),
             }
-        }
+        };
+        let _ = apply_resizes(&resizes);
         let _ = self.events.send(Ev::Changed);
     }
 
@@ -1826,8 +1955,15 @@ impl Host {
             "terminal.kill" => Reply::Now(self.end_request(p, Op::Kill)),
             "terminal.remove" => Reply::Now(self.end_request(p, Op::Remove)),
             // Step 21 (ADR 0054): internal windows and panes.
-            "window.create" => Reply::Now(self.create_in(p, true)),
-            "pane.create" => Reply::Now(self.create_in(p, false)),
+            "window.create" => Reply::Now(self.create_in(p, method)),
+            "pane.create" => Reply::Now(self.create_in(p, method)),
+            // Step 22 (ADR 0056): splits and the layout.
+            "pane.split" => Reply::Now(self.create_in(p, method)),
+            "pane.adjust" => Reply::Now(self.layout_op(p, LayoutOp::Adjust)),
+            "pane.swap" => Reply::Now(self.layout_op(p, LayoutOp::Swap)),
+            "pane.zoom" => Reply::Now(self.layout_op(p, LayoutOp::Zoom)),
+            "window.rotate" => Reply::Now(self.layout_op(p, LayoutOp::Rotate)),
+            "window.select_layout" => Reply::Now(self.layout_op(p, LayoutOp::Preset)),
             "window.list" => Reply::Now(self.topology(p, false)),
             "pane.list" => Reply::Now(self.topology(p, true)),
             "window.select" => Reply::Now(self.select(p, false)),
@@ -2125,16 +2261,15 @@ impl Host {
             // output still formatted for the old size is repainted by ConPTY after the resize.
             // The same size is no change: no model resize, and no PTY resize (ConPTY would
             // repaint the whole screen after the snapshot for nothing).
-            let resize = size.filter(|s| resize_model(&mut st, &rt.pane_id, *s));
-            (rt, resize)
+            // Step 22: a client's size is its window's; the panes share it by the layout.
+            let (tid, pid) = (rt.terminal_id.clone(), rt.pane_id.clone());
+            let resizes = size
+                .map(|s| st.resize_window(&tid, &pid, s))
+                .unwrap_or_default();
+            (rt, resizes)
         };
-        if let Some((c, r)) = resize
-            && let Err(e) = rt.pty.resize(c, r)
-        {
-            return Reply::Now(Err(IpcError::new(
-                ErrorCode::InternalError,
-                format!("resize failed: {e}"),
-            )));
+        if let Err(e) = apply_resizes(&resize) {
+            return Reply::Now(Err(e));
         }
         // Response, snapshot and the start of live output are queued under the lock the reader
         // takes for every chunk, so the snapshot reflects exactly the output before `seq` and
@@ -2155,9 +2290,6 @@ impl Host {
         let Some(pane) = t.pane_mut(&rt.pane_id) else {
             return Reply::Queued;
         };
-        if let Some(s) = size {
-            pane.size = s;
-        }
         let pane = pane.clone();
         let Some(out) = st.out.get(&rt.pane_id) else {
             return Reply::Queued;
@@ -2624,23 +2756,21 @@ impl Host {
                 .cloned()
                 .ok_or_else(|| IpcError::new(ErrorCode::InvalidState, "the pane has ended"))?;
             // The model first, as a terminal does (see `attach`); the same size changes nothing.
-            let changed = resize_model(&mut st, &rt.pane_id, (c, r));
+            // Step 22: the size is the window's; every pane whose share changed is resized.
+            let (tid, pid) = (rt.terminal_id.clone(), rt.pane_id.clone());
+            let changed = st.resize_window(&tid, &pid, (c, r));
             (rt, changed)
         };
-        if changed {
-            rt.pty.resize(c, r).map_err(|e| {
-                IpcError::new(ErrorCode::InternalError, format!("resize failed: {e}"))
-            })?;
-        }
-        if let Some(p) = self
+        apply_resizes(&changed)?;
+        // The pane's own share of the window (the whole window when it is alone or zoomed).
+        let (pc, pr) = self
             .lock()
             .reg
             .get_mut(&rt.terminal_id)
             .and_then(|t| t.pane_mut(&rt.pane_id))
-        {
-            p.size = (c, r);
-        }
-        Ok(json!({"cols": c, "rows": r, "stream_id": rt.stream}))
+            .map_or((c, r), |p| p.size);
+        Ok(json!({"cols": pc, "rows": pr, "stream_id": rt.stream,
+            "window_size": {"cols": c, "rows": r}}))
     }
 
     fn list(&self, params: &Value) -> Result<Value, IpcError> {
@@ -2921,13 +3051,61 @@ impl Host {
     /// pane's process is started outside it, and the window or pane enters the model only once
     /// it runs, so no client ever sees a half-made one; a failed start leaves nothing. `select`
     /// (default true, tmux `new-window` without `-d`) makes it the Terminal's active pane.
-    fn create_in(self: &Arc<Self>, p: &Value, new_window: bool) -> Result<Value, IpcError> {
-        let method = if new_window {
-            "window.create"
-        } else {
-            "pane.create"
-        };
+    ///
+    /// Step 22 (ADR 0056): a new pane splits a pane of the window (`pane.split`: the target pane,
+    /// or the active pane of a target window or Terminal; `direction`, `before`, `cells` or
+    /// `percent`), and starts at its share of the window. `pane.create` is a vertical split of
+    /// the window's active pane. A new window starts at the size of the Terminal's active window
+    /// unless a `size` is given.
+    fn create_in(self: &Arc<Self>, p: &Value, method: &str) -> Result<Value, IpcError> {
+        let new_window = method == "window.create";
+        let split = method == "pane.split";
         let target = target(p)?;
+        let dir = match optional_string(p, "direction")? {
+            None | Some("vertical") => layout::Dir::Vertical,
+            Some("horizontal") => layout::Dir::Horizontal,
+            Some(_) => {
+                return Err(IpcError::param(
+                    "direction",
+                    "direction must be horizontal (side by side) or vertical (stacked)",
+                ));
+            }
+        };
+        let before = flag(p, "before")?;
+        let cells = |k: &str| -> Result<Option<u64>, IpcError> {
+            match &p[k] {
+                Value::Null => Ok(None),
+                v => v
+                    .as_u64()
+                    .filter(|n| (1..=1000).contains(n))
+                    .map(Some)
+                    .ok_or_else(|| {
+                        IpcError::param(k, format!("{k} must be a number from 1 to 1000"))
+                    }),
+            }
+        };
+        let amount = match (cells("cells")?, cells("percent")?) {
+            (Some(_), Some(_)) => {
+                return Err(IpcError::param(
+                    "cells",
+                    "give either cells or percent, not both",
+                ));
+            }
+            (Some(n), None) => Some(layout::Amount::Cells(u16::try_from(n).unwrap_or(1000))),
+            (None, Some(n)) if n <= 99 => {
+                Some(layout::Amount::Percent(u8::try_from(n).unwrap_or(50)))
+            }
+            (None, Some(_)) => {
+                return Err(IpcError::param("percent", "percent must be from 1 to 99"));
+            }
+            (None, None) => None,
+        };
+        if !split && (before || amount.is_some() || !p["direction"].is_null()) {
+            return Err(IpcError::param(
+                "direction",
+                format!("{method} takes no split options; use pane.split"),
+            ));
+        }
         let name = if new_window {
             optional_string(p, "name")?
                 .map(session::parse_window_name)
@@ -2941,8 +3119,9 @@ impl Host {
             _ => return Err(IpcError::param("select", "select must be true or false")),
         };
         let dry_run = flag(p, "dry_run")?;
-        let l = self.launch_params(p)?;
-        let (tid, wid, pane_id, stream) = {
+        let mut l = self.launch_params(p)?;
+        let sized = !p["size"].is_null();
+        let (tid, wid, pane_id, stream, split_of) = {
             let mut st = self.lock();
             if st.stopping {
                 return Err(IpcError::new(
@@ -2954,7 +3133,7 @@ impl Host {
             if new_window && r.level != Level::Terminal {
                 return Err(wrong_level(method, "a Terminal (its name or t- id)"));
             }
-            if !new_window && r.level == Level::Pane {
+            if method == "pane.create" && r.level == Level::Pane {
                 return Err(wrong_level(
                     method,
                     "a Terminal (its active window) or a window (terminal:window or a w- id)",
@@ -2972,6 +3151,27 @@ impl Host {
             }
             let tid = t.id.clone();
             let existing = (!new_window).then(|| t.windows[r.window].id.clone());
+            // The pane to split and the new pane's share, planned on a copy of the layout.
+            let split_of = if new_window {
+                if !sized {
+                    l.size = t.windows[t.active_window].layout().size();
+                }
+                None
+            } else {
+                let w = &t.windows[r.window];
+                let at = if r.level == Level::Pane {
+                    r.pane
+                } else {
+                    w.active_pane
+                };
+                let of = w.panes[at].id.clone();
+                let mut probe = w.layout().clone();
+                probe
+                    .split(&of, "p-new", dir, before, amount)
+                    .map_err(|e| layout_refused(&e, "split the pane"))?;
+                l.size = probe.rect("p-new").map_or(l.size, layout::Rect::size);
+                Some(of)
+            };
             if dry_run {
                 let (tname, index) = (t.name.display.clone(), t.free_window_index());
                 drop(st);
@@ -2986,12 +3186,16 @@ impl Host {
                     None
                 });
                 plan["select"] = json!(select);
+                if let Some(of) = &split_of {
+                    plan["split"] =
+                        json!({"pane_id": of, "direction": dir.name(), "before": before});
+                }
                 return Ok(json!({"dry_run": true, "would_create": plan}));
             }
             let wid = existing.unwrap_or_else(|| st.reg.issue_id('w', proto::new_object_id));
             let pane_id = st.reg.issue_id('p', proto::new_object_id);
             let stream = st.reg.alloc_stream();
-            (tid, wid, pane_id, stream)
+            (tid, wid, pane_id, stream, split_of)
         };
         let cwd = l
             .cwd
@@ -3020,7 +3224,13 @@ impl Host {
         let result = {
             let mut st = self.lock();
             let fits = st.reg.get(&tid).is_some_and(|t| {
-                require_running(t).is_ok() && (new_window || t.window_pos(&wid).is_some())
+                require_running(t).is_ok()
+                    && (new_window
+                        || t.window_pos(&wid).is_some_and(|wi| {
+                            split_of
+                                .as_ref()
+                                .is_some_and(|of| t.windows[wi].layout().contains(of))
+                        }))
             });
             if st.stopping || !fits {
                 let stopping = st.stopping;
@@ -3064,11 +3274,22 @@ impl Host {
                     automatic_name,
                     panes: Vec::new(),
                     active_pane: 0,
+                    layout: None,
                 })
             } else {
                 t.window_pos(&wid).expect("checked above")
             };
-            let pi = t.push_pane(wi, pane);
+            let (pi, changed) = match &split_of {
+                None => (t.push_pane(wi, pane), Vec::new()),
+                Some(of) => match t.windows[wi].split(of, pane, dir, before, amount) {
+                    Ok(done) => done,
+                    Err(e) => {
+                        drop(st);
+                        discard(&pty, output);
+                        return Err(layout_refused(&e, "split the pane"));
+                    }
+                },
+            };
             let (window_changed, pane_changed) = if select {
                 t.select_pane(wi, pi)
             } else {
@@ -3091,10 +3312,12 @@ impl Host {
                 },
             );
             st.rt.insert(pane_id.clone(), Arc::clone(&rt));
+            let resizes = st.resized(changed);
             let t = st.reg.get(&tid).expect("checked above");
             let w = &t.windows[wi];
             let window = st.window_json(t, w);
-            let pane = session::pane_json(t, &w.panes[pi], &st.live(&w.panes[pi]));
+            let mut pane = session::pane_json(t, &w.panes[pi], &st.live(&w.panes[pi]));
+            session::place_json(w, &w.panes[pi], &mut pane);
             if new_window {
                 let data = json!({"terminal_id": tid, "window": window});
                 st.notify("terminals", "window.created", &data);
@@ -3103,14 +3326,20 @@ impl Host {
                 st.notify("terminals", "pane.created", &data);
             }
             st.selected(&tid, window_changed, pane_changed);
-            json!({
+            if !new_window {
+                st.layout_event(&tid, &wid);
+            }
+            let result = json!({
                 "terminal_id": tid,
                 "window_id": wid,
                 "pane_id": pane_id,
                 "selected": select,
                 "window": window,
-            })
+            });
+            (result, resizes)
         };
+        let (result, resizes) = result;
+        let _ = apply_resizes(&resizes);
         self.run_pane(&rt, output);
         let _ = self.events.send(Ev::Changed);
         Ok(result)
@@ -3155,49 +3384,285 @@ impl Host {
     /// `window.select` and `pane.select` (tmux `select-window`, `select-pane`): the Terminal's
     /// active window, or a window's active pane and that window, for every client. Selecting
     /// changes no process. Allowed in any state (a stopped Terminal keeps its selection).
+    ///
+    /// Step 22: `pane.select` with a `direction` (`left`, `right`, `up`, `down`: the pane next to
+    /// the target pane, or the active pane of a target window or Terminal, by the layout; `next`,
+    /// `previous`: by pane index; both wrap around, as tmux does). Selecting another pane of a
+    /// zoomed window unzooms it.
     fn select(&self, p: &Value, pane: bool) -> Result<Value, IpcError> {
         let target = target(p)?;
         let dry_run = flag(p, "dry_run")?;
+        let direction = optional_string(p, "direction")?;
+        if direction.is_some() && !pane {
+            return Err(IpcError::param(
+                "direction",
+                "only pane.select takes a direction",
+            ));
+        }
+        let resizes;
+        let out = {
+            let mut st = self.lock();
+            let mut r = st.reg.resolve(target)?;
+            if let Some(d) = direction {
+                let t = &st.reg.terminals[r.terminal];
+                let w = &t.windows[r.window];
+                let from = if r.level == Level::Pane {
+                    r.pane
+                } else {
+                    w.active_pane
+                };
+                let n = w.panes.len();
+                let to = match d {
+                    "next" => (from + 1) % n,
+                    "previous" => (from + n - 1) % n,
+                    side => {
+                        let side = layout::Side::parse(side).ok_or_else(|| {
+                            IpcError::param(
+                                "direction",
+                                "direction must be left, right, up, down, next or previous",
+                            )
+                        })?;
+                        w.layout()
+                            .neighbour(&w.panes[from].id, side)
+                            .and_then(|id| w.panes.iter().position(|q| q.id == id))
+                            .unwrap_or(from)
+                    }
+                };
+                r.pane = to;
+                r.level = Level::Pane;
+            }
+            match (pane, r.level) {
+                (false, Level::Window) | (true, Level::Pane) => {}
+                (false, _) => {
+                    return Err(wrong_level(
+                        "window.select",
+                        "a window (terminal:window or a w- id)",
+                    ));
+                }
+                (true, _) => {
+                    return Err(wrong_level(
+                        "pane.select",
+                        "a pane (terminal:window.pane or a p- id)",
+                    ));
+                }
+            }
+            let t = &mut st.reg.terminals[r.terminal];
+            if dry_run {
+                let w = &t.windows[r.window];
+                let pi = if pane { r.pane } else { w.active_pane };
+                return Ok(json!({"dry_run": true, "would_select": {
+                    "terminal_id": t.id, "window_id": w.id, "pane_id": w.panes[pi].id,
+                    "changed": t.active_window != r.window || w.active_pane != pi,
+                }}));
+            }
+            let (wc, pc) = if pane {
+                t.select_pane(r.window, r.pane)
+            } else {
+                (t.select_window(r.window), false)
+            };
+            let w = &mut t.windows[r.window];
+            // Another pane of a zoomed window: unzoomed (tmux `select-pane` without -Z).
+            let unzoom = pc
+                && w.layout().zoomed().is_some()
+                && w.layout().zoomed() != Some(w.panes[w.active_pane].id.as_str());
+            let changed = if unzoom {
+                w.relayout(|l| l.zoom(None))
+                    .map(|(_, c)| c)
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let out = json!({
+                "terminal_id": t.id,
+                "window_id": w.id,
+                "pane_id": w.panes[w.active_pane].id,
+                "changed": wc || pc,
+            });
+            let (tid, wid) = (t.id.clone(), w.id.clone());
+            st.selected(&tid, wc, pc);
+            if unzoom {
+                st.layout_event(&tid, &wid);
+            }
+            resizes = st.resized(changed);
+            out
+        };
+        apply_resizes(&resizes)?;
+        Ok(out)
+    }
+
+    /// `pane.adjust` (tmux `resize-pane -L/-R/-U/-D`), `pane.swap` (`swap-pane`) and `pane.zoom`
+    /// (`resize-pane -Z`) on the target pane (or the active pane of a target window or
+    /// Terminal) of a running Terminal (Step 22, ADR 0056). Every pane keeps its process; panes
+    /// whose share changed are resized. `dry_run` reports the resulting layout and changes
+    /// nothing.
+    fn layout_op(&self, p: &Value, op: LayoutOp) -> Result<Value, IpcError> {
+        let method = match op {
+            LayoutOp::Adjust => "pane.adjust",
+            LayoutOp::Swap => "pane.swap",
+            LayoutOp::Zoom => "pane.zoom",
+            LayoutOp::Rotate => "window.rotate",
+            LayoutOp::Preset => "window.select_layout",
+        };
+        let up = match (op, optional_string(p, "direction")?) {
+            (LayoutOp::Rotate, None | Some("up")) => true,
+            (LayoutOp::Rotate, Some("down")) => false,
+            (LayoutOp::Rotate, Some(_)) => {
+                return Err(IpcError::param("direction", "direction must be up or down"));
+            }
+            _ => true,
+        };
+        let preset = match op {
+            LayoutOp::Preset => Some(
+                optional_string(p, "layout")?
+                    .and_then(layout::Preset::parse)
+                    .ok_or_else(|| {
+                        IpcError::param(
+                            "layout",
+                            "layout must be even-horizontal, even-vertical or tiled",
+                        )
+                    })?,
+            ),
+            _ => None,
+        };
+        let target = target(p)?;
+        let dry_run = flag(p, "dry_run")?;
+        let side = match op {
+            LayoutOp::Adjust => Some(
+                optional_string(p, "direction")?
+                    .and_then(layout::Side::parse)
+                    .ok_or_else(|| {
+                        IpcError::param("direction", "direction must be left, right, up or down")
+                    })?,
+            ),
+            _ => None,
+        };
+        let cells = match &p["cells"] {
+            Value::Null => 1,
+            v => v
+                .as_u64()
+                .filter(|n| (1..=1000).contains(n))
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or_else(|| IpcError::param("cells", "cells must be a number from 1 to 1000"))?,
+        };
+        let zoom = match &p["zoom"] {
+            Value::Null => None,
+            Value::Bool(b) => Some(*b),
+            _ => {
+                return Err(IpcError::param(
+                    "zoom",
+                    "zoom must be true or false (omit it to toggle)",
+                ));
+            }
+        };
         let mut st = self.lock();
         let r = st.reg.resolve(target)?;
-        match (pane, r.level) {
-            (false, Level::Window) | (true, Level::Pane) => {}
-            (false, _) => {
-                return Err(wrong_level(
-                    "window.select",
-                    "a window (terminal:window or a w- id)",
-                ));
-            }
-            (true, _) => {
-                return Err(wrong_level(
-                    "pane.select",
-                    "a pane (terminal:window.pane or a p- id)",
-                ));
-            }
-        }
-        let t = &mut st.reg.terminals[r.terminal];
-        if dry_run {
-            let w = &t.windows[r.window];
-            let pi = if pane { r.pane } else { w.active_pane };
-            return Ok(json!({"dry_run": true, "would_select": {
-                "terminal_id": t.id, "window_id": w.id, "pane_id": w.panes[pi].id,
-                "changed": t.active_window != r.window || w.active_pane != pi,
-            }}));
-        }
-        let (wc, pc) = if pane {
-            t.select_pane(r.window, r.pane)
+        let t = &st.reg.terminals[r.terminal];
+        require_running(t)?;
+        let w = &t.windows[r.window];
+        let window_op = matches!(op, LayoutOp::Rotate | LayoutOp::Preset);
+        let at = if r.level == Level::Pane && !window_op {
+            r.pane
         } else {
-            (t.select_window(r.window), false)
+            w.active_pane
+        };
+        let pane_id = w.panes[at].id.clone();
+        // The other pane of a swap: a target in the same window, or the next or previous one.
+        let other = if matches!(op, LayoutOp::Swap) {
+            let n = w.panes.len();
+            Some(
+                match (
+                    optional_string(p, "with")?,
+                    optional_string(p, "direction")?,
+                ) {
+                    (Some(with), None) => {
+                        let o = st.reg.resolve(with)?;
+                        if o.level != Level::Pane {
+                            return Err(IpcError::param("with", "with must name a pane"));
+                        }
+                        if o.terminal != r.terminal || o.window != r.window {
+                            return Err(IpcError::new(
+                                ErrorCode::InvalidState,
+                                "pane.swap swaps two panes of one window",
+                            ));
+                        }
+                        w.panes[o.pane].id.clone()
+                    }
+                    (None, Some("next")) => w.panes[(at + 1) % n].id.clone(),
+                    (None, Some("previous")) => w.panes[(at + n - 1) % n].id.clone(),
+                    (None, None) => {
+                        return Err(IpcError::param(
+                            "with",
+                            "name the pane to swap with (with), or a direction",
+                        ));
+                    }
+                    _ => {
+                        return Err(IpcError::param(
+                            "direction",
+                            "give with (a pane) or direction (next or previous), not both",
+                        ));
+                    }
+                },
+            )
+        } else {
+            None
+        };
+        let mut next = w.clone();
+        let before = next.layout().clone();
+        let (moved, changed) = next
+            .relayout(|l| match op {
+                LayoutOp::Adjust => l.adjust(&pane_id, side.expect("parsed above"), cells),
+                LayoutOp::Swap => l
+                    .swap(&pane_id, other.as_deref().expect("set above"))
+                    .map(|()| 0),
+                LayoutOp::Zoom => {
+                    let on = zoom.unwrap_or(l.zoomed() != Some(pane_id.as_str()));
+                    l.zoom(on.then_some(pane_id.as_str())).map(|()| 0)
+                }
+                LayoutOp::Rotate => {
+                    l.rotate(up);
+                    Ok(0)
+                }
+                LayoutOp::Preset => {
+                    l.preset(preset.expect("parsed above"));
+                    Ok(0)
+                }
+            })
+            .map_err(|e| layout_refused(&e, method))?;
+        let did = *next.layout() != before;
+        let mut out = layout_json(t, &next);
+        out["pane_id"] = json!(pane_id);
+        out["changed"] = json!(did);
+        if matches!(op, LayoutOp::Adjust) {
+            out["moved"] = json!(moved);
+        }
+        if dry_run {
+            return Ok(json!({"dry_run": true, "would_change": out}));
+        }
+        let tid = t.id.clone();
+        let wid = w.id.clone();
+        // Zooming a pane shows it: it becomes the window's active pane.
+        let select = matches!(op, LayoutOp::Zoom) && next.layout().zoomed().is_some();
+        let t = &mut st.reg.terminals[r.terminal];
+        t.windows[r.window] = next;
+        let (wc, pc) = if select {
+            let pi = t.windows[r.window]
+                .panes
+                .iter()
+                .position(|q| q.id == pane_id)
+                .unwrap_or(at);
+            t.select_pane(r.window, pi)
+        } else {
+            (false, false)
         };
         let w = &t.windows[r.window];
-        let out = json!({
-            "terminal_id": t.id,
-            "window_id": w.id,
-            "pane_id": w.panes[w.active_pane].id,
-            "changed": wc || pc,
-        });
-        let tid = t.id.clone();
+        out["active_pane"] = json!(w.panes[w.active_pane].id);
         st.selected(&tid, wc, pc);
+        if did {
+            st.layout_event(&tid, &wid);
+        }
+        let resizes = st.resized(changed);
+        drop(st);
+        apply_resizes(&resizes)?;
         Ok(out)
     }
 

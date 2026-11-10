@@ -13,6 +13,7 @@
 //! are Host state, shared by every client. Until Step 22 adds splits, a window shows one pane: its
 //! active one.
 
+use crate::layout::{Amount, Dir, Layout, Refused};
 use crate::proto::{ErrorCode, IpcError};
 use crate::pty::EnvNames;
 use crate::redact;
@@ -380,6 +381,9 @@ pub struct Pane {
     pub history_limit: usize,
 }
 
+/// Panes whose layout size changed, with their new size (`(cols, rows)`); the Host resizes them.
+pub type Resized = Vec<(String, (u16, u16))>;
+
 /// One internal window of a Terminal.
 #[derive(Debug, Clone)]
 pub struct Window {
@@ -387,8 +391,95 @@ pub struct Window {
     pub index: usize,
     pub name: String,
     pub automatic_name: bool,
+    /// In layout order (left to right, top to bottom), indexed so (tmux).
     pub panes: Vec<Pane>,
     pub active_pane: usize,
+    /// Step 22: the split tree over `panes` and the window's size; `None` only while a window
+    /// is being made and has no pane yet.
+    pub layout: Option<Layout>,
+}
+
+impl Window {
+    /// The layout (every window with a pane has one).
+    pub fn layout(&self) -> &Layout {
+        self.layout
+            .as_ref()
+            .expect("a window with panes has a layout")
+    }
+
+    fn layout_mut(&mut self) -> &mut Layout {
+        self.layout
+            .as_mut()
+            .expect("a window with panes has a layout")
+    }
+
+    /// Puts `panes` in layout order, renumbers them and keeps the active pane. Returns the
+    /// panes whose layout size changed, with their new size (the Host resizes them).
+    pub fn sync(&mut self) -> Resized {
+        let Some(layout) = &self.layout else {
+            return Vec::new();
+        };
+        let active = self.panes.get(self.active_pane).map(|p| p.id.clone());
+        let order = layout.panes();
+        self.panes
+            .sort_by_key(|p| order.iter().position(|o| *o == p.id).unwrap_or(usize::MAX));
+        for (i, p) in self.panes.iter_mut().enumerate() {
+            p.index = i;
+        }
+        if let Some(a) = active {
+            self.active_pane = self.panes.iter().position(|p| p.id == a).unwrap_or(0);
+        }
+        let rects = layout.rects();
+        let mut changed = Vec::new();
+        for p in &mut self.panes {
+            if let Some((_, r)) = rects.iter().find(|(id, _)| *id == p.id)
+                && p.size != r.size()
+            {
+                p.size = r.size();
+                changed.push((p.id.clone(), p.size));
+            }
+        }
+        changed
+    }
+
+    /// Lays the window out at a client's size (tmux: the latest client's size is the window's).
+    pub fn resize(&mut self, size: (u16, u16)) -> Resized {
+        if let Some(l) = &mut self.layout {
+            l.resize(size);
+        }
+        self.sync()
+    }
+
+    /// Splits pane `target` and adds `p` next to it (`pane.split`). Returns its position.
+    pub fn split(
+        &mut self,
+        target: &str,
+        p: Pane,
+        dir: Dir,
+        before: bool,
+        amount: Option<Amount>,
+    ) -> Result<(usize, Resized), Refused> {
+        self.layout_mut()
+            .split(target, &p.id, dir, before, amount)?;
+        let id = p.id.clone();
+        self.panes.push(p);
+        let changed = self.sync();
+        let pos = self
+            .panes
+            .iter()
+            .position(|x| x.id == id)
+            .expect("just added");
+        Ok((pos, changed))
+    }
+
+    /// Changes the layout with `f` and puts the panes in its order; the size changes.
+    pub fn relayout<T>(
+        &mut self,
+        f: impl FnOnce(&mut Layout) -> Result<T, Refused>,
+    ) -> Result<(T, Resized), Refused> {
+        let out = f(self.layout_mut())?;
+        Ok((out, self.sync()))
+    }
 }
 
 /// One Terminal: a named workspace with its windows, panes and lifecycle state.
@@ -459,12 +550,22 @@ impl Terminal {
         pos
     }
 
-    /// Adds a pane at the end of window `wi`, with the next index. Returns its position.
+    /// Adds a pane to window `wi`: the first pane of a new window (its layout is that pane at
+    /// its size), else a vertical split of its last pane, so it is listed last.
+    /// Returns its position.
     pub fn push_pane(&mut self, wi: usize, mut p: Pane) -> usize {
         let w = &mut self.windows[wi];
-        p.index = w.panes.len();
-        w.panes.push(p);
-        w.panes.len() - 1
+        if w.layout.is_none() || w.panes.is_empty() {
+            w.layout = Some(Layout::new(&p.id, p.size));
+            p.index = 0;
+            p.size = w.layout().size();
+            w.panes = vec![p];
+            return 0;
+        }
+        let target = w.panes[w.panes.len() - 1].id.clone();
+        w.split(&target, p, Dir::Vertical, false, None)
+            .expect("a test layout has room for another pane")
+            .0
     }
 
     /// Makes window `wi` the active one; whether that changed anything.
@@ -504,18 +605,21 @@ impl Terminal {
         let pi = w.panes.iter().position(|p| p.id == pane_id)?;
         w.panes.remove(pi);
         let window_removed = w.panes.is_empty();
+        let mut resized = Vec::new();
+        if !window_removed && let Some(l) = &mut w.layout {
+            let _ = l.remove(pane_id);
+            // `sync` below renumbers; keep the active pane's neighbour rule first.
+        }
         if window_removed {
             self.windows.remove(wi);
             if self.active_window > wi || self.active_window >= self.windows.len() {
                 self.active_window = self.active_window.saturating_sub(1);
             }
         } else {
-            for (i, p) in w.panes.iter_mut().enumerate() {
-                p.index = i;
-            }
             if w.active_pane > pi || w.active_pane >= w.panes.len() {
                 w.active_pane = w.active_pane.saturating_sub(1);
             }
+            resized = w.sync();
         }
         let after_window = self.windows[self.active_window].id.clone();
         let after_pane = self.active_pane().id.clone();
@@ -529,6 +633,7 @@ impl Terminal {
         Some(Removal {
             window_id,
             window_removed,
+            resized,
             window_changed: before.0 != after_window,
             pane_changed: before.1 != after_pane,
             window_pane,
@@ -543,6 +648,8 @@ pub struct Removal {
     pub window_id: String,
     /// That window lost its last pane and went too.
     pub window_removed: bool,
+    /// Step 22: the panes of a window that stays whose size changed (the freed space).
+    pub resized: Resized,
     /// The Terminal's active window changed.
     pub window_changed: bool,
     /// The Terminal's active pane changed.
@@ -709,7 +816,7 @@ impl Registry {
                 name: window_name,
                 automatic_name: true,
                 panes: vec![Pane {
-                    id: pid,
+                    id: pid.clone(),
                     index: 0,
                     command: spec.command,
                     command_line: spec.command_line,
@@ -722,6 +829,7 @@ impl Registry {
                     history_limit: spec.history_limit,
                 }],
                 active_pane: 0,
+                layout: Some(Layout::new(&pid, spec.size)),
             }],
             active_window: 0,
             ending: None,
@@ -957,9 +1065,9 @@ pub fn terminal_json(t: &Terminal, live: &dyn Fn(&Pane) -> Live) -> Value {
     })
 }
 
-/// The `Window` object of IPC v1 (in a Terminal object, `window.list`, `window.created`). Until
-/// Step 22 adds splits, `layout` is one pane: the window's active one. `clients` and `busy` add
-/// up the window's panes.
+/// The `Window` object of IPC v1 (in a Terminal object, `window.list`, `window.created`), with
+/// its layout tree, size and zoomed pane (Step 22). `clients` and `busy` add up the window's
+/// panes.
 pub fn window_json(
     t: &Terminal,
     w: &Window,
@@ -974,7 +1082,9 @@ pub fn window_json(
             let l = live(p);
             *clients += l.clients;
             *busy |= t.state.is_live() && l.running && self::busy(&p.command.program, l.processes);
-            pane_json(t, p, &l)
+            let mut j = pane_json(t, p, &l);
+            place_json(w, p, &mut j);
+            j
         })
         .collect();
     json!({
@@ -983,9 +1093,21 @@ pub fn window_json(
         "name": w.name,
         "automatic_name": w.automatic_name,
         "active_pane": w.panes[w.active_pane].id,
-        "layout": {"type": "pane", "pane": w.panes[w.active_pane].id},
+        "layout": w.layout().json(),
+        "size": {"cols": w.layout().size().0, "rows": w.layout().size().1},
+        "zoomed": w.layout().zoomed(),
         "panes": panes,
     })
+}
+
+/// Adds a pane's place in its window (`rect`, `visible`; Step 22) to its object.
+pub fn place_json(w: &Window, p: &Pane, j: &mut Value) {
+    if let Some(l) = &w.layout
+        && let Some(r) = l.rect(&p.id)
+    {
+        j["rect"] = r.json();
+        j["visible"] = json!(l.visible(&p.id));
+    }
 }
 
 /// The `Pane` object of IPC v1 (in a Window object, `pane.created`).
@@ -1327,6 +1449,7 @@ mod tests {
             automatic_name: true,
             panes: Vec::new(),
             active_pane: 0,
+            layout: None,
         }
     }
 

@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 11] = [
+pub const FEATURES: [&str; 12] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -56,6 +56,9 @@ pub const FEATURES: [&str; 11] = [
     // Step 21: internal windows and panes (`window.*`, `pane.create|list|select|kill`) and their
     // events.
     "terminal.windows",
+    // Step 22: splits and layouts (`pane.split|adjust|swap|zoom`, directional `pane.select`,
+    // `window.layout`, window `size`/`zoomed`, pane `rect`/`visible`).
+    "terminal.layout",
 ];
 
 /// One decoded frame.
@@ -561,13 +564,18 @@ pub const METHODS: &[Method] = &[
     m("window.rename", CG, true),
     m("window.kill", CG, true),
     m("window.select", CG, true),
+    // Step 22: tmux `rotate-window` and the basic `select-layout`s.
+    m("window.rotate", CG, true),
+    m("window.select_layout", CG, true),
     m("pane.create", CG, true),
-    m("pane.split", CG, false),
+    // Step 22 (ADR 0056): splits and the layout.
+    m("pane.split", CG, true),
+    m("pane.adjust", CG, true),
     m("pane.list", CGM, true),
     m("pane.kill", CG, true),
     m("pane.select", CG, true),
-    m("pane.swap", CG, false),
-    m("pane.zoom", CG, false),
+    m("pane.swap", CG, true),
+    m("pane.zoom", CG, true),
     m("pane.send_keys", CG, false),
     // Step 13: reading and clearing a pane's history needs the MCP grant too (Step 37).
     m("pane.capture", CG, true),

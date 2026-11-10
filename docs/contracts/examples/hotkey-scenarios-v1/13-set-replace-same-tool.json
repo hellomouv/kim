@@ -36,7 +36,7 @@
     "changes": [
       {
         "action": "pane.zoom",
-        "before": {"bindings": ["@prefix char:z"], "source": "default"},
+        "before": {"bindings": ["@prefix char:z", "Ctrl+Shift+Z"], "source": "default"},
         "after": {"bindings": ["Ctrl+Shift+R"], "source": "user"}
       },
       {

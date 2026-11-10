@@ -157,13 +157,18 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `window.kill` | `{target (window), force?, dry_run?}` | `{terminal_id, window_id, affected, window_removed, terminal}` or `{dry_run: true, would_kill}` | cli, gui, mcp* | **21** |
 | `pane.create` | `{target (Terminal or window), command? \| command_line?, cwd?, env?, size?, history_limit?, select?, dry_run?}` | as `window.create` | cli, gui, mcp* | **21** |
 | `pane.list` | `{target (Terminal or window)}` | as `window.list` (the targeted window only) | cli, gui, mcp | **21** |
-| `pane.select` | `{target (pane), dry_run?}` | as `window.select` | cli, gui, mcp* | **21** |
+| `pane.select` | `{target (pane; with `direction`: any level), direction? (left\|right\|up\|down\|next\|previous), dry_run?}` | as `window.select` | cli, gui, mcp* | **21**, **22** |
 | `pane.kill` | `{target (pane), force?, dry_run?}` | as `window.kill` | cli, gui, mcp* | **21** |
-| `pane.split` / `.swap` / `.zoom` | target-based | objects | cli, gui, mcp* | 22 |
+| `pane.split` | as `pane.create`, plus `direction?` (`horizontal` \| `vertical`), `before?`, `cells?` \| `percent?`; any level (a window or Terminal: its active pane) | as `window.create` (`would_create.split` in a dry run) | cli, gui, mcp* | **22** |
+| `pane.adjust` | `{target, direction (left\|right\|up\|down), cells?, dry_run?}` | `result_layout` (with `moved`) | cli, gui, mcp* | **22** |
+| `pane.swap` | `{target, with? (a pane) \| direction? (next\|previous), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
+| `pane.zoom` | `{target, zoom? (true\|false; omitted: toggle), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
+| `window.rotate` | `{target (any level: its window), direction? (up\|down; default up), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
+| `window.select_layout` | `{target (any level: its window), layout (even-horizontal\|even-vertical\|tiled), dry_run?}` | `result_layout` | cli, gui, mcp* | **22** |
 | `pane.attach` | `{target?, interactive?, size?, history_lines?}` | `{stream_id, pane_id, terminal_id, seq, interactive, pane: {id, pid, size}, replay_bytes, snapshot: {bytes, frames, history_lines, alternate, size}}`, then the snapshot data frames and live output | cli, gui, mcp* | **09**, **10**, **13** |
 | `pane.detach` | `{stream_id?}` | `{}` | cli, gui, mcp | **09**, **10** |
 | `client.detach` | `{target?, client_id?, dry_run?}` (at least one of `target`, `client_id`) | `{detached: [attachment], terminal}` or `{dry_run: true, would_detach, terminal}` | cli, gui, mcp* | **12** |
-| `pane.resize` | `{cols, rows, stream_id?}` | `{cols, rows, stream_id}` | cli, gui | **09**, **10** |
+| `pane.resize` | `{cols, rows, stream_id?}` (Step 22: the size of the pane's window) | `{cols, rows, stream_id, window_size}` (the pane's share) | cli, gui | **09**, **10**, **22** |
 | `pane.send_keys` | `{target, keys: [string], literal}` | `{}` | cli, gui, mcp* | 24 (not in Step 12: the CLI writes input through an attach) |
 | `pane.capture` | `{target?, start?, end?, format?: "text" \| "vt", join?, redact?}` | `{terminal_id, pane_id, format, join, redact, redacted, start, end, truncated, lines, screen, history}` | cli, gui, mcp* | **13** |
 | `pane.clear_history` | `{target?, dry_run?}` | `{terminal_id, pane_id, cleared_lines, cleared_bytes, history}` or `{dry_run: true, would_clear}` | cli, gui, mcp* | **13** |
@@ -359,6 +364,34 @@ Semantics are in [SESSION_MODEL.md](../SESSION_MODEL.md) §1–§5 and
   `force` and `host.stop` end all panes of all windows (`affected` has one report per pane;
   `busy` and `processes` of their plans add up the panes); a `stopped` Terminal keeps every window
   and pane.
+
+### 4.5 Splits and the layout (Step 22)
+
+Semantics are in [SESSION_MODEL.md](../SESSION_MODEL.md) §3 and
+[ADR 0056](../adr/0056-subak-pane-splits-and-layout.md); feature `terminal.layout`.
+
+- **Layout.** A Window object's `layout` is the split tree of `Layout` (STATE_SCHEMA), with
+  `cells` beside each child's `size` share; `size` is the window's size; `zoomed` its zoomed pane
+  or null. Pane objects add `rect` (`x`, `y`, `cols`, `rows` in the window) and `visible`.
+- **The window's size** is the latest interactive client's: `pane.attach` with a `size` and
+  `pane.resize` lay the pane's window out at that size, and every pane whose share changed is
+  resized. A read-only attach never resizes. A new window starts at the Terminal's active window's
+  size unless `size` is given.
+- **`pane.split`** splits the target pane; the new pane starts at its share. Each pane keeps at
+  least 2×2 cells; otherwise `invalid_state` with `details.need`/`have`, nothing started.
+  `pane.create` is a vertical split of the window's active pane; split options on it are
+  `invalid_params`.
+- **`window.rotate`** moves every pane one place along the pane order (tmux `rotate-window`;
+  `up`: the second pane takes the first place); **`window.select_layout`** arranges every pane in
+  pane order evenly side by side, stacked, or tiled (as many columns as the square root of the
+  count, rounded up). Both unzoom.
+- **`pane.adjust` / `pane.swap` / `pane.zoom` / `window.rotate` / `window.select_layout`** answer `result_layout`: the window's `layout`,
+  `size`, `zoomed`, `active_pane`, `panes` (id, index, rect, visible), the target `pane_id`,
+  `changed` and (adjust) `moved`. `dry_run` answers `{dry_run: true, would_change}`. Only in a
+  running Terminal. Swapping panes of two windows is `invalid_state`. Zooming selects the pane;
+  selecting another pane, a split or a border move unzooms.
+- **`window.layout`** (topic `terminals`) carries the same data after every change of a window with
+  more than one pane: a split, a border move, a swap, a zoom, a pane gone, a client's new size.
 
 ## 5. Events (v1)
 

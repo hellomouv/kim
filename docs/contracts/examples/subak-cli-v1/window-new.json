@@ -45,15 +45,27 @@
           "output_bytes": 1024,
           "pid": 4242,
           "processes": 1,
+          "rect": {
+            "cols": 120,
+            "rows": 30,
+            "x": 0,
+            "y": 0
+          },
           "running": true,
           "size": {
             "cols": 120,
             "rows": 30
           },
           "stream_id": 1,
-          "title": null
+          "title": null,
+          "visible": true
         }
-      ]
+      ],
+      "size": {
+        "cols": 120,
+        "rows": 30
+      },
+      "zoomed": null
     },
     "window_id": "w-000000000003"
   },

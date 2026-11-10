@@ -336,7 +336,7 @@ fn refused_changes_write_nothing_and_name_the_way_out() {
         (code, e["error"]["code"].as_str()),
         (2, Some("hotkey_invalid"))
     );
-    let (code, e) = p.json(&["set", "pane.split-right", "Ctrl+Shift+5"]);
+    let (code, e) = p.json(&["set", "window.next", "Ctrl+Shift+5"]);
     assert_eq!(
         (code, e["error"]["code"].as_str()),
         (3, Some("action_not_found"))

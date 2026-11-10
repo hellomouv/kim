@@ -588,6 +588,7 @@ mod tests {
             history_limit: 2000,
             place: None,
             active_pane: None,
+            layout: None,
         }
     }
 
@@ -762,6 +763,7 @@ mod tests {
             name: "claude".into(),
             program: "claude.exe".into(),
             processes: 3,
+            pane: None,
         };
         let (vt, spans) = confirm_vt(&c, Choice::Cancel, 160);
         let row = text_of(&vt, 160, 1).remove(0);
@@ -801,6 +803,7 @@ mod tests {
             name: "x".into(),
             program: String::new(),
             processes: 2,
+            pane: None,
         };
         let (vt, _) = confirm_vt(&c, Choice::Cancel, 120);
         let hc = high_contrast(&vt);

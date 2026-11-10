@@ -30,7 +30,7 @@ by `cargo xtask schema-check`.
 | --- | --- |
 | Terminal | `id` (`t-` + 12 hex), `name`, `created_at`, `profile` (string or null), `restore` (`ask` \| `auto` \| `never`), `remain_on_exit` (bool), `active_window` (window id), `windows` (≥ 1) |
 | Window | `id`, `index` (≥ 0), `name`, `automatic_name` (bool), `active_pane`, `layout` (Layout), `panes` (≥ 1) |
-| Layout | `{ "type": "pane", "pane": "p-…" }` or `{ "type": "split", "direction": "horizontal" \| "vertical", "children": [{ "size": 0–1, "node": Layout }] (≥ 2) }` |
+| Layout | `{ "type": "pane", "pane": "p-…" }` or `{ "type": "split", "direction": "horizontal" \| "vertical", "children": [{ "size": 0–1, "cells"?: ≥ 1, "node": Layout }] (≥ 2) }` — implemented in IPC since Step 22 (ADR 0056; `horizontal` = side by side); persisted with Step 29 |
 | Pane | `id`, `index`, `cwd`, `command` (`{program, args}` or null = profile default), `restart_command` (same shape or null; **opt-in**, never derived), `env` (non-secret overrides), `env_secret_refs` (name → credential reference), `title` (or null), `claude` (`{session_id, resume}` or null), `scrollback` (`{persisted, file?}`) |
 
 **Never stored:** PIDs (except as volatile hints outside this file), terminal content (unless

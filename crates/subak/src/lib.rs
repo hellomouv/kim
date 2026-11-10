@@ -31,6 +31,8 @@ pub mod hotkeys;
 /// `subak hotkeys …` (Step 17): portable, never contacts a Host.
 mod hotkeys_cmd;
 #[cfg_attr(not(windows), allow(dead_code))]
+mod layout;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod output;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod proto;
@@ -172,12 +174,26 @@ TERMINALS (Windows only; docs/SUBAK_CLI.md, docs/SESSION_MODEL.md):
     created with --remain-on-exit (then `stopped`). Until Step 29 nothing is saved: Terminals
     end with their Host, and stopped ones vanish when the Host exits.
 
-WINDOWS AND PANES (docs/SESSION_MODEL.md §3, ADR 0054; splits and layouts are Step 22):
+WINDOWS AND PANES (docs/SESSION_MODEL.md §3, ADR 0054; splits and layouts ADR 0056):
     window new   A new internal window of a running Terminal, at the lowest free index, with
              one pane running <program> (default: %ComSpec%); named after the program unless
              --name. It becomes the active window for every client unless --no-select.
     pane new     A new pane with its own process in a window (a Terminal target: its active
-             window). Until Step 22 a window shows one pane, its active one.
+             window): a vertical split of the window's active pane (as `pane split`).
+    pane split   Split a pane (or a window's or Terminal's active pane) and start a new pane
+             next to it: --vertical (stacked, default; tmux -v) or --horizontal (side by side;
+             tmux -h), --before (left of or above it), --cells N or --percent N (its size;
+             default half). Every pane keeps at least 2x2 cells; a pane too small is refused.
+             The panes share the window's size, which is the latest client's.
+    pane resize <pane> <left|right|up|down> [cells]   Move the pane's border (tmux
+             resize-pane -L/-R/-U/-D; default 1 cell); the panes are resized, nothing ends.
+    pane swap <pane> <other|next|previous>   Swap two panes of a window (tmux swap-pane).
+    pane zoom <pane> [on|off]   The pane fills the window (others keep running unseen);
+             toggles by default (tmux resize-pane -Z). Selecting another pane unzooms.
+    pane select <pane> [left|right|up|down|next|previous]   Also the neighbour of a pane.
+    window rotate <window> [up|down]   Move every pane one place (tmux rotate-window).
+    window layout <window> <even-horizontal|even-vertical|tiled>   Arrange the panes evenly
+             (tmux select-layout; more presets with Step 25).
     window ls, pane ls   The windows, or the panes with pids and programs; * marks the active.
     window select, pane select   The active window or pane, the same for every client (the
              window follows it); no process changes.
@@ -485,6 +501,10 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::WindowRename => terminal::window_rename(a, &endpoint),
         Cmd::WindowKill => terminal::close(a, &endpoint, true),
         Cmd::PaneKill => terminal::close(a, &endpoint, false),
+        Cmd::PaneSplit => terminal::split(a, &endpoint),
+        Cmd::PaneResize | Cmd::PaneSwap | Cmd::PaneZoom | Cmd::WindowRotate | Cmd::WindowLayout => {
+            terminal::layout(a, &endpoint, cmd)
+        }
         // Help, version, capabilities and the portable `hotkeys` commands run elsewhere.
         _ => Err(CliError::new(Code::Internal, "not a host command")),
     }
@@ -585,8 +605,8 @@ fn topology_table(d: &Value, panes: bool) -> String {
     let active = &d["active_window"];
     let mut s = if panes {
         format!(
-            "{:<8}  {:<14}  {:>7}  {:<8}  PROGRAM\n",
-            "PANE", "ID", "PID", "STATE"
+            "{:<8}  {:<14}  {:>7}  {:<8}  {:<15}  PROGRAM\n",
+            "PANE", "ID", "PID", "STATE", "SIZE@X,Y"
         )
     } else {
         format!(
@@ -615,7 +635,7 @@ fn topology_table(d: &Value, panes: bool) -> String {
                 " "
             };
             s.push_str(&format!(
-                "{:<8}  {:<14}  {:>7}  {:<8}  {}\n",
+                "{:<8}  {:<14}  {:>7}  {:<8}  {:<15}  {}\n",
                 format!("{}.{}{pm}", w["index"], p["index"]),
                 text(&p["id"]),
                 if p["pid"].is_null() {
@@ -628,11 +648,48 @@ fn topology_table(d: &Value, panes: bool) -> String {
                 } else {
                     "ended"
                 },
+                place_text(p, w),
                 text(&p["command"]["program"]),
             ));
         }
     }
     s.trim_end().to_string()
+}
+
+/// A pane's size and place (Step 22): `40x24@41,0`, `(hidden)` while another pane is zoomed.
+fn place_text(p: &Value, w: &Value) -> String {
+    let r = &p["rect"];
+    if r.is_null() {
+        return format!("{}x{}", p["size"]["cols"], p["size"]["rows"]);
+    }
+    if p["visible"] == false {
+        return "(hidden)".into();
+    }
+    let zoom = if w["zoomed"] == p["id"] { " zoom" } else { "" };
+    format!("{}x{}@{},{}{zoom}", r["cols"], r["rows"], r["x"], r["y"])
+}
+
+/// The panes of a layout result, one per line (Step 22).
+fn layout_lines(d: &Value) -> String {
+    d["panes"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .map(|p| {
+            let mark = if p["id"] == d["active_pane"] {
+                "*"
+            } else {
+                " "
+            };
+            format!(
+                "  pane {}{mark} {}  {}",
+                p["index"],
+                text(&p["id"]),
+                place_text(p, d)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// An exit status as shown to people: NTSTATUS-like values (≥ 0x80000000, e.g. `0xC000013A`
@@ -1137,7 +1194,41 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
             bytes_text(&d["cleared_bytes"]),
             text(&d["name"]),
         ),
-        Cmd::WindowNew | Cmd::PaneNew => {
+        Cmd::PaneSplit
+        | Cmd::PaneResize
+        | Cmd::PaneSwap
+        | Cmd::PaneZoom
+        | Cmd::WindowRotate
+        | Cmd::WindowLayout
+            if d["dry_run"] == true =>
+        {
+            writeln!(out, "dry run: nothing changed\n{d:#}")
+        }
+        Cmd::PaneResize | Cmd::PaneSwap | Cmd::PaneZoom | Cmd::WindowRotate | Cmd::WindowLayout => {
+            let what = match cmd {
+                Cmd::PaneResize => format!("moved the border by {} cell(s)", d["moved"]),
+                Cmd::PaneSwap => "swapped the panes".into(),
+                Cmd::WindowRotate => "rotated the panes".into(),
+                Cmd::WindowLayout => "arranged the panes".into(),
+                _ if d["zoomed"].is_string() => format!("zoomed pane {}", text(&d["zoomed"])),
+                _ => "unzoomed".into(),
+            };
+            let _ = writeln!(
+                out,
+                "{}{} in window {} ({}x{}); every process keeps running",
+                if d["changed"] == true {
+                    ""
+                } else {
+                    "nothing changed: "
+                },
+                what,
+                text(&d["window_id"]),
+                d["size"]["cols"],
+                d["size"]["rows"],
+            );
+            writeln!(out, "{}", layout_lines(d))
+        }
+        Cmd::WindowNew | Cmd::PaneNew | Cmd::PaneSplit => {
             let w = &d["window"];
             let pane = w["panes"]
                 .as_array()
@@ -1147,10 +1238,10 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
             writeln!(
                 out,
                 "{} {}:{}.{} ({} {}, pid {}){}",
-                if cmd == Cmd::WindowNew {
-                    "created window"
-                } else {
-                    "created pane"
+                match cmd {
+                    Cmd::WindowNew => "created window",
+                    Cmd::PaneSplit => "split: created pane",
+                    _ => "created pane",
                 },
                 w["index"],
                 text(&w["name"]),

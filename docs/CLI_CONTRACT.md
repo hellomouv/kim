@@ -249,6 +249,12 @@ target of the wrong level is `usage` (exit 2), another Terminal's window or pane
 is `target_not_found` (exit 3), the last running window or pane of a Terminal is `invalid_state`
 (exit 7, `details.reason` `last_window` or `last_pane`; `subak kill` ends a Terminal), and a
 busy pane without consent is `confirmation_required` (exit 7).
+Step 22 ([ADR 0056](adr/0056-subak-pane-splits-and-layout.md)) adds `subak pane
+split|resize|swap|zoom` and `subak window rotate|layout` (tmux aliases `split-window`,
+`resize-pane`, `swap-pane`, `rotate-window`, `select-layout`), answering `pane.split` (as
+`pane.new`) and `result_layout` of `pane.adjust`, `pane.swap`, `pane.zoom`, `window.rotate` and
+`window.select_layout`; all take `--dry-run` and add no error code (a pane too small to split is
+`invalid_state`, exit 7).
 `capture`, `history` and `clear-history` (Step 13, [SCROLLBACK.md](SCROLLBACK.md)) answer
 `pane.capture` (all pages joined, plus `name` and `requests`), its counters with the Terminal's
 `name` and `state`, and `pane.clear_history` plus `name`; `capture` redacts secret-looking

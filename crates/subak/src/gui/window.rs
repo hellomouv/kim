@@ -49,6 +49,7 @@ use crate::config::{self, MiddleClick, RightClick, Settings, ThemeChoice};
 use kim_hotkeys::keys::Side;
 use serde_json::{Value, json};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -466,6 +467,21 @@ struct App {
     fonts: Option<Vec<&'static str>>,
     /// The family that draws Latin text in the terminal renderer (the user's, or a fallback).
     face: String,
+    /// Step 22: the read-only views of the other visible panes of a split window, by pane id,
+    /// each with its own renderer.
+    side: HashMap<String, SideView>,
+    /// Step 22: the panes of a split window composed at their places (what is presented).
+    split_frame: Option<Frame>,
+    /// Step 22: a border being dragged: the pane before it, whether the border is vertical
+    /// (between columns), and the grid cell along the drag the last request was made at.
+    border_drag: Option<(String, bool, i32)>,
+}
+
+/// A visible pane other than the active one (Step 22): drawn, never typed into.
+#[derive(Debug)]
+struct SideView {
+    view: TermView,
+    renderer: Renderer,
 }
 
 thread_local! {
@@ -743,6 +759,14 @@ impl App {
 
     /// Renders what changed and invalidates those rows.
     fn redraw(&mut self) {
+        if self.model.layout().is_some() {
+            self.redraw_split();
+            return;
+        }
+        if self.split_frame.take().is_some() {
+            self.renderer.render(&self.pane);
+            self.invalidate_all();
+        }
         let damage = if self.model.phase.shows_pane() {
             self.renderer.render(&self.pane)
         } else {
@@ -760,6 +784,155 @@ impl App {
             }
         }
         self.place_ime();
+    }
+
+    /// Step 22: renders every visible pane of a split window and composes them at their places
+    /// with the borders between them (the active pane's border in the accent colour).
+    fn redraw_split(&mut self) {
+        let mut damaged = !self.renderer.render(&self.pane).is_empty();
+        for s in self.side.values_mut() {
+            damaged |= !s.renderer.render(&s.view).is_empty();
+        }
+        if !damaged && self.split_frame.is_some() {
+            return;
+        }
+        self.frames += 1;
+        self.split_frame = self.compose_split();
+        self.invalidate_all();
+        self.place_ime();
+    }
+
+    fn compose_split(&self) -> Option<Frame> {
+        let l = self.model.layout()?;
+        let active = self.model.active_slot()?.id.clone();
+        let c = self.cells();
+        let (fw, fh) = self.renderer.frame_size_for(self.grid.0, self.grid.1);
+        let mut out = Frame::new(fw, fh, self.theme().background);
+        let at = |col: u16, row: u16| {
+            (
+                c.pad + u32::from(col) * c.width,
+                c.pad + u32::from(row) * c.height,
+            )
+        };
+        for s in l.slots.iter().filter(|s| s.visible) {
+            let src = if s.id == active {
+                Some(self.renderer.frame())
+            } else {
+                self.side.get(&s.id).map(|v| v.renderer.frame())
+            };
+            let Some(src) = src else { continue };
+            let (dx, dy) = at(s.x, s.y);
+            let w = (u32::from(s.cols) * c.width).min(src.width.saturating_sub(c.pad));
+            let h = (u32::from(s.rows) * c.height).min(src.height.saturating_sub(c.pad));
+            for row in 0..h {
+                let (ty, sy) = (dy + row, c.pad + row);
+                if ty >= fh || sy >= src.height {
+                    break;
+                }
+                let n = w.min(fw.saturating_sub(dx)) as usize;
+                let so = (sy * src.width + c.pad) as usize;
+                let to = (ty * fw + dx) as usize;
+                out.pixels[to..to + n].copy_from_slice(&src.pixels[so..so + n]);
+            }
+        }
+        // Borders: a line in the middle of the one-cell gap after each pane.
+        let chrome = self.chrome();
+        let thick = layout::px(1.0, self.dpi).max(1) as u32;
+        let (gw, gh) = self.grid;
+        let edges = |s: &crate::gui::model::Slot| {
+            let (x0, y0) = at(s.x, s.y);
+            let (x1, y1) = at(s.x + s.cols, s.y + s.rows);
+            let mid_w = c.width / 2;
+            let mid_h = c.height / 2;
+            let left = (s.x > 0).then(|| x0.saturating_sub(c.width) + mid_w);
+            let right = (s.x + s.cols < gw).then_some(x1 + mid_w);
+            let top = (s.y > 0).then(|| y0.saturating_sub(c.height) + mid_h);
+            let bottom = (s.y + s.rows < gh).then_some(y1 + mid_h);
+            (x0, y0, x1, y1, left, right, top, bottom)
+        };
+        let draw = |s: &crate::gui::model::Slot, color: Rgb, out: &mut Frame| {
+            let (x0, y0, x1, y1, left, right, top, bottom) = edges(s);
+            let (ya, yb) = (top.unwrap_or(y0), bottom.map_or(y1, |b| b + thick));
+            let (xa, xb) = (left.unwrap_or(x0), right.map_or(x1, |r| r + thick));
+            if let Some(x) = left {
+                out.fill(x, ya, thick, yb - ya, color);
+            }
+            if let Some(x) = right {
+                out.fill(x, ya, thick, yb - ya, color);
+            }
+            if let Some(y) = top {
+                out.fill(xa, y, xb - xa, thick, color);
+            }
+            if let Some(y) = bottom {
+                out.fill(xa, y, xb - xa, thick, color);
+            }
+        };
+        for s in l.slots.iter().filter(|s| s.visible && s.id != active) {
+            draw(s, chrome.border_subtle, &mut out);
+        }
+        if let Some(s) = l.slot(&active) {
+            draw(s, chrome.accent, &mut out);
+        }
+        Some(out)
+    }
+
+    /// The frame presented below the tab bar: the composed panes of a split window, or the
+    /// pane's (or state screen's) own frame.
+    fn pane_frame(&self) -> &Frame {
+        self.split_frame
+            .as_ref()
+            .filter(|_| self.model.layout().is_some())
+            .unwrap_or_else(|| self.renderer.frame())
+    }
+
+    /// The size the active pane's view has: its place in a split window, else the grid.
+    fn view_size(&self) -> (u16, u16) {
+        self.model
+            .active_slot()
+            .map_or(self.grid, |s| (s.cols, s.rows))
+    }
+
+    /// Step 22: the active pane's top-left cell in the window's grid.
+    fn view_origin(&self) -> (u16, u16) {
+        self.model.active_slot().map_or((0, 0), |s| (s.x, s.y))
+    }
+
+    /// Step 22: keeps one read-only view per visible pane the model attached, at its place's
+    /// size; drops the others.
+    fn sync_side(&mut self) {
+        let wanted: Vec<String> = self
+            .model
+            .views()
+            .iter()
+            .map(|v| v.pane_id.clone())
+            .collect();
+        self.side.retain(|id, _| wanted.contains(id));
+        let theme = self.theme();
+        let opts = self.renderer.options();
+        for id in wanted {
+            let size = self
+                .model
+                .layout()
+                .and_then(|l| l.slot(&id))
+                .map_or((80, 24), |s| (s.cols, s.rows));
+            if !self.side.contains_key(&id) {
+                let mut r = make_term_renderer(theme.clone(), opts, &self.face);
+                r.set_focused(false);
+                self.side.insert(
+                    id,
+                    SideView {
+                        view: TermView::new(size.0, size.1, 0),
+                        renderer: r,
+                    },
+                );
+            } else if let Some(s) = self.side.get_mut(&id)
+                && s.view.size() != size
+            {
+                s.view.resize(size.0, size.1);
+            }
+        }
+        self.split_frame = None;
+        self.redraw();
     }
 
     /// The keys the screens name, as bound now.
@@ -1107,7 +1280,9 @@ impl App {
         }
         let c = self.cells();
         let (col, row) = if self.model.phase.shows_pane() {
-            self.pane.cursor_in_view().unwrap_or((0, 0))
+            let (ox, oy) = self.view_origin();
+            let (cx, cy) = self.pane.cursor_in_view().unwrap_or((0, 0));
+            (cx + ox, cy + oy)
         } else {
             (0, 0)
         };
@@ -1175,7 +1350,7 @@ impl App {
             self.client,
             self.theme().background,
             Some(&self.bar.strip),
-            self.renderer.frame(),
+            self.pane_frame(),
             banner.as_ref(),
             self.ime
                 .as_ref()
@@ -1250,7 +1425,7 @@ impl App {
             let dc = BeginPaint(self.hwnd, &raw mut ps);
             let top = self.top();
             present(dc, &self.bar.strip, 0, 0);
-            let f = self.renderer.frame();
+            let f = self.pane_frame();
             present(dc, f, 0, top as i32);
             let (cw, ch) = self.client;
             // The background around the grid (the client area is rarely a whole number of cells).
@@ -1356,7 +1531,7 @@ impl App {
         let grid = self.cells().grid_for(w, h.saturating_sub(self.top()));
         if grid != self.grid {
             self.grid = grid;
-            if matches!(self.model.phase, Phase::Attached { .. }) {
+            if matches!(self.model.phase, Phase::Attached { .. }) && self.model.layout().is_none() {
                 self.pane.resize(grid.0, grid.1);
             }
             let fx = self.model.on_grid(grid.0, grid.1);
@@ -1911,6 +2086,7 @@ impl App {
                     self.rebuild_banner();
                     tabs = true;
                 }
+                Effect::Views => self.sync_side(),
                 Effect::Renamed(r) => {
                     self.event(&json!({"event": "renamed", "ok": r.is_ok(),
                         "error": r.as_ref().err()}));
@@ -2132,7 +2308,18 @@ impl App {
                     snapshot,
                     bytes,
                 } => match self.model.on_data(stream, snapshot) {
-                    Data::Ignore => {}
+                    Data::Ignore => {
+                        // Step 22: a read-only view of another visible pane.
+                        if let Some((id, what)) = self.model.view_data(stream, snapshot)
+                            && let Some(s) = self.side.get_mut(&id)
+                        {
+                            if let Data::Reset { cols, rows, .. } = what {
+                                s.view = TermView::new(cols, rows, 0);
+                            }
+                            s.view.feed(&bytes);
+                            fed = true;
+                        }
+                    }
                     Data::Feed => {
                         self.pane.feed(&bytes);
                         self.bytes += bytes.len() as u64;
@@ -2160,9 +2347,10 @@ impl App {
         // window's grid (the model already asked the Host for it if they differ).
         if matches!(self.model.phase, Phase::Attached { .. })
             && !self.model.in_snapshot()
-            && self.pane.size() != self.grid
+            && self.pane.size() != self.view_size()
         {
-            self.pane.resize(self.grid.0, self.grid.1);
+            let (c, r) = self.view_size();
+            self.pane.resize(c, r);
             fed = true;
         }
         if fed {
@@ -2377,7 +2565,13 @@ impl App {
             "choice": if choice == Choice::End { "end" } else { "cancel" }}));
         self.rebuild_banner();
         if choice == Choice::End {
-            let fx = self.model.confirm_close(&c.info.id);
+            let fx = match &c.info.pane {
+                // Step 22: a busy pane, ended by id with consent.
+                Some(p) => self
+                    .model
+                    .pane_op("pane.kill", json!({"target": p, "force": true})),
+                None => self.model.confirm_close(&c.info.id),
+            };
             self.apply(fx);
         }
     }
@@ -2549,10 +2743,43 @@ impl App {
     }
 
     /// Runs a shortcut's (or a menu's) action.
+    /// Step 22: the pane keys. Each is a request to the Host for the active pane; the window
+    /// follows the layout the Host announces.
+    fn pane_action(&mut self, a: Action) {
+        let (method, params) = match a {
+            Action::PaneSplitRight => ("pane.split", json!({"direction": "horizontal"})),
+            Action::PaneSplitDown => ("pane.split", json!({"direction": "vertical"})),
+            Action::PaneFocusLeft => ("pane.select", json!({"direction": "left"})),
+            Action::PaneFocusRight => ("pane.select", json!({"direction": "right"})),
+            Action::PaneFocusUp => ("pane.select", json!({"direction": "up"})),
+            Action::PaneFocusDown => ("pane.select", json!({"direction": "down"})),
+            Action::PaneResizeLeft => ("pane.adjust", json!({"direction": "left", "cells": 2})),
+            Action::PaneResizeRight => ("pane.adjust", json!({"direction": "right", "cells": 2})),
+            Action::PaneResizeUp => ("pane.adjust", json!({"direction": "up", "cells": 1})),
+            Action::PaneResizeDown => ("pane.adjust", json!({"direction": "down", "cells": 1})),
+            Action::PaneZoom => ("pane.zoom", json!({})),
+            _ => ("pane.kill", json!({})),
+        };
+        let fx = self.model.pane_op(method, params);
+        self.apply(fx);
+    }
+
     fn run(&mut self, a: Action) {
         let rows = isize::try_from(self.grid.1).unwrap_or(1).max(1);
         self.event(&json!({"event": "action", "action": a.id()}));
         match a {
+            Action::PaneSplitRight
+            | Action::PaneSplitDown
+            | Action::PaneFocusLeft
+            | Action::PaneFocusRight
+            | Action::PaneFocusUp
+            | Action::PaneFocusDown
+            | Action::PaneResizeLeft
+            | Action::PaneResizeRight
+            | Action::PaneResizeUp
+            | Action::PaneResizeDown
+            | Action::PaneZoom
+            | Action::PaneClose => self.pane_action(a),
             Action::NewTerminal => self.new_terminal(None),
             Action::CloseTerminal => {
                 let fx = self.model.close_active();
@@ -3444,8 +3671,10 @@ impl App {
         } else {
             self.grid
         };
-        let gx = x - c.pad as i32;
-        let gy = y - self.top() as i32 - c.pad as i32;
+        // Step 22: a split window's active pane starts at its place.
+        let (ox, oy) = self.view_origin();
+        let gx = x - c.pad as i32 - i32::from(ox) * c.width as i32;
+        let gy = y - self.top() as i32 - c.pad as i32 - i32::from(oy) * c.height as i32;
         let (col, row) = (
             gx.div_euclid(c.width.max(1) as i32),
             gy.div_euclid(c.height.max(1) as i32),
@@ -3616,6 +3845,100 @@ impl App {
         }
         let live = matches!(self.model.phase, Phase::Attached { .. });
         let dragging = self.drag.is_some();
+        // Step 22: dragging the border between two panes moves it (tmux `resize-pane -M`): one
+        // `pane.adjust` per cell the pointer crosses, for the pane before the border.
+        if let Some((pane, vertical, last)) = self.border_drag.clone() {
+            let c = self.cells();
+            let at = if vertical {
+                (x - c.pad as i32).div_euclid(c.width.max(1) as i32)
+            } else {
+                (y - self.top() as i32 - c.pad as i32).div_euclid(c.height.max(1) as i32)
+            };
+            if msg == WM_MOUSEMOVE && at != last {
+                let d = at - last;
+                let dir = match (vertical, d > 0) {
+                    (true, true) => "right",
+                    (true, false) => "left",
+                    (false, true) => "down",
+                    (false, false) => "up",
+                };
+                self.border_drag = Some((pane.clone(), vertical, at));
+                let fx = self.model.pane_op(
+                    "pane.adjust",
+                    json!({"target": pane, "direction": dir, "cells": d.unsigned_abs()}),
+                );
+                self.apply(fx);
+            }
+            if msg == WM_LBUTTONUP {
+                self.border_drag = None;
+                // SAFETY: releases the capture our own window took for the drag.
+                unsafe { ReleaseCapture() };
+                self.event(&json!({"event": "border_drag", "done": true}));
+            }
+            return;
+        }
+        if !dragging
+            && msg == WM_LBUTTONDOWN
+            && let Some(l) = self.model.layout()
+        {
+            let c = self.cells();
+            let gx = (x - c.pad as i32).div_euclid(c.width.max(1) as i32);
+            let gy = (y - self.top() as i32 - c.pad as i32).div_euclid(c.height.max(1) as i32);
+            let on_pane = l
+                .slots
+                .iter()
+                .any(|s| s.visible && gx >= 0 && gy >= 0 && s.contains(gx as u16, gy as u16));
+            // On a border: the pane that ends just before it (left of or above it).
+            let before = (!on_pane && gx >= 0 && gy >= 0)
+                .then(|| {
+                    l.slots.iter().filter(|s| s.visible).find_map(|s| {
+                        let (sx, sy) = (i32::from(s.x), i32::from(s.y));
+                        let (ex, ey) = (sx + i32::from(s.cols), sy + i32::from(s.rows));
+                        if gx == ex && gy >= sy && gy < ey {
+                            Some((s.id.clone(), true, gx))
+                        } else if gy == ey && gx >= sx && gx < ex {
+                            Some((s.id.clone(), false, gy))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .flatten();
+            if let Some(b) = before {
+                self.event(&json!({"event": "border_drag", "pane": b.0, "vertical": b.1}));
+                self.border_drag = Some(b);
+                // SAFETY: our own window takes the mouse until the button is released.
+                unsafe { SetCapture(self.hwnd) };
+                return;
+            }
+        }
+        // Step 22: a click on another visible pane of a split window makes it the active one
+        // (for every client); the click is not sent to its program.
+        if !dragging
+            && matches!(msg, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN)
+            && let Some(l) = self.model.layout()
+        {
+            let c = self.cells();
+            let gx = (x - c.pad as i32).div_euclid(c.width.max(1) as i32);
+            let gy = (y - self.top() as i32 - c.pad as i32).div_euclid(c.height.max(1) as i32);
+            let hit = (gx >= 0 && gy >= 0)
+                .then(|| {
+                    l.slots
+                        .iter()
+                        .find(|s| s.visible && s.contains(gx as u16, gy as u16))
+                })
+                .flatten();
+            let active = self.model.active_slot().map(|s| s.id.clone());
+            if let Some(s) = hit
+                && Some(&s.id) != active.as_ref()
+            {
+                let id = s.id.clone();
+                self.event(&json!({"event": "pane_click", "pane": id}));
+                let fx = self.model.pane_op("pane.select", json!({"target": id}));
+                self.apply(fx);
+                return;
+            }
+        }
         let Some((col, row)) = self.cell_at(x, y, dragging) else {
             return;
         };
@@ -3845,6 +4168,30 @@ impl App {
             "confirm": self.confirm_json(),
             "banner_text": self.banner_text(),
         });
+        // Step 22: the split window's places, its read-only views and the active pane.
+        dump["layout"] = json!(self.model.layout().map(|l| json!({
+            "window_id": l.window_id,
+            "size": [l.size.0, l.size.1],
+            "zoomed": l.zoomed,
+            "slots": l.slots.iter().map(|s| json!({"id": s.id, "x": s.x, "y": s.y,
+                "cols": s.cols, "rows": s.rows, "visible": s.visible})).collect::<Vec<_>>(),
+        })));
+        dump["active_slot"] = json!(self.model.active_slot().map(|s| s.id.clone()));
+        dump["side"] = Value::Object(
+            self.side
+                .iter()
+                .map(|(id, v)| {
+                    let screen: Vec<String> = (0..v.view.size().1)
+                        .map(|r| v.view.row_at(r).text().trim_end().to_string())
+                        .collect();
+                    (
+                        id.clone(),
+                        json!({"size": [v.view.size().0, v.view.size().1], "screen": screen}),
+                    )
+                })
+                .collect(),
+        );
+        dump["split_frame"] = json!(self.split_frame.as_ref().map(|f| [f.width, f.height]));
         if let (Some(d), Value::Object(more)) = (dump.as_object_mut(), self.step19_json()) {
             d.extend(more);
         }
@@ -5177,6 +5524,9 @@ pub fn run(o: Options) -> ExitCode {
         menu_choices: Vec::new(),
         fonts: None,
         face: String::new(),
+        side: HashMap::new(),
+        split_frame: None,
+        border_drag: None,
     };
     if let Some(m) = &migration {
         app.event(m);

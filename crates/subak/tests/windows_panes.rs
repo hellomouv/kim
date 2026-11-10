@@ -769,8 +769,8 @@ fn concurrent_operations_keep_one_consistent_topology() {
     );
 }
 
-/// Raw IPC: the methods answer schema-valid results, `mcp` clients may list but not change,
-/// and `pane.split` stays for Step 22.
+/// Raw IPC: the methods answer schema-valid results and `mcp` clients may list but not change
+/// (Step 22 implemented `pane.split`; its tests are in `tests/pane_layout.rs`).
 #[test]
 fn ipc_methods_results_and_authorization() {
     let s = Session::start("w21-ipc");
@@ -840,8 +840,12 @@ fn ipc_methods_results_and_authorization() {
         assert_eq!(r["ok"], true, "{method}: {r}");
         ipc_def(def, &r["result"]);
     }
-    let r = c.request(10, "pane.split", &json!({"target": "work"}));
-    assert_eq!(error_code(&r), "unknown_request", "splitting is Step 22");
+    let r = c.request(
+        10,
+        "pane.split",
+        &json!({"target": "work", "dry_run": true}),
+    );
+    assert_eq!(r["ok"], true, "Step 22 splits: {r}");
     let mcp = Raw::handshake(&s.ep, "mcp");
     let r = mcp.request(1, "window.list", &json!({"target": "work"}));
     assert_eq!(r["ok"], true, "listing is read-only");

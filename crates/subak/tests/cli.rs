@@ -201,7 +201,14 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "pane.new",
             "pane.ls",
             "pane.select",
-            "pane.kill"
+            "pane.kill",
+            // Step 22: splits and the layout.
+            "pane.split",
+            "pane.resize",
+            "pane.swap",
+            "pane.zoom",
+            "window.rotate",
+            "window.layout"
         ],
         "only commands that really exist"
     );

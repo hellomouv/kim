@@ -62,11 +62,24 @@ pub enum Action {
     ManagerSearch,
     ManagerPin,
     ManagerClose,
+    /// Step 22: splits and the layout of the shown window (context `terminal`).
+    PaneSplitRight,
+    PaneSplitDown,
+    PaneFocusLeft,
+    PaneFocusRight,
+    PaneFocusUp,
+    PaneFocusDown,
+    PaneResizeLeft,
+    PaneResizeRight,
+    PaneResizeUp,
+    PaneResizeDown,
+    PaneZoom,
+    PaneClose,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 32] = [
+    pub const ALL: [(Action, &'static str); 44] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -74,6 +87,18 @@ impl Action {
         (Action::HideTab, "tab.hide"),
         (Action::MoveTabLeft, "tab.move-left"),
         (Action::MoveTabRight, "tab.move-right"),
+        (Action::PaneSplitRight, "pane.split-right"),
+        (Action::PaneSplitDown, "pane.split-down"),
+        (Action::PaneFocusUp, "pane.focus-up"),
+        (Action::PaneFocusDown, "pane.focus-down"),
+        (Action::PaneFocusLeft, "pane.focus-left"),
+        (Action::PaneFocusRight, "pane.focus-right"),
+        (Action::PaneResizeUp, "pane.resize-up"),
+        (Action::PaneResizeDown, "pane.resize-down"),
+        (Action::PaneResizeLeft, "pane.resize-left"),
+        (Action::PaneResizeRight, "pane.resize-right"),
+        (Action::PaneZoom, "pane.zoom"),
+        (Action::PaneClose, "pane.kill"),
         (Action::RenameTerminal, "terminal.rename"),
         (Action::Copy, "clipboard.copy"),
         (Action::Paste, "clipboard.paste"),

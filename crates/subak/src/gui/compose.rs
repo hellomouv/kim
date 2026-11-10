@@ -220,6 +220,7 @@ mod tests {
             history_limit: 2000,
             place: None,
             active_pane: None,
+            layout: None,
         }
     }
 

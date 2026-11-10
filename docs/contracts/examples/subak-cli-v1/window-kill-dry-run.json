@@ -13,12 +13,20 @@
           "pid": 4242,
           "processes": 1,
           "program": "cmd.exe"
+        },
+        {
+          "busy": false,
+          "index": 1,
+          "pane_id": "p-000000000002",
+          "pid": 4242,
+          "processes": 1,
+          "program": "cmd.exe"
         }
       ],
-      "processes": 1,
+      "processes": 2,
       "removes_window": true,
-      "terminal_id": "t-000000000002",
-      "window_id": "w-000000000003",
+      "terminal_id": "t-000000000003",
+      "window_id": "w-000000000004",
       "window_index": 1
     }
   },

@@ -155,6 +155,24 @@ reference. A window or pane id is looked up only inside the Terminal the target 
 Terminal's `w-`/`p-` id under `work:` is `target_not_found`, never that other Terminal's object.
 `subak window kill` and `pane kill` act on the confirmed **id** after asking.
 
+**Splits and the layout** (Step 22, [ADR 0056](adr/0056-subak-pane-splits-and-layout.md)). Each
+window has a **layout**: a tree of splits over its panes, in cells, owned by the Host. A
+*horizontal* split puts panes side by side (tmux `-h`), a *vertical* one stacks them (tmux `-v`,
+the default); siblings are one cell apart (the border). `pane.split` (`subak pane split`) splits the
+target pane (a window or Terminal target: its active pane) and starts a new pane at half of it, or
+at `cells`/`percent`; `pane.create` is a vertical split of the window's active pane. Panes are
+listed and indexed in layout order (left to right, top to bottom). Every pane keeps at least 2×2
+cells; a split that cannot is refused with nothing changed. The **window's size** is the latest
+interactive client's (a client's attach size or `pane.resize`), shared out among its panes; each
+pane's pseudo console gets exactly its share whenever it changes. `pane.adjust` moves a pane's
+border (`subak pane resize`), `pane.swap` exchanges two panes' places (processes stay with their
+panes), `pane.zoom` lets one pane fill the window (the others keep their sizes, unseen; selecting
+another pane unzooms), and `pane.select` takes a direction (`left/right/up/down` by geometry,
+`next/previous` by index; both wrap). A closed pane's space goes to its neighbour. Every change
+is announced as `window.layout`; window objects carry `layout`, `size` and `zoomed`, pane objects
+`rect` and `visible`. No layout change starts or ends a process; the layout stays while clients
+come and go.
+
 ## 4. Actions and what they do
 
 These meanings are fixed. No action has two of them, and there is deliberately **no `close`**
@@ -285,9 +303,9 @@ ADR 0027; `subak terminal <verb>` is the deprecated Step 10 spelling) maps onto 
 - **Profiles** (`profile` of `terminal.create`, Step 33) are refused with `invalid_params`, never
   silently ignored. Environment overrides (`env`) exist since Step 11
   ([PTY_PROCESSES §3](PTY_PROCESSES.md)).
-- **Splits and layouts** (Step 22: `pane.split`, the layout tree, resize, swap, zoom); the prefix
-  keys that switch windows and panes in the GUI (Step 23; until then the GUI follows the selection
-  made by the CLI or another client); `last-window`/`last-pane`, `next`/`previous` window and
+- Layout presets (`select-layout`, `rotate-window`) and moving panes between windows (`join-pane`,
+  `break-pane`, Step 25); the prefix keys that switch windows in the GUI (Step 23; the GUI's own
+  pane keys exist since Step 22); `last-window`/`last-pane`, `next`/`previous` window and
   multi-target kills (`kill-window -a`); per-pane `remain-on-exit` and dead panes; pane titles;
   window automatic renaming after the *foreground* program (a window keeps its first program's
   name); and `pane.send_keys` (Step 24; Step 12 writes input only through an attach).
