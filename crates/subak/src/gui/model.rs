@@ -370,6 +370,8 @@ pub enum Want {
     Last { id: String, name: String },
 }
 
+// A few requests are in flight at a time; boxing the Terminal of `Attach` would buy nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 enum Pending {
     List,

@@ -1040,7 +1040,7 @@ impl App {
                 ("window.select", json!({"target": format!("{}:{k}", t.id)}))
             }
             Action::WindowKill => {
-                let Some(wid) = t.active_window.clone() else {
+                let Some(wid) = t.active_window else {
                     return;
                 };
                 ("window.kill", json!({"target": wid}))
