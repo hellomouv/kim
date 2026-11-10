@@ -13,6 +13,7 @@ mod hotkeys;
 mod jsonschema;
 mod ledger;
 mod schema;
+mod tmux;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -21,7 +22,8 @@ const HELP: &str = "\
 cargo xtask <command>
 
 COMMANDS:
-    docs-check        Check requirement IDs, relative links and the docs index
+    docs-check        Check requirement IDs, relative links, the docs index and the tmux
+                      compatibility matrix (statuses, evidence that exists, §27 counts)
     schema-check [--verbose]
                       Validate contract examples against docs/contracts/schemas (valid must
                       pass, examples/<name>/invalid/ must fail) and recompute the hotkey
@@ -108,10 +110,22 @@ fn repo_root() -> PathBuf {
 }
 
 fn run_docs_check(root: &Path) -> Result<(), String> {
-    let report = docs::check(root)?;
+    let mut report = docs::check(root)?;
     println!(
         "docs-check: {} requirement IDs, {} markdown files, {} links checked",
         report.requirement_ids, report.files, report.links
+    );
+    // Step 26: the tmux compatibility matrix against the code.
+    let m = tmux::check(root, &mut report.problems)?;
+    println!(
+        "docs-check: tmux matrix {} rows ({}), {} evidence references resolved",
+        m.rows,
+        tmux::STATUSES
+            .iter()
+            .map(|s| format!("{s} {}", m.by_status.get(s).copied().unwrap_or(0)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        m.evidence_refs
     );
     if report.problems.is_empty() {
         println!("docs-check: PASS");

@@ -1,18 +1,22 @@
 # tmux Compatibility Matrix
 
-Status: **current** (inventory) · Reference: tmux 3.8 · Matrix version: 1 (2026-11-03) · Owner:
+Status: **current** (validated, Step 26) · Reference: tmux 3.8 · Matrix version: 2 (2026-11-11; version 1: 2026-11-03) · Owner:
 mouv · Tracks [SUBAK-FR-060](PRODUCT_REQUIREMENTS.md)
 
-> **Only the session basics are implemented, partially** (Step 10: named Terminals in the Host;
-> Step 11: pane programs and environment; Step 12: the CLI `subak new|ls|info|status|attach|
-> detach|rename|stop|kill|rm`; Step 13: scrollback, replay, `capture`, `clear-history`,
-> `--history-limit`; Step 15: mouse reports, wheel, word and line selection and focus events in
-> the client view; Step 21: internal windows and panes, `subak window|pane` and their IPC
-> methods). 11 rows are `implemented` and 42 are `partial`, all with
-> automated evidence; every other row is `planned`, `deferred` or `unsupported`. This document
-> is an inventory and a plan, not a compatibility claim. Step 19 added the Subak window's own
-> search, keyboard selection and clipboard (SUBAK_GUI §12): they are not tmux's copy mode (Step
-> 24), which will drive the same headless search engine and view selection with tmux's keys.
+> **Compatibility statement (Step 26, 2026-11-11; validated by `cargo xtask docs-check`).**
+> Subak is a **tmux-like** multiplexer for Windows, **not** a drop-in tmux. Of the 606 rows of
+> the tmux 3.8 inventory below, **88 are `implemented`** and **140 `partial`** — each with
+> automated evidence that exists in the repository — **352 are `deferred`** (tracked in follow-up
+> groups F1–F10 of [#97](https://github.com/hellomouv/kim/issues/97)) and **26 `unsupported`**
+> by design; none is left unclassified. Full tmux parity is **not** claimed.
+>
+> | Level | What you can rely on |
+> | --- | --- |
+> | **tmux-like UX** | Terminal (session) → internal window → pane → process; `Ctrl+B` prefix with tmux's default keys for windows, panes, layouts, copy mode, the command prompt, buffers and detach; sessions keep running with no client and survive every client event. |
+> | **Command-level compatibility** | `subak command '<tmux commands>'` and the window's `Ctrl+B :` read tmux's syntax (quoting, `;`, aliases) for 40 commands: sessions, windows, panes, splits, resize, swap, rotate, layouts and presets, break/join, send-keys, capture, buffers, `setw` for three window options, `set-hook` for 17 hooks, `display-message -p` with a format subset, `last-*`, `list-commands`. Targets are Subak's (`work:1.0`, ids) with tmux's tokens after a Terminal name. Flags not listed in a row are refused with a hint, never ignored. |
+> | **Not supported (yet or by design)** | the options engine beyond three window options, most formats and their modifiers, a drawn status line, styles, custom key tables, `source-file`/`if-shell`/`run-shell`, control mode, `switch-client`, linked windows and session groups, emacs copy-mode keys, marked panes, multi-user sockets. A tmux config file does not load. |
+>
+> Before Step 26 this matrix was an inventory and a plan; Steps 10–25 delivered the rows above.
 
 ## 0. How to read this matrix
 
@@ -73,12 +77,12 @@ verbs above and the Step 13 verbs `subak capture`, `subak history` and `subak cl
 | Run a command against the running server | `tmux <command> [flags]` | `subak <verb>` CLI with human and `--json` output (KIM-FR-010). *Partial:* `subak new\|ls\|info\|status\|attach\|detach\|rename\|stop\|kill\|rm` ([SUBAK_CLI](SUBAK_CLI.md)); a tmux-syntax entry point later (Steps 24–25) | partial | 12 | `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Run the default command when none is given | `tmux` (no args) → `default-client-command` (`new-session`) | *Rationale:* nothing starts implicitly (ADR 0027 §2): bare `subak` prints help; `subak new --attach` is the explicit equivalent | unsupported | — | — |
 | Shortest unambiguous command prefix | e.g. `tmux list-se` | Accepted by the tmux-syntax parser (prompt, `source-file`) *Rationale for the move:* Subak takes full names and tmux aliases only; prefixes would guess. *Step 25 inventory:* follow-up F6 (clients, sessions and targets (switch-client, kill-server, -f)), #97. | deferred | post-26 | — |
-| Force 256 colours | `-2` | Always full colour in the GUI; no flag needed | planned | 12 | — |
+| Force 256 colours | `-2` | Always full colour in the GUI; no flag needed *Rationale:* the GUI always renders 24-bit colour and the console client passes the program's output through; a flag would change nothing. *Step 26 validation:* reclassified. | unsupported | — | — |
 | UTF-8 output | `-u` | Always UTF-8 (KIM-NFR-013); no flag needed. *Partial:* the CLI's output and `--json` are UTF-8, and `attach` switches its console to code page 65001 and restores it; the GUI later | partial | 12 | `crates/subak/tests/subak_cli.rs::console_attach_restores_the_console_on_every_exit_path_it_survives` (2026-11-04) |
 | Control mode | `-C`, `-CC` | *Rationale:* control mode is deferred (§19); Subak's own IPC and `--json` CLI serve integrations | deferred | post-26 | — |
 | Run a shell command as a login shell | `-c shell-command` | *Rationale:* tmux-as-login-shell has no Windows analogue | unsupported | — | — |
 | Behave as a login shell | `-l` | *Rationale:* no-op compatibility flag for login shells; no Windows analogue | unsupported | — | — |
-| Do not daemonize the server | `-D` | `subak host` in the foreground for debugging (flag TBD) | planned | 10 | — |
+| Do not daemonize the server | `-D` | `subak host` in the foreground for debugging (flag TBD) *Step 26 validation:* `subak host serve` runs the Host in the foreground. | implemented | 10 | `crates/subak/tests/host_ipc.rs::a_pipe_squatter_is_refused_before_any_data_is_sent` (2026-11-11) |
 | Alternative configuration file | `-f file` | Subak config path option (TBD); a tmux-syntax file is read with `source-file` *Step 25 inventory:* follow-up F6 (clients, sessions and targets (switch-client, kill-server, -f)), #97. | deferred | post-26 | — |
 | Help | `-h` | `subak --help` (KIM-FR-011) | implemented | 12 | `crates/subak/tests/cli.rs::help_is_honest_about_the_prototype_status` (2026-11-04) |
 | Named or explicit server socket | `-L socket-name`, `-S socket-path` | *Rationale:* no socket compatibility; one Host per user over local, same-user IPC (SUBAK-SEC-010) | unsupported | — | — |
@@ -224,14 +228,14 @@ Grouped by the manual page section that documents them. `set-window-option` and
 
 | tmux feature | tmux reference | Subak equivalent (planned) | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Create or attach if it exists | `new-session -A` | Attach when the named Terminal exists (flag TBD) | planned | 12 | — |
+| Create or attach if it exists | `new-session -A` | Attach when the named Terminal exists (flag TBD) *Rationale:* `subak new --attach` attaches to the Terminal it creates; attaching to an existing one of the same name instead is not built. *Step 26 validation:* follow-up F6 of #97. | deferred | post-26 | — |
 | Create without attaching | `new-session -d` | Detached creation (the CLI default; `--attach` attaches) | implemented | 12 | `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Session and first window names | `new-session -s name -n name` | Terminal name and first Window name. *Partial:* the Terminal name (`subak new <name>`); the first window is named after its program and renamed with `subak window rename` (Step 21); `-n` later | partial | 12 | `crates/subak/tests/subak_cli.rs::a_user_creates_attaches_detaches_lists_renames_and_kills_with_the_cli_only` (2026-11-04) |
 | Start directory, environment, size | `new-session -c`, `-e VAR=val`, `-x`, `-y` | Profile cwd and environment (SUBAK-FR-011); default size. *Partial:* `--cwd`, `--size` and `--env NAME=VALUE` / `--env NAME` / `--unset-env NAME` (Step 11, [PTY_PROCESSES §3](PTY_PROCESSES.md)); profiles with Step 33 | partial | 11 | `crates/subak/tests/session_lifecycle.rs::names_are_unique_ignoring_case_and_composition_and_renames_keep_ids`, `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 | Print the created object | `new-session -P -F format`, `new-window -P` | `--json` output (KIM-FR-010); `-F` formats in Step 25. *Partial:* `subak new --json` prints the created Terminal (`subak-cli-v1`) | partial | 12 | `crates/subak/tests/subak_cli.rs::every_command_answers_one_schema_valid_document_with_stable_exit_codes` (2026-11-04) |
 | Command given as argv (no shell) | `new-window vi file`, `split-window cmd args` | Start the program directly without a shell. *Partial:* `subak window new|pane new|pane split … -- <program> [args…]` (each word quoted, no shell) | partial | 21, 22 | `crates/subak/tests/windows_panes.rs::exits_stop_and_kill_follow_the_hierarchy` (2026-11-04) |
 | Session groups | `new-session -t target-session` | *Rationale:* grouped sessions share windows with independent current windows; linked windows (Step 25) come first | deferred | post-26 | — |
-| Detach other clients | `attach-session -d`, `new-session -D` | Detach every other client of the Terminal | planned | 12 | — |
+| Detach other clients | `attach-session -d`, `new-session -D` | Detach every other client of the Terminal *Partial:* `subak detach <terminal>` (IPC `client.detach`) detaches every client of a Terminal and tells them who did; an `attach -d` flag is not built. *Step 26 validation:* | partial | 12 | `crates/subak/tests/subak_cli.rs::client_detach_over_ipc_ends_only_attachments_and_tells_the_detached_client` (2026-11-11) |
 | Detach all others or a whole session | `detach-client -a`, `-s target-session` | Detach selected clients. *Partial:* `-s` as `subak detach <terminal>`, `-t` as `--client <id>`; `-a` (all but the current client) not yet | partial | 12 | `crates/subak/tests/subak_cli.rs::client_detach_over_ipc_ends_only_attachments_and_tells_the_detached_client` (2026-11-04) |
 | Send SIGHUP to the client's parent | `attach-session -x`, `new-session -X`, `detach-client -P` | *Rationale:* no SIGHUP on Windows | unsupported | — | — |
 | Skip `update-environment` | `attach-session -E`, `new-session -E`, `new-window -E` | Same flag semantics (§15) *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
@@ -240,7 +244,7 @@ Grouped by the manual page section that documents them. `set-window-option` and
 | Window placement and reuse | `new-window -a`, `-b`, `-d`, `-k`, `-S` | Insert after/before, do not focus, replace, select existing. *Partial:* `-d` as `--no-select`; `-a`, `-b`, `-k`, `-S` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Split size, side and span | `split-window -l N`, `-l N%`, `-b`, `-f`, `-d` | Split options. *Partial:* `--cells N`, `--percent N`, `--before`, `--no-select`; `-f` (full width) later | partial | 22 | `crates/subak/tests/pane_layout.rs::directional_focus_minimum_sizes_dry_runs_and_refusals` (2026-11-11) |
 | Keep zoom while navigating | `-Z` on `select-pane`, `last-pane`, `swap-pane`, `rotate-window`, `split-window` | Zoom-preserving navigation. *Rationale for the move:* Step 22 unzooms on every such change, as tmux does without `-Z`; keeping the zoom is an option of Step 25 *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
-| Capture options | `capture-pane -p -e -J -N -S -E -a -b -C -M -P -q -T` | Text (`-p`), styles (`-e`), joined lines (`-J`), ranges (`-S`/`-E`), alternate screen (`-a`). *Partial:* `-p` (always), `-e` = `--vt`, `-J` = `--join`, `-S`/`-E` = `--start`/`--end` with the same numbering and `-`; `-N`, `-a`, `-b`, `-C`, `-M`, `-P`, `-q`, `-T` later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak/src/screen.rs::tests::capture_ranges_join_and_edges` (2026-11-04) |
+| Capture options | `capture-pane -p -e -J -N -S -E -a -b -C -M -P -q -T` | Text (`-p`), styles (`-e`), joined lines (`-J`), ranges (`-S`/`-E`), alternate screen (`-a`). *Partial:* `-p` (always), `-e` = `--vt`, `-J` = `--join`, `-S`/`-E` = `--start`/`--end` with the same numbering and `-`; `-N`, `-a`, `-b`, `-C`, `-M`, `-P`, `-q`, `-T` later | partial | 13 | `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request`, `crates/subak-term/src/screen.rs::tests::capture_ranges_join_and_edges` (2026-11-04) |
 | Copy-mode entry options | `copy-mode -u -d -e -H -M -q -S -s -k` | Scroll on entry, exit at bottom, mouse entry, quit all modes *Rationale for the move:* copy-mode flags with Step 25. *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
 | List filters and sort order | `list-* -f filter -O order -r` | CLI filter and sort; format filters in Step 25 *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
 | Send keys to a client's key table | `send-keys -K -c target-client` | Inject keys into a client's key handling *Rationale for the move:* with custom key tables (Step 25). *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
@@ -351,7 +355,7 @@ when `mouse` is on.
 | Window menu on the window list | `MouseDown3Status`, `M-MouseDown3Status` → `display-menu` | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
 | Pane menu | `MouseDown3Pane`, `M-MouseDown3Pane` → `display-menu` | *Rationale:* `display-menu` deferred; right-click forwarding to mouse-aware programs is planned with `MouseDown1Pane` | deferred | post-26 | — |
 | Empty-area menu | `MouseDown3Empty`, `M-MouseDown3Empty` → `display-menu` | *Rationale:* `display-menu` deferred | deferred | post-26 | — |
-| Pane scrollbar | `MouseDown1ScrollbarUp`, `MouseDown1ScrollbarDown`, `MouseDrag1ScrollbarSlider` | Native GUI scrollbar over the scrollback | planned | 13 | — |
+| Pane scrollbar | `MouseDown1ScrollbarUp`, `MouseDown1ScrollbarDown`, `MouseDrag1ScrollbarSlider` | Native GUI scrollbar over the scrollback *Rationale:* the GUI has no scrollbar yet (wheel, keys and copy mode scroll). *Step 26 validation:* follow-up F7 of #97. | deferred | post-26 | — |
 
 ## 6. Default key tables overview
 
@@ -447,7 +451,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | `TERM` for new panes | `default-terminal` | `TERM` given to pane processes *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Editor command | `editor` | *Rationale:* only used by buffer editing; revisit with buffer mode extras | deferred | post-26 | — |
 | Escape-key delay | `escape-time` | *Rationale:* the GUI receives key events, not an escape byte stream | unsupported | — | — |
-| Exit when no sessions remain | `exit-empty` | Fixed behaviour: the Host exits when it owns no Terminals and no client is attached (SUBAK-FR-002) | planned | 10 | — |
+| Exit when no sessions remain | `exit-empty` | Fixed behaviour: the Host exits when it owns no Terminals and no client is attached (SUBAK-FR-002) *Step 26 validation:* fixed behaviour, with a grace period (`--idle-exit`). | implemented | 10 | `crates/subak/tests/host_ipc.rs::an_idle_host_exits_after_its_grace_period_and_not_before` (2026-11-11) |
 | Exit when no clients are attached | `exit-unattached` | *Rationale:* contradicts Subak's core promise that Terminals outlive clients (SUBAK-FR-003) | unsupported | — | — |
 | Extended keys to programs | `extended-keys`, `extended-keys-format` | *Rationale:* Subak sends xterm encoding or win32-input-mode (ADR 0009); CSI u extended keys revisited after Step 23 | deferred | post-26 | — |
 | Focus events to programs | `focus-events` | Same. *Partial:* the client view sends `CSI I`/`CSI O` once per change when the program enables 1004 (the inbox ConPTY passes 1004 through, measured on 19045); the window's focus changes are Step 16 | partial | 15, 25 | `crates/subak-term/tests/view.rs::focus_reports_and_hyperlink_hit_test` (2026-11-04) |
@@ -468,7 +472,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Paste detection by timing | `assume-paste-time` | *Rationale:* the GUI knows when the user pastes; no timing heuristic needed | unsupported | — | — |
 | First window index | `base-index` | Same; windows are numbered from 0 (tmux's default) since Step 21, the option later *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Shell and command for new panes | `default-shell`, `default-command` | Profile shell and command (SUBAK-FR-011). *Partial:* the default is `%ComSpec%`; any program with its arguments via `subak new -- <program> [args…]`, resolved on the pane's `PATH` (cmd, `powershell`, `pwsh` if installed) | partial | 11 | `crates/subak/tests/pty_shells.rs::powershell_and_cmd_run_interactively_in_independent_trees_under_the_host` (2026-11-04) |
-| Size of detached sessions | `default-size` | Same | planned | 10 | — |
+| Size of detached sessions | `default-size` | Same *Partial:* `subak new --size <cols>x<rows>` (default 80x24); no option. *Step 26 validation:* | partial | 10 | `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (2026-11-11) |
 | Destroy a session with no clients | `destroy-unattached` | Opt-in option, off by default *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Behaviour when the session is destroyed | `detach-on-destroy` | What the client shows next (GUI: close the tab or switch) *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Message display time | `display-time` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
@@ -508,7 +512,7 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Alert monitoring | `monitor-activity`, `monitor-bell`, `monitor-silence` | Same *Partial:* `monitor-activity` (off) and `monitor-bell` (on), as in tmux; no `monitor-silence`. | partial | 25 | `crates/subak/tests/tmux_advanced.rs::alerts_and_hooks_follow_host_events` (2026-11-11), `crates/subak-term/src/screen.rs::tests::bells_count_controls_not_osc_terminators` (2026-11-11) |
 | First pane index | `pane-base-index` | Same; panes are numbered from 0 (tmux's default) since Step 21, the option later *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Active-pane border indicators | `pane-border-indicators` | Same. *Partial:* the active pane's border is drawn in the accent colour (fixed; the option later) | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
-| Pane scrollbars | `pane-scrollbars`, `pane-scrollbars-position`, `pane-scrollbars-timeout` | Native GUI scrollbar | planned | 13 | — |
+| Pane scrollbars | `pane-scrollbars`, `pane-scrollbars-position`, `pane-scrollbars-timeout` | Native GUI scrollbar *Rationale:* no GUI scrollbar yet. *Step 26 validation:* follow-up F2 of #97. | deferred | post-26 | — |
 | Per-object status styles and pane lists (new in 3.8) | `pane-status-style`, `pane-status-current-style`, `session-status-style`, `session-status-current-style`, `window-pane-status-format`, `window-pane-current-status-format` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Tree-mode appearance | `tree-mode-border-style`, `tree-mode-preview-style`, `tree-mode-selection-style` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Window size policy | `window-size` (`largest`, `smallest`, `manual`, `latest`) | Fixed `latest` first (ADR 0008); the other policies with the option *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
@@ -523,15 +527,15 @@ command (`send-keys -X <command>`) documented in tmux 3.8 is named in this table
 | Escape-sequence passthrough | `allow-passthrough` | *Rationale:* passthrough targets an outer terminal; the GUI must decide per sequence (images, notifications) | deferred | post-26 | — |
 | Programs may rename the window | `allow-rename` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Programs may set the pane title | `allow-set-title` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
-| Alternate screen | `alternate-screen` | Same | planned | 13 | — |
+| Alternate screen | `alternate-screen` | Same *Partial:* always on (the behaviour of tmux's default); the option is not settable. *Step 26 validation:* | partial | 13 | `crates/subak-term/src/screen.rs::full_screen_program_on_the_alternate_screen` (2026-11-11) |
 | Copy-mode position text | `copy-mode-position-format` | Same *Rationale for the move:* copy-mode options of Step 25. *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Cursor colour and style | `cursor-colour`, `cursor-style` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Pane borders | `pane-border-style`, `pane-active-border-style`, `pane-border-lines` | Native dividers with equivalent styles. *Partial:* one-cell gaps with a thin divider from the theme (`border_subtle`, the active pane's `accent`); styles later | partial | 22 | `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
 | Pane status lines | `pane-border-status`, `pane-border-format` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Pane colour palette | `pane-colours` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
-| Scrollbar style | `pane-scrollbars-style` | Same | planned | 13 | — |
+| Scrollbar style | `pane-scrollbars-style` | Same *Rationale:* no GUI scrollbar yet. *Step 26 validation:* follow-up F2 of #97. | deferred | post-26 | — |
 | Keep a pane after its process exits | `remain-on-exit`, `remain-on-exit-format` | "Keep pane open on exit" (SUBAK_PHILOSOPHY §6.1) *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
-| Scroll on clear | `scroll-on-clear` | Same | planned | 13 | — |
+| Scroll on clear | `scroll-on-clear` | Same *Rationale:* not verified against tmux's behaviour yet. *Step 26 validation:* follow-up F2 of #97. | deferred | post-26 | — |
 | Switch-mode match style | `switch-mode-match-style` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
 | Synchronize input | `synchronize-panes` | Same `setw synchronize-panes on|off`: interactive input and `send-keys` reach every running pane of the window (paste-buffer does not, as in tmux). | implemented | 25 | `crates/subak/tests/tmux_advanced.rs::layouts_sync_tokens_and_formats_act_on_real_panes` (2026-11-11) |
 | Tree-mode preview format | `tree-mode-preview-format` | Same *Step 25 inventory:* follow-up F2 (the options engine (scopes, -g, user options, the other options)), #97. | deferred | post-26 | — |
@@ -706,7 +710,7 @@ a family is scheduled in detail.
 | Marked pane | `{marked}` `~` | Same *Rationale for the move:* marked panes are Step 25. *Step 25 inventory:* follow-up F6 (clients, sessions and targets (switch-client, kill-server, -f)), #97. | deferred | post-26 | — |
 | Mouse target | `{mouse}` `=` | Same *Step 25 inventory:* follow-up F6 (clients, sessions and targets (switch-client, kill-server, -f)), #97. | deferred | post-26 | — |
 | Best-guess resolution of unqualified targets | e.g. `-t 1` as pane, window or session | Same heuristics *Rationale:* Subak never guesses a target (ADR 0058); an ambiguous name is `ambiguous_target`. | unsupported | — | `crates/subak/src/tmuxcmd.rs::tests` (2026-11-11) |
-| IDs unique for the object's life | `$`, `@`, `%` IDs unique per server | Stronger: random IDs, never reused, kept across Host restarts and restore (SUBAK-FR-010, ADR 0007) | planned | 10 | — |
+| IDs unique for the object's life | `$`, `@`, `%` IDs unique per server | Stronger: random IDs, never reused, kept across Host restarts and restore (SUBAK-FR-010, ADR 0007) *Step 26 validation:* | implemented | 10 | `crates/subak/src/session.rs::names_are_unique_ignoring_case_and_ids_are_never_reused` (2026-11-11), `crates/subak/tests/session_lifecycle.rs::names_are_unique_ignoring_case_and_composition_and_renames_keep_ids` (2026-11-11) |
 | Pane ID in the pane environment | `TMUX_PANE` | `SUBAK_PANE_ID=p-…` and `SUBAK_TERMINAL_ID=t-…` in every pane (ADR 0010 §1); an override cannot change them | implemented | 11 | `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 
 ## 14. Mouse
@@ -735,11 +739,11 @@ a family is scheduled in detail.
 | In-tmux marker variable | `TMUX` | `SUBAK_PANE_ID` / `SUBAK_TERMINAL_ID` mark a Subak pane; no socket path | implemented | 11 | `crates/subak/tests/pty_shells.rs::explicit_programs_get_their_arguments_exactly_and_report_exit_codes` (2026-11-04) |
 | Terminal type in panes | `TERM` (`default-terminal`) | Same *Step 25 inventory:* follow-up F9 (environment, buffer files and the clipboard), #97. | deferred | post-26 | — |
 | vi keys from the editor | `VISUAL`, `EDITOR` | Same default for `mode-keys`/`status-keys` *Rationale for the move:* the emacs table is Step 25. *Step 25 inventory:* follow-up F9 (environment, buffer files and the clipboard), #97. | deferred | post-26 | — |
-| Home directory | `HOME` | Windows user profile directory | planned | 10 | — |
-| Locale for output | `LC_CTYPE` | Always UTF-8 (KIM-NFR-013) | planned | 12 | — |
+| Home directory | `HOME` | Windows user profile directory *Step 26 validation:* panes get the user's logon environment and start in the profile directory. | implemented | 10 | `crates/subak/tests/pty_shells.rs::the_pane_environment_keeps_the_users_locations_and_secrets_never_leak` (2026-11-11) |
+| Locale for output | `LC_CTYPE` | Always UTF-8 (KIM-NFR-013) *Step 26 validation:* UTF-8 end to end, Korean wide glyphs included. | implemented | 12 | `crates/subak/tests/pty_shells.rs::ctrl_c_and_unicode_reach_programs_in_cmd_and_powershell` (2026-11-11), `crates/subak/tests/terminal_render.rs::cmd_renders_korean_wide_glyphs_and_follows_a_resize` (2026-11-11) |
 | Locale for times | `LC_TIME` | Windows locale for time formats *Step 25 inventory:* follow-up F9 (environment, buffer files and the clipboard), #97. | deferred | post-26 | — |
-| Working directory | `PWD` | Profile or invoking directory | planned | 10 | — |
-| Default shell | `SHELL` | Profile shell; Windows has no `SHELL` | planned | 10 | — |
+| Working directory | `PWD` | Profile or invoking directory *Step 26 validation:* the profile directory by default, `--cwd` otherwise. | implemented | 10 | `crates/subak/tests/pty_shells.rs::the_pane_environment_keeps_the_users_locations_and_secrets_never_leak` (2026-11-11) |
+| Default shell | `SHELL` | Profile shell; Windows has no `SHELL` *Partial:* the default profile of `config.toml` or `cmd.exe`; PowerShell and cmd tested. *Step 26 validation:* | partial | 10 | `crates/subak/tests/pty_shells.rs::powershell_and_cmd_run_interactively_in_independent_trees_under_the_host` (2026-11-11) |
 | Socket directory | `TMUX_TMPDIR` | *Rationale:* no tmux socket (SUBAK-SEC-010) | unsupported | — | — |
 
 ## 16. Buffers and clipboard
@@ -838,7 +842,7 @@ a family is scheduled in detail.
 | Undo the last layout change | `select-layout -o` | Same *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
 | Layout strings | `window_layout` format, `select-layout <string>` | Same string format, so layouts can be copied from tmux *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
 | Zoom a pane | `resize-pane -Z`, `Z` flag | Same: `subak pane zoom`, `pane.zoom`, `Ctrl+Shift+Z` in the window; the zoomed pane fills the window, the others keep their sizes unseen; `zoomed` in window objects | implemented | 22 | `crates/subak/tests/pane_layout.rs::splits_resize_zoom_swap_and_close_keep_processes_and_real_pty_sizes` (2026-11-11), `crates/subak/tests/gui_window.rs::a_split_window_draws_every_pane_and_its_keys_and_mouse_split_focus_resize_and_zoom` (2026-11-11) |
-| Session names | `new-session -s`, `rename-session` | Terminal names (SUBAK-FR-010) | planned | 10 | — |
+| Session names | `new-session -s`, `rename-session` | Terminal names (SUBAK-FR-010) *Step 26 validation:* | implemented | 10 | `crates/subak/tests/session_lifecycle.rs::names_are_unique_ignoring_case_and_composition_and_renames_keep_ids` (2026-11-11), `crates/subak/tests/session_lifecycle.rs::concurrent_clients_create_and_rename_without_duplicates_or_orphans` (2026-11-11) |
 | Window names | `new-window -n`, `rename-window`, `automatic-rename`, `\033k…\033\\` | Same. *Partial:* `subak window new --name`, `subak window rename`; a window is named after its first program until renamed (`automatic_name`); following the foreground program and `\033k…\033\\` later | partial | 21 | `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (2026-11-04) |
 | Pane titles | `select-pane -T`, OSC 2, `allow-set-title` | Same *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
 | Marked pane | `select-pane -m`, `-M`, `{marked}` | Same *Rationale for the move:* marked panes are Step 25. *Step 25 inventory:* follow-up F10 (more window and pane operations and layouts (respawn, move-window, layout strings)), #97. | deferred | post-26 | — |
@@ -932,6 +936,17 @@ Rows that say "TBD" are updated when those land.
 - **Reference upgrades.** Moving to a newer tmux release bumps the matrix version, adds new rows
   as `planned` (or `deferred`/`unsupported` with a rationale), and marks rows for removed tmux
   features. Step 26 re-validates every row and publishes the compatibility statement.
+- **Checked by the build (Step 26).** `cargo xtask docs-check` (part of `cargo xtask ci`) fails
+  when a row has a wrong shape, an unknown Status or Target, an `implemented`/`partial` row cites
+  no evidence or evidence that does not exist (a file, or a `fn`/`const` it names), a
+  `deferred`/`unsupported` row has no rationale, a `planned` row targets a finished Step, or §27
+  does not count the rows (`xtask/src/tmux.rs`).
+- **The journey suite.** `crates/subak/tests/tmux_journeys.rs` runs one long-running program
+  through nested splits, resizes, zoom, swaps, every layout, break/join, renames, synchronized
+  input, a hook, two watching clients and detaching all of them; `tmux_advanced.rs`,
+  `tmux_commands.rs`, `pane_layout.rs`, `windows_panes.rs` and the `gui_window.rs` prompt,
+  copy-mode and prefix tests cover the rest; the e2e scenarios `step21`–`step26` run the real
+  binaries daily.
 
 ## 27. Summary counts
 
@@ -940,38 +955,38 @@ whenever a row or Status changes.
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 17 |
-| `partial` | 136 |
-| `implemented` | 81 |
-| `deferred` | 347 |
-| `unsupported` | 25 |
+| `planned` | 0 |
+| `partial` | 140 |
+| `implemented` | 88 |
+| `deferred` | 352 |
+| `unsupported` | 26 |
 | **Total** | **606** |
 
 | Section | planned | partial | implemented | deferred | unsupported | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| §1 Invocation | 2 | 3 | 4 | 4 | 4 | 17 |
+| §1 Invocation | 0 | 3 | 5 | 4 | 5 | 17 |
 | §2 Commands | 0 | 45 | 8 | 34 | 5 | 92 |
-| §3 Notable command flags | 2 | 8 | 1 | 8 | 1 | 20 |
+| §3 Notable command flags | 0 | 9 | 1 | 9 | 1 | 20 |
 | §4 Prefix table | 0 | 7 | 35 | 29 | 1 | 72 |
-| §5 Root table (mouse) | 1 | 6 | 1 | 11 | 0 | 19 |
+| §5 Root table (mouse) | 0 | 6 | 1 | 12 | 0 | 19 |
 | §6 Key tables overview | 0 | 4 | 1 | 3 | 0 | 8 |
 | §7 Copy mode | 0 | 10 | 1 | 18 | 0 | 29 |
 | §8 Other pane modes | 0 | 0 | 0 | 7 | 0 | 7 |
-| §9 Options | 6 | 13 | 2 | 69 | 5 | 95 |
+| §9 Options | 0 | 15 | 3 | 72 | 5 | 95 |
 | §10 Formats | 0 | 5 | 0 | 37 | 2 | 44 |
 | §11 Status line and styles | 0 | 4 | 0 | 13 | 0 | 17 |
 | §12 Hooks | 0 | 12 | 2 | 43 | 0 | 57 |
-| §13 Target syntax | 1 | 7 | 9 | 6 | 1 | 24 |
+| §13 Target syntax | 0 | 7 | 10 | 6 | 1 | 24 |
 | §14 Mouse | 0 | 0 | 0 | 7 | 0 | 7 |
-| §15 Environment | 4 | 1 | 3 | 7 | 1 | 16 |
+| §15 Environment | 0 | 2 | 6 | 7 | 1 | 16 |
 | §16 Buffers and clipboard | 0 | 3 | 3 | 2 | 0 | 8 |
 | §17 Configuration file and parsing | 0 | 1 | 0 | 12 | 1 | 14 |
 | §18 Command chaining and scripting | 0 | 0 | 1 | 11 | 0 | 12 |
 | §19 Control mode | 0 | 0 | 0 | 8 | 0 | 8 |
 | §20 Multiple clients and access control | 0 | 3 | 0 | 7 | 4 | 14 |
-| §21 Layouts, names, alerts, pane lifecycle | 1 | 2 | 10 | 10 | 0 | 23 |
+| §21 Layouts, names, alerts, pane lifecycle | 0 | 2 | 11 | 10 | 0 | 23 |
 | §22 Terminal integration and exit messages | 0 | 2 | 0 | 1 | 0 | 3 |
-| **Total** | **17** | **136** | **81** | **347** | **25** | **606** |
+| **Total** | **0** | **140** | **88** | **352** | **26** | **606** |
 
 Coverage checks for matrix version 1: all 92 commands and their aliases, all 184 options in
 `options-table.c`, all 51 named hooks and all 99 copy-mode commands of tmux 3.8 appear in the

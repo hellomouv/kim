@@ -8,14 +8,16 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 26** (#26) — validate tmux feature and command compatibility
-- Last fully completed Step: Step 25 (#25, advanced tmux behaviours, ADR 0059; gaps in #97)
+- Current Step: **Step 27** (#27) — Claude Code session events
+- Last fully completed Step: Step 26 (#26, tmux compatibility validated by docs-check, ADR 0060)
 - Uncommitted changes: none expected between Steps
-- Next action: read #26; the matrix now has 81 implemented, 136 partial, 347 deferred (groups
-  F1–F10 of #97), 17 planned, 25 unsupported rows
+- Next action: read #27. The tmux matrix: 88 implemented, 140 partial, 352 deferred (F1–F10 of
+  #97), 26 unsupported, 0 planned; `docs-check` enforces it
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 26 — xtask tmux matrix check (606 rows, 302 evidence refs), tmux_journeys
+  1/1, e2e step26 1/1 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 25 — layout/tmuxcmd/session/screen unit tests, tmux_advanced 2/2, full
   `cargo test -p subak -p subak-term` green, e2e step25 1/1 (focused local run, LEDGER);
   `cargo xtask ci` before push.
@@ -31,7 +33,7 @@ checkpoint."*
 ## Queue (Step number in the issue title; reconstruct with
 `gh issue list --repo hellomouv/kim --state open --limit 200`)
 
-1. Subak: 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43
+1. Subak: 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43
    (Windows part), 44
 2. Noeul: 60, 61, 62, 63
 3. Ddalgak: 76, 77, 78, 79, 80, 81, 82
