@@ -250,13 +250,14 @@ fn show(dir: &Path) -> Result<Outcome, CliError> {
 }
 
 fn profiles_text(s: &Settings) -> String {
-    if s.profiles.is_empty() {
+    let all = s.all_profiles();
+    if all.is_empty() {
         return "Profiles: none (new Terminals run the Host's default shell)\n".into();
     }
     let mut out = String::from("Profiles:\n");
-    for p in &s.profiles {
+    for p in &all {
         let j = p.to_json(false);
-        let default = s.default_profile().is_some_and(|d| d.name == p.name);
+        let default = s.default_any().is_some_and(|d| d.name == p.name);
         let args: Vec<String> = j["args"]
             .as_array()
             .map(|a| {
@@ -543,8 +544,8 @@ fn profiles(dir: &Path) -> Result<Outcome, CliError> {
         data: json!({
             "path": path_text(&l.path),
             "state": l.state().as_str(),
-            "default": s.default_profile().map(|p| p.name.clone()),
-            "profiles": s.profiles.iter().map(|p| p.to_json(s.default_profile().is_some_and(|d| d.name == p.name))).collect::<Vec<_>>(),
+            "default": s.default_any().map(|p| p.name),
+            "profiles": s.all_profiles().iter().map(|p| p.to_json(s.default_any().is_some_and(|d| d.name == p.name))).collect::<Vec<_>>(),
         }),
         human: profiles_text(s),
         warnings: problem_warnings(&l),
@@ -556,8 +557,8 @@ fn profile(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
     let l = config::load(dir);
     let s = l.settings();
     let name = a.positional.first().map_or("", String::as_str);
-    let p = find_profile(&l, name)?;
-    let default = s.default_profile().is_some_and(|d| d.name == p.name);
+    let p = &find_profile(&l, name)?;
+    let default = s.default_any().is_some_and(|d| d.name == p.name);
     let one = Settings {
         profiles: vec![p.clone()],
         terminal: config::TerminalPrefs {
@@ -578,7 +579,7 @@ fn profile(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
 }
 
 /// The profile `name` of a usable file (`profile_not_found`, `config_invalid`, …).
-pub fn find_profile<'a>(l: &'a Loaded, name: &str) -> Result<&'a config::Profile, CliError> {
+pub fn find_profile(l: &Loaded, name: &str) -> Result<config::Profile, CliError> {
     match l.state() {
         State::Missing | State::User => {}
         State::Newer => {
@@ -604,13 +605,10 @@ pub fn find_profile<'a>(l: &'a Loaded, name: &str) -> Result<&'a config::Profile
             ));
         }
     }
-    l.settings().profile(name).ok_or_else(|| {
-        let known: Vec<&str> = l
-            .settings()
-            .profiles
-            .iter()
-            .map(|p| p.name.as_str())
-            .collect();
+    // Step 33: configured profiles first, then the shells found on this PC.
+    l.settings().any_profile(name).ok_or_else(|| {
+        let all = l.settings().all_profiles();
+        let known: Vec<&str> = all.iter().map(|p| p.name.as_str()).collect();
         let err = CliError::new(
             Code::ProfileNotFound,
             format!("no profile is named `{name}`"),
@@ -649,7 +647,7 @@ pub fn profile_for_new(a: &Args) -> Result<(Option<config::Profile>, Vec<String>
     };
     let l = config::load(&dir);
     if let Some(name) = &a.profile {
-        return Ok((Some(find_profile(&l, name)?.clone()), Vec::new()));
+        return Ok((Some(find_profile(&l, name)?), Vec::new()));
     }
     if a.no_profile || !a.command.is_empty() || a.command_line.is_some() {
         return Ok((None, Vec::new()));
@@ -669,8 +667,8 @@ pub fn profile_for_new(a: &Args) -> Result<(Option<config::Profile>, Vec<String>
     if d.is_empty() {
         return Ok((None, Vec::new()));
     }
-    match l.settings().default_profile() {
-        Some(p) => Ok((Some(p.clone()), Vec::new())),
+    match l.settings().default_any() {
+        Some(p) => Ok((Some(p), Vec::new())),
         None => Ok((
             None,
             vec![format!(

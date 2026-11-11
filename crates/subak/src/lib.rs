@@ -22,6 +22,9 @@
 #[cfg_attr(not(windows), allow(dead_code))]
 // Step 27: Claude Code hooks (settings merge, the reporter's input) and session states.
 mod claude;
+// Step 33: the local shells found on this PC (profiles that need no configuration).
+mod shells;
+// Step 33: the optional shell integration (the shell reports its folder).
 mod cli;
 /// `config.toml`: the window's settings and the basic shell profiles (Step 20, ADR 0051).
 /// Portable; read by the window and the `subak config`/`profile` commands, never by the Host.
@@ -32,6 +35,7 @@ mod config_cmd;
 pub mod hotkeys;
 /// `subak hotkeys …` (Step 17): portable, never contacts a Host.
 mod hotkeys_cmd;
+mod integration;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod layout;
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -412,9 +416,11 @@ pub fn cli_main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        _ if cmd.is_claude_hooks() || cmd.is_state() => {
+        _ if cmd.is_claude_hooks() || cmd.is_state() || cmd.is_integration() => {
             drop(out);
-            let ran = if cmd.is_state() {
+            let ran = if cmd.is_integration() {
+                integration::run(cmd, &args)
+            } else if cmd.is_state() {
                 state::run(cmd, &args)
             } else {
                 claude::hooks(cmd, &args)

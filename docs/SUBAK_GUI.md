@@ -1403,3 +1403,12 @@ window), `crates/subak/tests/claude_status.rs` (Host states, stale and lost sign
 ask something that needs a permission: the tab shows `!` and the title "(Claude needs input)";
 answer it: `◔`; when Claude finishes: `✓`.
 
+## 19. Detected shells in the window (Step 33)
+
+The `+` and tab menu lists "New Terminal: <profile>" for the profiles of `config.toml` and the
+shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, WSL
+distributions; [ADR 0066](adr/0066-detected-shell-profiles-and-shell-integration.md));
+`Ctrl+B N` opens it from the keyboard. `terminal.detect_shells = false` hides the detected ones.
+**Manual check (maintainer, not tested by the agent):** `Ctrl+B N`, pick "Git Bash": a bash
+prompt in a new tab.
+

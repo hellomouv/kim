@@ -507,6 +507,25 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.21 Detected shells and the shell integration (Step 33)
+
+[ADR 0066](adr/0066-detected-shell-profiles-and-shell-integration.md).
+
+- `subak profile list|show` include the shells found on this PC (`source: detected`): PowerShell 7,
+  Windows PowerShell, Command Prompt, Git Bash and one `WSL: <distro>` per distribution;
+  `subak new --profile "Git Bash"` starts one. A `[[profiles]]` entry of the same name wins;
+  `subak config set terminal.detect_shells false` hides them. A profile's `title` names the new
+  Terminal when no name is given and the name is free.
+
+| Command | Effect |
+| --- | --- |
+| `subak shell-integration status [powershell\|pwsh\|cmd] [--profile-file <ps1>]` | whether Subak's block is in your PowerShell profile; for cmd, the per-profile `PROMPT` opt-in |
+| `subak shell-integration install [powershell\|pwsh] [--profile-file <ps1>] [--dry-run]` | adds a marked block to `$PROFILE` (backup first), active only in Subak panes: the shell reports its folder, shown as the pane's `current_dir` and kept by `state.json` |
+| `subak shell-integration uninstall …` | removes exactly that block |
+
+PowerShell runs a profile only where its execution policy allows scripts; Subak never changes the
+policy.
+
 ### 3.20 Cold recovery (`subak recover`, Step 30)
 
 [ADR 0064](adr/0064-cold-recovery-and-claude-resume.md), [RECOVERY.md §4](RECOVERY.md).

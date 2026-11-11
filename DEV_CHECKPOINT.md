@@ -8,16 +8,19 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 33** (#33) — shell profiles and productivity tools
+- Current Step: **Step 34** (#34) — SSH and secure credential management
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #33 (the Tabby matrix checklist lists its 37 rows; ADR 0065 priorities)
+- Next action: read #34; first decide the SSH transport by ADR 0065 §4 criteria (an ADR before code); Tabby rows for 34 in the checklist
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 33 — shells/integration/term unit tests, profiles_integration 2/2 (detected
+  profiles, title, missing shell, PowerShell and cmd folder reports, state keeps it), e2e step33
+  1/1 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 32 — Tabby matrix audited (39 rows reclassified, checklist, ADR 0065),
   docs-check validates the matrix (209 rows, 83 evidence refs); `cargo xtask ci` before push.
 - 2026-11-11: Step 31 — milestone_c 1/1 (Host crash → intact state → cold rebuild 99 ms, no

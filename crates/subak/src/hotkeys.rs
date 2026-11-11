@@ -86,6 +86,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "layout.even-horizontal",
     "layout.even-vertical",
     "layout.tiled",
+    "terminal.new-from",
     "layout.main-horizontal-mirrored",
     "layout.main-vertical-mirrored",
     "layout.spread",

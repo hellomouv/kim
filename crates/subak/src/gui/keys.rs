@@ -101,6 +101,8 @@ pub enum Action {
     LayoutNext,
     WindowLast,
     PaneLast,
+    /// Step 33.
+    NewFromProfile,
     LayoutMainHorizontalMirrored,
     LayoutMainVerticalMirrored,
     LayoutSpread,
@@ -125,7 +127,7 @@ pub enum Action {
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 94] = [
+    pub const ALL: [(Action, &'static str); 95] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -170,6 +172,7 @@ impl Action {
         (Action::LayoutEvenHorizontal, "layout.even-horizontal"),
         (Action::LayoutEvenVertical, "layout.even-vertical"),
         (Action::LayoutTiled, "layout.tiled"),
+        (Action::NewFromProfile, "terminal.new-from"),
         (
             Action::LayoutMainHorizontalMirrored,
             "layout.main-horizontal-mirrored",

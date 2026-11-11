@@ -626,6 +626,10 @@ impl State {
                 .count(),
             output_bytes: self.out.get(&p.id).map_or(0, |o| o.seq),
             history: self.out.get(&p.id).map(|o| o.screen.history()),
+            current_dir: self
+                .out
+                .get(&p.id)
+                .and_then(|o| o.screen.cwd().map(String::from)),
         }
     }
 
@@ -665,7 +669,12 @@ impl State {
                     .get(&t.id)
                     .map_or("ask", String::as_str);
                 let resume = self.persist.claude_resume.contains(&t.id);
-                state::terminal_record(t, policy, resume, &claude)
+                let cwd_now = |pane: &str| {
+                    self.out
+                        .get(pane)
+                        .and_then(|o| o.screen.cwd().map(String::from))
+                };
+                state::terminal_record(t, policy, resume, &claude, &cwd_now)
             })
             .collect();
         for s in &self.persist.saved {
@@ -2048,8 +2057,11 @@ impl Host {
             };
             let mark = pane.screen.history().total_lines;
             let bells = pane.screen.bells();
+            let cwd_before = pane.screen.cwd().map(String::from);
             pane.screen.feed(&buf[..n]);
             let rang = pane.screen.bells() > bells;
+            // Step 33: a shell that reports its directory changed it: the state keeps it.
+            let moved = pane.screen.cwd() != cwd_before.as_deref();
             let seq = pane.seq;
             pane.seq += n as u64;
             let frame: Arc<[u8]> = proto::encode_data(rt.stream, seq, 0, &buf[..n]).into();
@@ -2092,6 +2104,9 @@ impl Host {
             if let Some((tid, wid, kind)) = alert {
                 let data = json!({"terminal_id": tid, "window_id": wid, "pane_id": rt.pane_id, "kind": kind});
                 st.notify("terminals", "window.alert", &data);
+            }
+            if moved {
+                st.mark_dirty();
             }
         }
     }

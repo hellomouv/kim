@@ -136,6 +136,100 @@ pub fn exit_code(process: HANDLE) -> Option<u32> {
     (unsafe { GetExitCodeProcess(process, &raw mut code) } != 0).then_some(code)
 }
 
+/// Step 33: the user's Documents folder (it may be redirected, e.g. to OneDrive): the
+/// `Personal` value of `HKCU\...\Explorer\User Shell Folders`, expanded; read only.
+pub fn documents_dir() -> Option<std::path::PathBuf> {
+    use windows_sys::Win32::System::Registry::{
+        HKEY_CURRENT_USER, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ, RegGetValueW,
+    };
+    let key = wide(r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders");
+    let value = wide("Personal");
+    let mut buf = [0u16; 1024];
+    let mut size = (buf.len() * 2) as u32;
+    // SAFETY: NUL-terminated names; `buf` holds `size` bytes. Without RRF_NOEXPAND the API
+    // expands %USERPROFILE% and the like.
+    let r = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &raw mut size,
+        )
+    };
+    if r != 0 {
+        return None;
+    }
+    let n = (size as usize / 2).saturating_sub(1).min(buf.len());
+    let p = std::path::PathBuf::from(String::from_utf16_lossy(&buf[..n]));
+    p.is_dir().then_some(p)
+}
+
+/// Step 33: the WSL distributions registered for this user (`HKCU\Software\Microsoft\Windows/// CurrentVersion\Lxss\{id}\DistributionName`), read only; no WSL command runs.
+pub fn wsl_distributions() -> Vec<String> {
+    use windows_sys::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_READ, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegGetValueW,
+        RegOpenKeyExW,
+    };
+    let base = wide(r"Software\Microsoft\Windows\CurrentVersion\Lxss");
+    let mut key: HKEY = std::ptr::null_mut();
+    // SAFETY: valid NUL-terminated name; `key` receives an opened handle on success.
+    if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, base.as_ptr(), 0, KEY_READ, &raw mut key) } != 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for i in 0..64u32 {
+        let mut name = [0u16; 256];
+        let mut len = name.len() as u32;
+        // SAFETY: `name` holds `len` u16s; the other out pointers may be null.
+        let r = unsafe {
+            RegEnumKeyExW(
+                key,
+                i,
+                name.as_mut_ptr(),
+                &raw mut len,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if r != 0 {
+            break;
+        }
+        let value = wide("DistributionName");
+        let mut buf = [0u16; 256];
+        let mut size = (buf.len() * 2) as u32;
+        // SAFETY: `name[..len]` is the subkey (NUL-terminated by the API), `buf` holds `size`
+        // bytes.
+        let ok = unsafe {
+            RegGetValueW(
+                key,
+                name.as_ptr(),
+                value.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
+                &raw mut size,
+            )
+        };
+        if ok == 0 {
+            let n = (size as usize / 2).saturating_sub(1).min(buf.len());
+            let d = String::from_utf16_lossy(&buf[..n]);
+            if !d.is_empty() && d.chars().all(|c| c.is_alphanumeric() || "-_.".contains(c)) {
+                out.push(d);
+            }
+        }
+    }
+    // SAFETY: `key` was opened above.
+    unsafe { RegCloseKey(key) };
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Step 29: moves `from` over `to` with write-through (`MoveFileExW`), so a crash leaves the
 /// old file or the new one, never a torn one.
 pub fn replace_file(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {

@@ -241,6 +241,7 @@ pub fn terminal_record(
     restore: &str,
     claude_resume: bool,
     claude: &dyn Fn(&str) -> Option<String>,
+    cwd_now: &dyn Fn(&str) -> Option<String>,
 ) -> Value {
     let windows: Vec<Value> = t
         .windows
@@ -263,7 +264,8 @@ pub fn terminal_record(
                     json!({
                         "id": p.id,
                         "index": p.index,
-                        "cwd": p.cwd,
+                        // Step 33: the folder the shell reported last, else where it started.
+                        "cwd": cwd_now(&p.id).or_else(|| p.cwd.clone()),
                         "command": keep.then(|| json!({"program": p.command.program, "args": p.command.args})),
                         "command_line": if keep { json!(p.command_line) } else { Value::Null },
                         "command_withheld": !keep,

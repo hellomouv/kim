@@ -717,6 +717,36 @@
       "dry_run": true,
       "requires_yes": true,
       "opens_window": false
+    },
+    {
+      "name": "shell-integration.status",
+      "usage": "subak shell-integration status [powershell|pwsh|cmd] [--profile-file <ps1>] [--json]",
+      "summary": "Whether the optional shell integration (the shell reports its folder) is in the PowerShell profile; for cmd, the per-profile opt-in",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "shell-integration.install",
+      "usage": "subak shell-integration install [powershell|pwsh] [--profile-file <ps1>] [--dry-run] [--json]",
+      "summary": "Opt in: add Subak's marked block to the PowerShell profile (a backup first; active only in Subak panes)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "shell-integration.uninstall",
+      "usage": "subak shell-integration uninstall [powershell|pwsh] [--profile-file <ps1>] [--dry-run] [--json]",
+      "summary": "Remove exactly Subak's block from the PowerShell profile (a backup first)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

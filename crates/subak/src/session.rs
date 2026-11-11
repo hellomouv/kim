@@ -810,7 +810,7 @@ pub struct Removal {
 }
 
 /// What the Host knows about a pane's processes and clients right now (volatile, never stored).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Live {
     /// The root process still runs.
     pub running: bool,
@@ -822,6 +822,8 @@ pub struct Live {
     pub output_bytes: u64,
     /// Its history, while the Host keeps its screen (Step 13).
     pub history: Option<HistoryInfo>,
+    /// Step 33: the directory its shell reported last (an optional shell integration).
+    pub current_dir: Option<String>,
 }
 
 /// Which level of the hierarchy a target names.
@@ -1358,6 +1360,7 @@ pub fn pane_json(t: &Terminal, p: &Pane, l: &Live) -> Value {
         "id": p.id,
         "index": p.index,
         "cwd": p.cwd,
+        "current_dir": l.current_dir,
         "command": command_json(&p.command),
         "command_line": p.command_line.as_deref().map(redact::command_line),
         "executable": p.executable,
@@ -1862,6 +1865,7 @@ mod tests {
             clients: 1,
             output_bytes: 10,
             history: None,
+            current_dir: Some("C:/work".into()),
         };
         let j = terminal_json(&r.terminals[i], &live);
         crate::proto::assert_ipc_def("terminal", &j);

@@ -106,6 +106,10 @@ pub enum Cmd {
     // Step 30: cold recovery.
     RecoverList,
     Recover,
+    // Step 33: the optional shell integration.
+    ShellIntegrationStatus,
+    ShellIntegrationInstall,
+    ShellIntegrationUninstall,
 }
 
 impl Cmd {
@@ -184,6 +188,9 @@ impl Cmd {
             Self::StateRollback => "state.rollback",
             Self::RecoverList => "recover.list",
             Self::Recover => "recover",
+            Self::ShellIntegrationStatus => "shell-integration.status",
+            Self::ShellIntegrationInstall => "shell-integration.install",
+            Self::ShellIntegrationUninstall => "shell-integration.uninstall",
         }
     }
 
@@ -222,6 +229,16 @@ impl Cmd {
                 | Self::StateForget
                 | Self::StatePolicy
                 | Self::StateRollback
+        )
+    }
+
+    /// Step 33: `shell-integration` edits a shell profile file (no Host).
+    pub fn is_integration(&self) -> bool {
+        matches!(
+            self,
+            Self::ShellIntegrationStatus
+                | Self::ShellIntegrationInstall
+                | Self::ShellIntegrationUninstall
         )
     }
 
@@ -292,6 +309,9 @@ impl Cmd {
             Self::StatePolicy => (&["terminal", "ask, auto or never"], 2),
             Self::StateRollback => (&["backup"], 0),
             Self::Recover => (&["saved terminal"], 1),
+            Self::ShellIntegrationStatus
+            | Self::ShellIntegrationInstall
+            | Self::ShellIntegrationUninstall => (&["powershell, pwsh or cmd"], 0),
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -440,6 +460,10 @@ impl Cmd {
             Self::StatePolicy => &["--state-dir", "--endpoint", "--claude-resume", "--dry-run"],
             Self::StateRollback => &["--state-dir", "--endpoint", "--dry-run"],
             Self::RecoverList => &["--endpoint"],
+            Self::ShellIntegrationStatus => &["--profile-file"],
+            Self::ShellIntegrationInstall | Self::ShellIntegrationUninstall => {
+                &["--profile-file", "--dry-run"]
+            }
             Self::Recover => &[
                 "--endpoint",
                 "--state-dir",
@@ -1078,6 +1102,13 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                     }
                 }
             }
+            "--profile-file" => {
+                // Step 33: `shell-integration … --profile-file <ps1>` (kept in `settings`).
+                opts.push("--profile-file");
+                if let Some(v) = value("--profile-file") {
+                    a.settings = Some(v);
+                }
+            }
             "--settings" => {
                 opts.push("--settings");
                 if let Some(v) = value("--settings") {
@@ -1283,6 +1314,9 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "health", ..] => (Cmd::HostHealth, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
+        ["shell-integration", "status", ..] => (Cmd::ShellIntegrationStatus, 2),
+        ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
+        ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),
         ["recover", ..] => (Cmd::Recover, 1),
         ["state", "show", ..] => (Cmd::StateShow, 2),

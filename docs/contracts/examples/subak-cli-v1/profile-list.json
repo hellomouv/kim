@@ -17,6 +17,8 @@
         "name": "PowerShell",
         "program": "powershell.exe",
         "secret_env": [],
+        "source": "config",
+        "title": null,
         "unset_env": []
       },
       {
@@ -34,6 +36,8 @@
         "secret_env": [
           "GITHUB_TOKEN"
         ],
+        "source": "config",
+        "title": null,
         "unset_env": []
       }
     ],

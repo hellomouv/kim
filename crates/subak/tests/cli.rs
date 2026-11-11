@@ -228,7 +228,10 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "state.policy",
             "state.rollback",
             "recover.list",
-            "recover"
+            "recover",
+            "shell-integration.status",
+            "shell-integration.install",
+            "shell-integration.uninstall"
         ],
         "only commands that really exist"
     );

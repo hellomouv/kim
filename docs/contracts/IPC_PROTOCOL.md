@@ -423,6 +423,12 @@ Semantics in [ADR 0058](../adr/0058-subak-tmux-commands-copy-mode-and-buffers.md
   `buffer.paste` types it into a running pane with line ends as carriage returns. A missing buffer
   is `target_not_found`.
 
+### 4.8 The pane's reported folder (Step 33)
+
+A Pane object has `current_dir`: the directory its shell reported last (OSC 7 or OSC 9;9, sent by
+the optional shell integration of [ADR 0066](../adr/0066-detected-shell-profiles-and-shell-integration.md)),
+or null. `cwd` stays the folder it started in; `state.json` saves `current_dir` when known.
+
 ### 4.7 Window options, alerts, target tokens and hooks (Step 25)
 
 Semantics in [ADR 0059](../adr/0059-subak-advanced-tmux-behaviours.md); feature

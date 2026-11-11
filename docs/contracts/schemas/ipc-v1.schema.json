@@ -689,6 +689,7 @@
       "properties": {
         "id": {"$ref": "#/$defs/pane_id"},
         "index": {"type": "integer", "minimum": 0},
+        "current_dir": {"description": "Step 33: the directory the shell reported last (OSC 7 or 9;9, with an optional shell integration); null when it never did.", "type": ["string", "null"]},
         "cwd": {"type": ["string", "null"]},
         "command": {"$ref": "#/$defs/command"},
         "command_line": {

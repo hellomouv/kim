@@ -58,6 +58,7 @@
     { "id": "layout.even-horizontal", "title": "Arrange the panes side by side", "scopes": ["app"], "defaults": ["@prefix Alt+1"] },
     { "id": "layout.even-vertical", "title": "Arrange the panes stacked", "scopes": ["app"], "defaults": ["@prefix Alt+2"] },
     { "id": "layout.tiled", "title": "Arrange the panes tiled", "scopes": ["app"], "defaults": ["@prefix Alt+5"] },
+    { "id": "terminal.new-from", "title": "New Terminal from a profile (menu)", "scopes": ["app"], "defaults": ["@prefix char:N"] },
     { "id": "layout.main-horizontal-mirrored", "title": "Arrange the panes: the main pane at the bottom", "scopes": ["app"], "defaults": ["@prefix Alt+6"] },
     { "id": "layout.main-vertical-mirrored", "title": "Arrange the panes: the main pane on the right", "scopes": ["app"], "defaults": ["@prefix Alt+7"] },
     { "id": "layout.spread", "title": "Spread the panes out evenly", "scopes": ["app"], "defaults": ["@prefix char:E"] },

@@ -45,6 +45,40 @@ pub const HISTORY_BYTES: usize = 4 * 1024 * 1024;
 pub const LINE_OVERHEAD: usize = 32;
 /// Longest window title kept, in characters.
 const TITLE_MAX: usize = 1024;
+
+/// Step 33: a reported working directory as a Windows path: no control characters, at most
+/// 1024 bytes, quotes around it removed; `None` when it is not one.
+fn clean_cwd(raw: &str) -> Option<String> {
+    let t = raw.trim().trim_matches('"');
+    (!t.is_empty() && t.len() <= 1024 && !t.chars().any(char::is_control)).then(|| t.to_string())
+}
+
+/// OSC 7 `file://host/C:/path%20x`: the path part, percent-decoded, with Windows separators.
+fn cwd_from_osc7(rest: &[u8]) -> Option<String> {
+    let s = std::str::from_utf8(rest).ok()?;
+    let after = s.strip_prefix("file://")?;
+    let b = &after.as_bytes()[after.find('/')?..];
+    let mut bytes = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).ok()?, 16)
+        {
+            bytes.push(v);
+            i += 3;
+            continue;
+        }
+        bytes.push(b[i]);
+        i += 1;
+    }
+    let mut p = String::from_utf8(bytes).ok()?;
+    // `/C:/x` is `C:\x` on Windows.
+    if p.len() >= 3 && p.as_bytes()[0] == b'/' && p.as_bytes()[2] == b':' {
+        p.remove(0);
+    }
+    clean_cwd(&p.replace('/', "\\"))
+}
 /// Raw bytes of an unfinished sequence kept for the snapshot (the start of a longer one).
 const PENDING_MAX: usize = 4096;
 /// Longest OSC string interpreted; longer ones are consumed and ignored.
@@ -836,6 +870,9 @@ pub struct Screen {
     title: String,
     /// Step 25: BEL controls executed so far (never the BEL that ends an OSC string).
     bells: u64,
+    /// Step 33: the working directory the shell reported (OSC 7 `file://host/path`, or OSC
+    /// 9;9 `path`), when an optional shell integration sends it.
+    cwd: Option<String>,
     cursor_style: u8,
     last_char: Option<char>,
     /// The OSC 8 hyperlink printed characters get.
@@ -868,6 +905,7 @@ impl Screen {
             tabs: default_tabs(cols),
             title: String::new(),
             bells: 0,
+            cwd: None,
             cursor_style: 0,
             last_char: None,
             link: None,
@@ -948,6 +986,11 @@ impl Screen {
     /// `monitor-bell`); the BEL ending an OSC string is not one.
     pub fn bells(&self) -> u64 {
         self.bells
+    }
+
+    /// Step 33: the working directory the shell last reported (OSC 7 or OSC 9;9), if any.
+    pub fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
     }
 
     /// The hyperlink that characters printed now get (OSC 8).
@@ -1365,6 +1408,18 @@ impl Screen {
                     .collect();
             }
             b"8" => self.set_link(&osc[sep + 1..]),
+            b"7" => {
+                if let Some(d) = cwd_from_osc7(&osc[sep + 1..]) {
+                    self.cwd = Some(d);
+                }
+            }
+            b"9" => {
+                if let Some(rest) = osc[sep + 1..].strip_prefix(b"9;")
+                    && let Some(d) = clean_cwd(&String::from_utf8_lossy(rest))
+                {
+                    self.cwd = Some(d);
+                }
+            }
             _ => {}
         }
     }
@@ -3238,5 +3293,20 @@ mod tests {
         assert_eq!(s.title(), "title");
         s.feed(b"");
         assert_eq!(s.bells(), 3);
+    }
+
+    /// Step 33: OSC 7 (`file://`, percent-encoded) and OSC 9;9 report the working directory.
+    #[test]
+    fn shells_report_their_working_directory() {
+        let mut s = Screen::new(20, 3, Limits::default());
+        assert_eq!(s.cwd(), None);
+        s.feed(b"\x1b]7;file://PC/C:/Users/me/src%20x\x1b\\");
+        assert_eq!(s.cwd(), Some(r"C:\Users\me\src x"));
+        s.feed("\x1b]9;9;\"D:\\작업\"\x07".as_bytes());
+        assert_eq!(s.cwd(), Some("D:\\작업"));
+        // Not a directory report: nothing changes.
+        s.feed(b"\x1b]7;http://x/y\x07\x1b]9;4;1;50\x07");
+        assert_eq!(s.cwd(), Some("D:\\작업"));
+        assert_eq!(s.bells(), 0, "OSC terminators are no bells");
     }
 }

@@ -205,7 +205,7 @@ pub fn check(root: &Path, problems: &mut Vec<String>) -> Result<Matrix, String> 
 /// Step 32: `docs/TABBY_FEATURE_MATRIX.md` against the repository: every row (`| `ID-n` …`) has
 /// six cells and a known status; `implemented`/`partial` rows cite evidence that exists; no
 /// `planned` row targets a finished Step or nothing; the summary counts equal the rows.
-pub const TABBY_DONE_THROUGH: u32 = 32;
+pub const TABBY_DONE_THROUGH: u32 = 33;
 pub const TABBY_STATUSES: [&str; 5] = ["planned", "partial", "implemented", "excluded", "blocked"];
 
 pub fn check_tabby(root: &Path, problems: &mut Vec<String>) -> Result<Matrix, String> {

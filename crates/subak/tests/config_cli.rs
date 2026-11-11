@@ -41,7 +41,11 @@ fn cfg_dir(appdata: &Path) -> PathBuf {
 /// `subak --json <args>` with `APPDATA=<appdata>`, validated against subak-cli-v1.
 fn sub(appdata: &Path, args: &[&str]) -> (i32, Value) {
     let a = appdata.display().to_string();
-    let (code, doc) = run_env(args, &[("APPDATA", a.as_str())]);
+    // Detected shells differ per machine; the golden files hold none.
+    let (code, doc) = run_env(
+        args,
+        &[("APPDATA", a.as_str()), ("SUBAK_TEST_NO_DETECT", "1")],
+    );
     validate("subak-cli-v1", &doc);
     (code, doc)
 }

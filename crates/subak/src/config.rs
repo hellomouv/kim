@@ -241,6 +241,8 @@ pub struct TerminalPrefs {
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
+    /// Step 33: the shells found on this PC are offered as profiles (on by default).
+    pub detect_shells: bool,
     pub right_click: RightClick,
     pub middle_click: MiddleClick,
     /// Characters that end a word for double-click selection and mark mode.
@@ -262,6 +264,10 @@ pub struct Profile {
     pub env: Vec<(String, String)>,
     /// Variables removed from the pane's environment.
     pub unset_env: Vec<String>,
+    /// Step 33: the name a new Terminal of this profile gets (when free and none is given).
+    pub title: Option<String>,
+    /// Step 33: found on this PC (`detect_shells`), not written in `config.toml`.
+    pub detected: bool,
     /// The 1-based line of its `[[profiles]]` header (messages).
     pub line: Option<usize>,
 }
@@ -305,6 +311,7 @@ impl Default for Settings {
                 copy_on_select: false,
                 smart_ctrl_c: false,
                 claude_indicators: true,
+                detect_shells: true,
                 right_click: RightClick::CopyPaste,
                 middle_click: MiddleClick::None,
                 word_separators: subak_term::view::WORD_DELIMITERS.to_string(),
@@ -321,6 +328,41 @@ impl Settings {
         self.profiles
             .iter()
             .find(|p| p.name.to_lowercase() == name.trim().to_lowercase())
+    }
+
+    /// Step 33: the profiles of `config.toml`, then the shells found on this PC that no
+    /// configured profile already names (when `terminal.detect_shells` is on).
+    pub fn all_profiles(&self) -> Vec<Profile> {
+        let mut v = self.profiles.clone();
+        if self.terminal.detect_shells {
+            for d in crate::shells::detect() {
+                if !v
+                    .iter()
+                    .any(|p| p.name.to_lowercase() == d.name.to_lowercase())
+                {
+                    v.push(d);
+                }
+            }
+        }
+        v
+    }
+
+    /// Step 33: the default profile among configured and detected ones.
+    pub fn default_any(&self) -> Option<Profile> {
+        let d = self.terminal.default_profile.trim();
+        if d.is_empty() {
+            None
+        } else {
+            self.any_profile(d)
+        }
+    }
+
+    /// The profile named `name` among [`Settings::all_profiles`].
+    pub fn any_profile(&self, name: &str) -> Option<Profile> {
+        let key = name.trim().to_lowercase();
+        self.all_profiles()
+            .into_iter()
+            .find(|p| p.name.to_lowercase() == key)
     }
 
     /// The default profile, when one is set and exists.
@@ -375,6 +417,7 @@ impl Settings {
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
             ("terminal", "claude_indicators") => json!(t.claude_indicators),
+            ("terminal", "detect_shells") => json!(t.detect_shells),
             ("terminal", "right_click") => json!(t.right_click.as_str()),
             ("terminal", "middle_click") => json!(t.middle_click.as_str()),
             ("terminal", "word_separators") => json!(t.word_separators),
@@ -436,6 +479,8 @@ impl Profile {
             "cwd": self.cwd,
             "env": env,
             "unset_env": self.unset_env,
+            "title": self.title,
+            "source": if self.detected { "detected" } else { "config" },
             "secret_env": self.secret_env(),
             "default": default,
         })
@@ -581,6 +626,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "detect_shells",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "terminal",
         name: "right_click",
         takes: "copy-paste, menu, paste or none",
         kind: Kind::Text,
@@ -663,6 +714,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("terminal", "copy_on_select") => t.copy_on_select = flag()?,
         ("terminal", "smart_ctrl_c") => t.smart_ctrl_c = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
+        ("terminal", "detect_shells") => t.detect_shells = flag()?,
         ("terminal", "right_click") => t.right_click = RightClick::parse(text()?).ok_or(())?,
         ("terminal", "middle_click") => {
             t.middle_click = MiddleClick::parse(text()?).ok_or(())?;
@@ -1178,17 +1230,34 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             format!("`{n}` is both set (env) and removed (unset_env)"),
         ));
     }
-    if let Some(bad) = t
-        .keys()
-        .find(|k| !["name", "program", "args", "cwd", "env", "unset_env"].contains(&k.as_str()))
-    {
+    if let Some(bad) = t.keys().find(|k| {
+        ![
+            "name",
+            "program",
+            "args",
+            "cwd",
+            "env",
+            "unset_env",
+            "title",
+        ]
+        .contains(&k.as_str())
+    }) {
         return Err((
             None,
             format!(
-                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env; SSH and other profile kinds come in Step 33)"
+                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title; SSH profiles come in Step 34)"
             ),
         ));
     }
+    let title = match text("title", false)? {
+        Some(t) if crate::session::parse_name(t.trim()).is_err() => {
+            return Err((
+                Some("title"),
+                "`title` must be a valid Terminal name (1-64 characters, no `:` or `.`)".into(),
+            ));
+        }
+        t => t.map(|t| t.trim().to_string()),
+    };
     Ok(Profile {
         name,
         program,
@@ -1196,6 +1265,8 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         cwd,
         env,
         unset_env,
+        title,
+        detected: false,
         line: None,
     })
 }
@@ -2111,7 +2182,7 @@ env = { SUBAK_PANE_ID = "x" }
             "{msgs:?}"
         );
         assert!(msgs[2].contains("already named `OK`"), "{msgs:?}");
-        assert!(msgs[3].contains("Step 33"), "{msgs:?}");
+        assert!(msgs[3].contains("Step 34"), "{msgs:?}");
         assert!(msgs[4].contains("both set"), "{msgs:?}");
         assert!(msgs[5].contains("SUBAK_PANE_ID"), "{msgs:?}");
     }
@@ -2384,6 +2455,8 @@ args = ["/k", "--password", "hunter2"]
             cwd: None,
             env: vec![],
             unset_env: vec![],
+            title: None,
+            detected: false,
             line: None,
         });
         let d: Vec<String> = differences(&a, &b).iter().map(|c| c.key.clone()).collect();

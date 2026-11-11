@@ -2576,8 +2576,9 @@ impl App {
     /// the Host's defaults. The profile's command, cwd and env are sent explicitly.
     fn new_terminal(&mut self, profile: Option<usize>) {
         let p = match profile {
-            Some(i) => self.settings.profiles.get(i).cloned(),
-            None => self.settings.default_profile().cloned(),
+            // Step 33: configured profiles, then the shells found on this PC.
+            Some(i) => self.settings.all_profiles().get(i).cloned(),
+            None => self.settings.default_any(),
         };
         self.leave_pane();
         let params = p.as_ref().map(config::Profile::create_params);
@@ -3592,6 +3593,8 @@ impl App {
                 PostMessageW(self.hwnd, WM_CLOSE, 0, 0);
             },
             Action::NewTerminal => self.new_terminal(None),
+            // Step 33: the profiles (configured and detected) as a menu, from the keyboard.
+            Action::NewFromProfile => self.open_menu(None, None),
             Action::CloseTerminal => {
                 let fx = self.model.close_active();
                 self.apply(fx);
@@ -3810,10 +3813,10 @@ impl App {
             .iter()
             .position(|i| i.id == CMD_NEW)
             .map_or(items.len(), |i| i + 1);
-        let default = self.settings.default_profile().map(|p| p.name.clone());
+        let default = self.settings.default_any().map(|p| p.name);
         let profiles: Vec<MenuItem> = self
             .settings
-            .profiles
+            .all_profiles()
             .iter()
             .enumerate()
             .take(64)

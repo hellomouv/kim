@@ -49,6 +49,7 @@
                 "program": "cmd.exe"
               },
               "command_line": null,
+              "current_dir": null,
               "cwd": "C:\\Windows",
               "env": {
                 "set": [],

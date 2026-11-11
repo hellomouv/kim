@@ -34,6 +34,7 @@
         "default_profile": { "description": "The profile Ctrl+T, + and `subak new` (without a program) start; empty: the Host's default shell.", "type": "string", "maxLength": 64 },
         "copy_on_select": { "description": "A mouse selection is copied when the button is released (default false).", "type": "boolean" },
         "claude_indicators": { "description": "Step 28: tabs and the title show each Terminal's Claude Code state from hooks (default true).", "type": "boolean" },
+        "detect_shells": { "description": "Step 33: the shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, WSL distributions) are offered as profiles (default true).", "type": "boolean" },
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
         "right_click": { "description": "copy-paste (default): copy a selection, else paste; menu: the pane menu; paste; none.", "enum": ["copy-paste", "menu", "paste", "none"] },
         "middle_click": { "enum": ["none", "paste"] },
@@ -62,6 +63,8 @@
         "cwd": { "description": "An absolute working directory; absent or null: the Host's default (the user's profile folder).", "type": ["string", "null"] },
         "env": { "description": "Variables set in the pane (names as env_name). Values that look secret are shown as ***; Subak never writes them.", "type": "object", "additionalProperties": { "type": "string" } },
         "unset_env": { "type": "array", "items": { "$ref": "#/$defs/env_name" } },
+        "title": { "description": "Step 33: the name a new Terminal of this profile gets when none is given and it is free.", "type": ["string", "null"] },
+        "source": { "description": "Step 33, shown by Subak: `config` (config.toml) or `detected` (found on this PC; never written).", "enum": ["config", "detected"] },
         "secret_env": { "description": "Shown by Subak (not in the file): the variables whose name or value looks secret.", "type": "array", "items": { "type": "string" } },
         "default": { "description": "Shown by Subak (not in the file): whether terminal.default_profile names it.", "type": "boolean" }
       },

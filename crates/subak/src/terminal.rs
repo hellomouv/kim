@@ -216,6 +216,7 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
         crate::warn_later(w);
     }
     let profile_name = profile.as_ref().map(|p| p.name.clone());
+    let title = profile.as_ref().and_then(|p| p.title.clone());
     let eff = with_profile(a, profile.as_ref());
     let a = &eff;
     // `profile` is added only when a profile was used, so the result of a plain `new` stays the
@@ -231,7 +232,7 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
         None => Value::Null,
     };
     let params = json!({
-        "name": a.positional.first(),
+        "name": a.positional.first().cloned().or_else(|| title.clone()),
         "command": command,
         "command_line": a.command_line,
         "cwd": a.cwd,
@@ -271,7 +272,16 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
         } = client::connect_or_start(endpoint, &plan)?;
         (session, started)
     };
-    let mut created = session.request_within("terminal.create", &params, CREATE_TIMEOUT)?;
+    // Step 33: a profile's title names the Terminal only while that name is free.
+    let from_title = a.positional.is_empty() && title.is_some();
+    let mut created = match session.request_within("terminal.create", &params, CREATE_TIMEOUT) {
+        Err(e) if from_title && e.code == Code::NameConflict => {
+            let mut p = params.clone();
+            p["name"] = Value::Null;
+            session.request_within("terminal.create", &p, CREATE_TIMEOUT)?
+        }
+        r => r?,
+    };
     created["host"] = json!({"pid": session.host_pid, "started": started.is_some()});
     let created = with_name(created);
     if !a.attach {
