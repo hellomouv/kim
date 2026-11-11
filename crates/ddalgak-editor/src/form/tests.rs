@@ -553,3 +553,55 @@ fn conditions_round_trip_and_are_checked() {
     f.fields.window_title.clear();
     assert!(f.build("r1", Some(&profile())).unwrap().when.is_none());
 }
+
+/// Step 79: a scheduled notification, a window move and a clipboard transform built in the
+/// form are rules the engine accepts, and a schedule survives editing.
+#[test]
+fn step79_forms_build_engine_rules_and_keep_schedules() {
+    let mut f = with(Effect::Notify, "");
+    f.fields.trigger.scheduled = true;
+    f.fields.trigger.every = None;
+    f.fields.trigger.at = "08:30".into();
+    f.fields.trigger.days = [true, true, true, true, true, false, false];
+    f.fields.notify.title = "Stand up".into();
+    assert!(paths(&f).is_empty(), "{:?}", paths(&f));
+    let r = f.build("n1", Some(&profile())).unwrap();
+    let t = serde_json::to_value(&r.trigger).unwrap();
+    assert_eq!(
+        t,
+        serde_json::json!({"schedule": {"at": "08:30", "days": ["mon", "tue", "wed", "thu", "fri"]}})
+    );
+    let back = RuleForm::edit("default", &r);
+    assert!(back.fields.trigger.scheduled && back.fields.trigger.at == "08:30");
+    assert_eq!(
+        back.build("n1", Some(&profile())).unwrap().trigger,
+        r.trigger
+    );
+    f.fields.trigger.at = "25:00".into();
+    assert!(paths(&f).contains(&"trigger.schedule"));
+
+    let mut w = with(Effect::Window, "Ctrl+Alt+Shift+F13");
+    w.fields.window.op = ddalgak::model::WindowOp::Move;
+    assert!(
+        paths(&w).contains(&"steps[0].x"),
+        "a move needs a position or a size"
+    );
+    w.fields.window.width = "800".into();
+    w.fields.window.height = "600".into();
+    w.fields.window.app = "notepad.exe".into();
+    let step = w.step(None).unwrap();
+    assert_eq!(
+        step,
+        serde_json::json!({"type": "window", "op": "move", "app": {"exe": "notepad.exe"}, "width": 800, "height": 600})
+    );
+    assert_eq!(w.permissions(None), [Permission::WindowControl]);
+
+    let mut c = with(Effect::Clipboard, "Ctrl+Alt+Shift+F14");
+    c.fields.clip.op = ddalgak::model::ClipboardOp::Transform;
+    c.fields.clip.to = ddalgak::model::ClipTransform::Trim;
+    assert_eq!(
+        c.step(None).unwrap(),
+        serde_json::json!({"type": "clipboard", "op": "transform", "to": "trim"})
+    );
+    assert_eq!(c.permissions(None), [Permission::Clipboard]);
+}

@@ -43,9 +43,21 @@ pub enum Effect {
     Mode,
     Engine,
     Block,
+    /// Step 79.
+    Window,
+    Clipboard,
+    Notify,
 }
 
 impl Effect {
+    /// Step 79: the effects under "More" (with `Block`).
+    pub const MORE: [Effect; 4] = [
+        Effect::Window,
+        Effect::Clipboard,
+        Effect::Notify,
+        Effect::Block,
+    ];
+
     /// The eight tiles in display order; `Block` is under "More".
     pub const TILES: [Effect; 8] = [
         Effect::Remap,
@@ -70,6 +82,9 @@ impl Effect {
             Effect::Mode => "mode",
             Effect::Engine => "engine",
             Effect::Block => "block",
+            Effect::Window => "window",
+            Effect::Clipboard => "clipboard",
+            Effect::Notify => "notify",
         }
     }
 
@@ -85,6 +100,9 @@ impl Effect {
             Effect::Mode => "◧",
             Effect::Engine => "Ⅱ",
             Effect::Block => "⊘",
+            Effect::Window => "▣",
+            Effect::Clipboard => "⎘",
+            Effect::Notify => "✉",
         }
     }
 
@@ -100,7 +118,10 @@ impl Effect {
             Action::MouseMove(_) | Action::MouseScroll(_) | Action::MouseClick(_) => Effect::Mouse,
             Action::Mode(_) => Effect::Mode,
             Action::Engine(_) => Effect::Engine,
-            Action::Delay(_) | Action::Future { .. } => return None,
+            Action::Window(_) => Effect::Window,
+            Action::Clipboard(_) => Effect::Clipboard,
+            Action::Notify(_) => Effect::Notify,
+            Action::Delay(_) | Action::Tool(_) | Action::Future { .. } => return None,
         })
     }
 
@@ -143,6 +164,13 @@ pub struct TriggerFields {
     pub hold_ms: u32,
     pub pass_through: bool,
     pub abbreviation: String,
+    /// Step 79: *On a schedule* instead of keys.
+    pub scheduled: bool,
+    /// Every this many minutes (`None`: at a time).
+    pub every: Option<u32>,
+    /// `HH:MM` and the weekdays (Monday first) for *at a time*.
+    pub at: String,
+    pub days: [bool; 7],
 }
 
 impl Default for TriggerFields {
@@ -154,6 +182,10 @@ impl Default for TriggerFields {
             hold_ms: 500,
             pass_through: false,
             abbreviation: String::new(),
+            scheduled: false,
+            every: Some(60),
+            at: "09:00".into(),
+            days: [true; 7],
         }
     }
 }
@@ -217,6 +249,58 @@ impl Default for ProgramFields {
     }
 }
 
+/// Step 79: "Window".
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WindowFields {
+    pub op: ddalgak::model::WindowOp,
+    /// A program's file name or full path (empty: the active window).
+    pub app: String,
+    pub x: String,
+    pub y: String,
+    pub width: String,
+    pub height: String,
+    pub on: bool,
+}
+
+impl Default for WindowFields {
+    fn default() -> WindowFields {
+        WindowFields {
+            op: ddalgak::model::WindowOp::Maximize,
+            app: String::new(),
+            x: String::new(),
+            y: String::new(),
+            width: String::new(),
+            height: String::new(),
+            on: true,
+        }
+    }
+}
+
+/// Step 79: "Clipboard".
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ClipFields {
+    pub op: ddalgak::model::ClipboardOp,
+    pub text: String,
+    pub to: ddalgak::model::ClipTransform,
+}
+
+impl Default for ClipFields {
+    fn default() -> ClipFields {
+        ClipFields {
+            op: ddalgak::model::ClipboardOp::Set,
+            text: String::new(),
+            to: ddalgak::model::ClipTransform::Plain,
+        }
+    }
+}
+
+/// Step 79: "Notification".
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct NotifyFields {
+    pub title: String,
+    pub body: String,
+}
+
 /// "Switch mode".
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ModeFields {
@@ -253,6 +337,10 @@ pub struct Fields {
     pub mouse: MouseAction,
     pub mode: ModeFields,
     pub engine: EngineOp,
+    /// Step 79.
+    pub window: WindowFields,
+    pub clip: ClipFields,
+    pub notify: NotifyFields,
     /// Only in these modes (empty: every mode).
     pub modes: Vec<String>,
     /// Only in these apps (file names or full paths, one per line; Step 77).
@@ -295,6 +383,9 @@ impl Default for Fields {
             },
             mode: ModeFields::default(),
             engine: EngineOp::Pause,
+            window: WindowFields::default(),
+            clip: ClipFields::default(),
+            notify: NotifyFields::default(),
             modes: Vec::new(),
             apps: String::new(),
             except_apps: String::new(),
@@ -612,7 +703,15 @@ impl RuleForm {
             ..Fields::default()
         };
         let t = &rule.trigger;
-        if let Some(h) = &t.hotstring {
+        if let Some(s) = &t.schedule {
+            f.trigger.scheduled = true;
+            f.trigger.every = s.every_minutes;
+            f.trigger.at = s.at.clone().unwrap_or_else(|| "09:00".into());
+            if let Some(d) = &s.days {
+                let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+                f.trigger.days = names.map(|n| d.iter().any(|x| x == n));
+            }
+        } else if let Some(h) = &t.hotstring {
             f.trigger.hotstring = true;
             f.trigger.abbreviation = h.abbreviation.clone();
         } else {
@@ -693,7 +792,37 @@ impl RuleForm {
                     }
                     Action::Engine(e) => f.engine = e.op,
                     Action::Block(_) => {}
-                    Action::Delay(_) | Action::Future { .. } => {
+                    Action::Window(w) => {
+                        let n = |v: Option<i32>| v.map(|v| v.to_string()).unwrap_or_default();
+                        let u = |v: Option<u32>| v.map(|v| v.to_string()).unwrap_or_default();
+                        f.window = WindowFields {
+                            op: w.op,
+                            app: w
+                                .app
+                                .as_ref()
+                                .and_then(|m| m.exe.clone().or_else(|| m.path.clone()))
+                                .unwrap_or_default(),
+                            x: n(w.x),
+                            y: n(w.y),
+                            width: u(w.width),
+                            height: u(w.height),
+                            on: w.on != Some(false),
+                        };
+                    }
+                    Action::Clipboard(c) => {
+                        f.clip = ClipFields {
+                            op: c.op,
+                            text: c.text.clone().unwrap_or_default(),
+                            to: c.to.unwrap_or(ddalgak::model::ClipTransform::Plain),
+                        };
+                    }
+                    Action::Notify(n) => {
+                        f.notify = NotifyFields {
+                            title: n.title.clone(),
+                            body: n.body.clone().unwrap_or_default(),
+                        };
+                    }
+                    Action::Delay(_) | Action::Tool(_) | Action::Future { .. } => {
                         unsupported = Some(format!("its step `{}` has no form yet", step.kind()));
                     }
                 }
@@ -904,6 +1033,89 @@ impl RuleForm {
                 s
             }
             Effect::Engine => json!({ "type": "engine", "op": engine_op_str(f.engine) }),
+            Effect::Window => {
+                use ddalgak::model::WindowOp as W;
+                let w = &f.window;
+                let mut s = json!({ "type": "window", "op": w.op.as_str() });
+                let app = w.app.trim();
+                if !app.is_empty() {
+                    if !app_line_ok(app) {
+                        out.push(problem(
+                            "steps[0].app",
+                            "a program's file name like Code.exe, or its full path",
+                        ));
+                    } else if is_path_line(app) {
+                        s["app"] = json!({ "path": app });
+                    } else {
+                        s["app"] = json!({ "exe": app });
+                    }
+                } else if w.op == W::Activate {
+                    out.push(problem(
+                        "steps[0].app",
+                        "name the program to bring to the front",
+                    ));
+                }
+                if w.op == W::Move {
+                    let num = |t: &str, lo: i64, hi: i64| {
+                        t.trim()
+                            .parse::<i64>()
+                            .ok()
+                            .filter(|v| (lo..=hi).contains(v))
+                    };
+                    let (x, y) = (num(&w.x, -32768, 32767), num(&w.y, -32768, 32767));
+                    let (wd, ht) = (num(&w.width, 50, 32767), num(&w.height, 50, 32767));
+                    if let (Some(x), Some(y)) = (x, y) {
+                        s["x"] = json!(x);
+                        s["y"] = json!(y);
+                    }
+                    if let (Some(a), Some(b)) = (wd, ht) {
+                        s["width"] = json!(a);
+                        s["height"] = json!(b);
+                    }
+                    if s.get("x").is_none() && s.get("width").is_none() {
+                        out.push(problem(
+                            "steps[0].x",
+                            "a position (x and y) or a size (width and height, at least 50)",
+                        ));
+                    }
+                }
+                if w.op == W::Topmost {
+                    s["on"] = json!(w.on);
+                }
+                s
+            }
+            Effect::Clipboard => {
+                use ddalgak::model::ClipboardOp as C;
+                let c = &f.clip;
+                let mut s = json!({ "type": "clipboard", "op": c.op.as_str() });
+                match c.op {
+                    C::Set => {
+                        let n = c.text.chars().count();
+                        if !(1..=20_000).contains(&n) {
+                            out.push(problem("steps[0].text", "1–20000 characters"));
+                        }
+                        s["text"] = json!(c.text);
+                    }
+                    C::Transform => s["to"] = json!(c.to.as_str()),
+                    C::Clear => {}
+                }
+                s
+            }
+            Effect::Notify => {
+                let n = &f.notify;
+                let t = n.title.trim().chars().count();
+                if !(1..=63).contains(&t) {
+                    out.push(problem("steps[0].title", "a title of 1–63 characters"));
+                }
+                if n.body.chars().count() > 255 {
+                    out.push(problem("steps[0].body", "at most 255 characters"));
+                }
+                let mut s = json!({ "type": "notify", "title": n.title.trim() });
+                if !n.body.trim().is_empty() {
+                    s["body"] = json!(n.body.trim());
+                }
+                s
+            }
         };
         if out.is_empty() { Ok(step) } else { Err(out) }
     }
@@ -924,7 +1136,19 @@ impl RuleForm {
             out.push(problem("description", "at most 500 characters"));
         }
         let t = &f.trigger;
-        if t.hotstring {
+        if t.scheduled {
+            // Step 79: the schedule's own checks (the engine's, from the saved form).
+            let sched = match t.every {
+                Some(n) => serde_json::json!({ "every_minutes": n }),
+                None => serde_json::json!({ "at": t.at.trim() }),
+            };
+            if let Err(e) = ddalgak::actions::ScheduleSpec::compile(&sched) {
+                out.push(problem("trigger.schedule", e));
+            }
+            if t.every.is_none() && !t.days.iter().any(|d| *d) {
+                out.push(problem("trigger.schedule", "choose at least one day"));
+            }
+        } else if t.hotstring {
             let a = t.abbreviation.trim();
             let n = a.chars().count();
             if !(1..=40).contains(&n) || a.chars().any(char::is_whitespace) {
@@ -1026,7 +1250,26 @@ impl RuleForm {
         rule.description = Some(f.description.trim().to_string()).filter(|d| !d.is_empty());
         rule.enabled = f.enabled;
         let base_trigger = self.base.as_ref().map(|r| r.trigger.clone());
-        rule.trigger = if f.trigger.hotstring {
+        rule.trigger = if f.trigger.scheduled {
+            // Step 79: a schedule replaces the keys.
+            let tf = &f.trigger;
+            let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+            let days: Vec<String> = names
+                .iter()
+                .zip(tf.days)
+                .filter(|(_, on)| *on)
+                .map(|(n, _)| (*n).to_string())
+                .collect();
+            let mut t = Trigger::keys("");
+            t.keys = None;
+            t.schedule = Some(ddalgak::model::Schedule {
+                every_minutes: tf.every,
+                at: tf.every.is_none().then(|| tf.at.trim().to_string()),
+                days: (tf.every.is_none() && days.len() < 7).then_some(days),
+                extra: Map::new(),
+            });
+            t
+        } else if f.trigger.hotstring {
             let mut t = Trigger::hotstring(f.trigger.abbreviation.trim());
             if let Some(b) = &base_trigger {
                 if let Some(h) = &b.hotstring {
@@ -1140,6 +1383,33 @@ impl RuleForm {
                 )
             }
             Some(Effect::Engine) => engine_summary(f.engine).into(),
+            Some(Effect::Window) => {
+                let target = if f.window.app.trim().is_empty() {
+                    "the active window".to_string()
+                } else {
+                    ddalgak::launch::program_name(f.window.app.trim()).to_string()
+                };
+                format!(
+                    "{} {target}",
+                    match f.window.op.as_str() {
+                        "activate" => "Brings to the front:",
+                        "minimize" => "Minimizes",
+                        "maximize" => "Maximizes",
+                        "restore" => "Restores",
+                        "move" => "Moves",
+                        _ => "Keeps on top:",
+                    }
+                )
+            }
+            Some(Effect::Clipboard) => match f.clip.op.as_str() {
+                "set" => format!(
+                    "Puts {} characters on the clipboard",
+                    f.clip.text.chars().count()
+                ),
+                "clear" => "Empties the clipboard".into(),
+                _ => format!("Changes the clipboard text ({})", f.clip.to.as_str()),
+            },
+            Some(Effect::Notify) => "Shows a notification".into(),
         }
     }
 
@@ -1376,6 +1646,9 @@ impl RuleForm {
             Some(Effect::Engine) => sim
                 .lines
                 .push("Simulation: the engine's state is unchanged".into()),
+            Some(Effect::Window | Effect::Clipboard | Effect::Notify) => sim
+                .lines
+                .push("Simulation: no window, clipboard or notification was touched".into()),
             Some(Effect::SendKeys) => sim.lines.push(format!(
                 "Would press {} chord(s); nothing was sent",
                 step["keys"]

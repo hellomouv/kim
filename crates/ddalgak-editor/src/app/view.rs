@@ -1745,6 +1745,46 @@ fn keys_stage(
     } else {
         t.hotstring = false;
     }
+    // Step 79: a schedule instead of keys (only steps that type nothing).
+    ui.checkbox(&mut t.scheduled, lang.t("form.schedule"));
+    if t.scheduled {
+        t.hotstring = false;
+        ui.horizontal_wrapped(|ui| {
+            let mut every = t.every.is_some();
+            ui.radio_value(&mut every, true, lang.t("form.schedule_every"));
+            ui.radio_value(&mut every, false, lang.t("form.schedule_at"));
+            if every && t.every.is_none() {
+                t.every = Some(60);
+            } else if !every {
+                t.every = None;
+            }
+        });
+        match &mut t.every {
+            Some(n) => {
+                ui.add(egui::DragValue::new(n).range(1..=1440).suffix(" min"))
+                    .accessible_name(lang.t("form.schedule_every"));
+            }
+            None => {
+                ui.add(
+                    egui::TextEdit::singleline(&mut t.at)
+                        .hint_text("09:00")
+                        .desired_width(60.0),
+                )
+                .accessible_name(lang.t("form.schedule_at"));
+                ui.horizontal_wrapped(|ui| {
+                    for (i, d) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                        .iter()
+                        .enumerate()
+                    {
+                        ui.checkbox(&mut t.days[i], *d);
+                    }
+                });
+            }
+        }
+        ui.label(small(lang.t("form.schedule_note"), c.text_muted));
+        problems_for(ui, problems, &["trigger"]);
+        return;
+    }
     if t.hotstring {
         let lbl = ui.label(egui::RichText::new(lang.t("form.abbreviation")).strong());
         ui.add(
@@ -1827,17 +1867,19 @@ fn effect_stage(ui: &mut egui::Ui, lang: Lang, f: &mut RuleForm, profile: Option
                 }
             }
         });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(small(lang.t("form.more"), c.text_muted));
-        let title = lang.t("tile.block");
-        if ui
-            .selectable_label(f.fields.effect == Some(Effect::Block), title)
-            .accessible_name(title)
-            .clicked()
-        {
-            f.fields.effect = Some(Effect::Block);
-            f.refresh_title(profile);
-            f.stage = Stage::Details;
+        for e in Effect::MORE {
+            let title = lang.t(&format!("tile.{}", e.key()));
+            if ui
+                .selectable_label(f.fields.effect == Some(e), format!("{}  {title}", e.icon()))
+                .accessible_name(title)
+                .clicked()
+            {
+                f.fields.effect = Some(e);
+                f.refresh_title(profile);
+                f.stage = Stage::Details;
+            }
         }
     });
 }
@@ -2143,6 +2185,104 @@ fn details_stage(
                 ui.radio_value(&mut fl.engine, op, word);
             }
             ui.label(small(lang.t("field.engine_note"), c.text_muted));
+        }
+        // Step 79.
+        Effect::Window => {
+            use ddalgak::model::WindowOp as W;
+            ui.horizontal_wrapped(|ui| {
+                for (op, key) in [
+                    (W::Activate, "field.win.activate"),
+                    (W::Minimize, "field.win.minimize"),
+                    (W::Maximize, "field.win.maximize"),
+                    (W::Restore, "field.win.restore"),
+                    (W::Move, "field.win.move"),
+                    (W::Topmost, "field.win.topmost"),
+                ] {
+                    ui.radio_value(&mut fl.window.op, op, lang.t(key));
+                }
+            });
+            labeled(
+                ui,
+                lang.t("field.win.app"),
+                egui::TextEdit::singleline(&mut fl.window.app)
+                    .hint_text("Code.exe")
+                    .desired_width(240.0),
+            );
+            if fl.window.op == W::Move {
+                ui.horizontal_wrapped(|ui| {
+                    for (v, key) in [
+                        (&mut fl.window.x, "field.win.x"),
+                        (&mut fl.window.y, "field.win.y"),
+                        (&mut fl.window.width, "field.win.width"),
+                        (&mut fl.window.height, "field.win.height"),
+                    ] {
+                        labeled(
+                            ui,
+                            lang.t(key),
+                            egui::TextEdit::singleline(v).desired_width(60.0),
+                        );
+                    }
+                });
+            }
+            if fl.window.op == W::Topmost {
+                ui.checkbox(&mut fl.window.on, lang.t("field.win.on"));
+            }
+            ui.label(small(lang.t("field.win.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
+        }
+        Effect::Clipboard => {
+            use ddalgak::model::{ClipTransform as T, ClipboardOp as C};
+            ui.horizontal_wrapped(|ui| {
+                for (op, key) in [
+                    (C::Set, "field.clip.set"),
+                    (C::Clear, "field.clip.clear"),
+                    (C::Transform, "field.clip.transform"),
+                ] {
+                    ui.radio_value(&mut fl.clip.op, op, lang.t(key));
+                }
+            });
+            match fl.clip.op {
+                C::Set => {
+                    labeled(
+                        ui,
+                        lang.t("field.clip.text"),
+                        egui::TextEdit::multiline(&mut fl.clip.text)
+                            .desired_rows(2)
+                            .desired_width(f32::INFINITY),
+                    );
+                }
+                C::Transform => {
+                    ui.horizontal_wrapped(|ui| {
+                        for (t, key) in [
+                            (T::Plain, "field.clip.plain"),
+                            (T::Trim, "field.clip.trim"),
+                            (T::Upper, "field.clip.upper"),
+                            (T::Lower, "field.clip.lower"),
+                        ] {
+                            ui.radio_value(&mut fl.clip.to, t, lang.t(key));
+                        }
+                    });
+                }
+                C::Clear => {}
+            }
+            ui.label(small(lang.t("field.clip.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
+        }
+        Effect::Notify => {
+            labeled(
+                ui,
+                lang.t("field.notify.title"),
+                egui::TextEdit::singleline(&mut fl.notify.title).desired_width(240.0),
+            );
+            labeled(
+                ui,
+                lang.t("field.notify.body"),
+                egui::TextEdit::multiline(&mut fl.notify.body)
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            );
+            ui.label(small(lang.t("field.notify.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
         }
     }
     ui.add_space(4.0);

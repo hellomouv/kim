@@ -148,12 +148,12 @@ Where a page did not state something, the row says so instead of filling the gap
 | 4.14 | `Run` documents, shortcuts, CLSIDs and shell verbs | R | Executables and packaged apps only in v1 | not intended | — | — |
 | 4.15 | `Run` a URL in the default browser; `mailto:` links | R | `open_url` for `http` and `https` (the address normalized, no credentials); `mailto:` and every other scheme refused | partial | 70 | Step 70: fake-shell and CLI tests (DDALGAK_ENGINE §13); the real default browser manual |
 | 4.16 | `*RunAs`: run as administrator | R | Never elevates (`KIM-SEC-004`, `DDALGAK-SEC-007`) | not intended | — | — |
-| 4.17 | `RunWait` and exit codes | R | A separately consented command action | planned | 79 | — |
+| 4.17 | `RunWait` and exit codes | R | A separately consented command action (#102) | planned | #102 | — |
 | 4.18 | `Run` options `Max`, `Min`, `Hide` | R | `normal`, `maximized`, `minimized`; no hidden programs | partial | 70 | Step 70: tested through the launch path with a fake launcher; the real window states manual |
 | 4.19 | `A_Clipboard`, `ClipWait`, `ClipboardAll`, `OnClipboardChange` | CB | `type_text` paste with restore of every format (refused when one cannot be copied), kept out of clipboard history; clipboard actions in Step 79; no clipboard monitoring | partial | 69, 79 | Step 69: fake-clipboard tests; the real clipboard is a manual check (DDALGAK_ENGINE §12) |
-| 4.20 | `SetTimer`: periodic or one-shot timers | ST | Scheduled triggers with an idle budget | planned | 79 | — |
+| 4.20 | `SetTimer`: periodic or one-shot timers | ST | `trigger.schedule`: every N minutes or at a local time on chosen days, only while the engine runs; missed times skipped (no one-shot timers yet, #102) | partial | 79 | Step 79: `actions::tests::weekdays_and_schedules`, `e2e/tests/step79_ddalgak_actions.rs` (a 1-minute schedule fires in the running engine) |
 | 4.21 | `Sleep`, rounded up to the OS timer granularity (about 10 or 15.6 ms) | SP | `delay` (1–10000 ms, 60 s per run), same granularity | supported | 67 | — |
-| 4.22 | Message boxes (`MsgBox`), tooltips near the cursor, tray notifications (`TrayTip`, a toast on Windows 10 and later) | TT | `notify`: local notifications only, never modal from a hotkey | planned | 79 | — |
+| 4.22 | Message boxes (`MsgBox`), tooltips near the cursor, tray notifications (`TrayTip`, a toast on Windows 10 and later) | TT | `notify`: a balloon of Ddalgak's tray icon (no message boxes or cursor tooltips; toasts without a tray icon: #102) | partial | 79 | Step 79: `win::desktop::tests`, e2e step79 |
 | 4.23 | `InputHook`: collect what the user types | IH | Never: shaped like a keylogger. Hotstrings use a bounded buffer | not intended | — | — |
 | 4.24 | Key state queries and waits (`GetKeyState`, `KeyWait`) | KH | Hold triggers and the engine's own state tracking; no script queries | partial | 66 | — |
 | 4.25 | `BlockInput` | C | Ddalgak never blocks the user's input | not intended | — | — |
@@ -174,7 +174,7 @@ Where a page did not state something, the row says so instead of filling the gap
 
 | # | AutoHotkey v2 behavior | Src | Ddalgak | Status | Step | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 6.1 | Activate, minimize, maximize, restore, move, always-on-top (`WinActivate`, `WinMove`, …) | W | `window` steps under `window-control` | planned | 79 | — |
+| 6.1 | Activate, minimize, maximize, restore, move, always-on-top (`WinActivate`, `WinMove`, …) | W | `window` steps under `window-control` (activate, minimize, maximize, restore, move/resize, always on top); never elevated windows | supported | 79 | Step 79: `rules::tests::step79_…`, `worker::tests::window_clipboard_notify_and_tool_…`, e2e step79 |
 | 6.2 | `WinClose` | W | With `window` steps, confirmed like any destructive effect | planned | 79 | — |
 | 6.3 | `WinKill` | W | Ddalgak does not end other programs' processes | not intended | — | — |
 | 6.4 | Transparency, styles, regions (`WinSetTransparent`, `WinSetStyle`, …) | W | — | not intended | — | — |

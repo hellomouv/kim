@@ -382,9 +382,9 @@ fn rules_doc(on_start: &str) -> Value {
                   "trigger": { "keys": "F19" },
                   "steps": [ { "type": "remap", "to": "F20" } ],
                   "consent": { "input-injection": { "granted_at": "2026-11-04T09:00:00Z", "via": "gui" } } },
-                { "id": "delay-later", "title": "F18 minimizes (a later Step: window steps)", "enabled": true,
+                { "id": "delay-later", "title": "F18 speaks (a step type of a later version)", "enabled": true,
                   "trigger": { "keys": "F18" },
-                  "steps": [ { "type": "window", "op": "minimize" } ] }
+                  "steps": [ { "type": "speak", "text": "hello" } ] }
             ] } ]
     })
 }

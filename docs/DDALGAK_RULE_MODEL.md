@@ -577,6 +577,30 @@ thread, never in the hook callback. A run ends when its last step finishes, a st
 run total at most 60 s. A trigger of a rule that is still running is dropped with `busy` (one run
 per rule, like AutoHotkey's default of one thread per hotkey).
 
+### 5.14–5.17 Window, clipboard, notification and tool steps (Step 79)
+
+[ADR 0080](adr/0080-ddalgak-window-clipboard-notify-tool-schedule.md). They run as macro stages
+(Step 78), alone or with other steps.
+
+| Step | Inputs | Outcomes besides `ok` |
+| --- | --- | --- |
+| `window` | `op` (`activate`, `minimize`, `maximize`, `restore`, `move`, `topmost`), `app` (an `apps` matcher; without it the active window; `activate` needs it), `x`/`y` and/or `width`/`height` (50–32767) for `move`, `on` for `topmost` | `window_not_found`, `skipped_elevated_target`, `skipped_secure_desktop`, `focus_refused`, `window_failed` |
+| `clipboard` | `op` `set` (`text`, 1–20000 characters), `clear`, or `transform` (`to`: `plain`, `trim`, `upper`, `lower`) | `clipboard_busy`, `clipboard_no_text` |
+| `notify` | `title` (1–63), `body` (0–255): a balloon of Ddalgak's tray icon | `unsupported_platform` (no tray icon), `notify_failed` |
+| `tool` | `capability` (`pin.list`), `args` (an object): `kim tools invoke` of the installed Kim, hidden, at most 30 s, without consent flags | `tool_missing` (no Kim or provider; nothing is installed), `consent_missing`, `tool_incompatible`, `timeout`, `tool_failed` |
+
+Window steps never touch an elevated or locked-session window and never read titles; clipboard
+content is never logged, recorded or previewed (counts only).
+
+### 3.5 Schedules (Step 79)
+
+`trigger.schedule` replaces `keys`: `{"every_minutes": n}` (1–1440, from when the engine starts)
+or `{"at": "HH:MM", "days": ["mon", …]}` (local time; every day without `days`). Schedules fire
+only while the engine runs; a time missed by more than a minute (the computer slept) is recorded
+once as `skipped_missed` and never caught up; times passed while paused or off are skipped. A
+scheduled rule never injects input. `ddalgak rule add --schedule '<json>'` writes one; the
+editor's Keys step has *On a schedule instead of keys*.
+
 ### 5.13 Future step types
 
 These names are reserved for additive versions of the schema. A v1 reader keeps such a step but
@@ -584,10 +608,11 @@ the rule is inactive (`step_unsupported`, §9).
 
 | Type | Planned in | Permission |
 | --- | --- | --- |
-| `window` (activate, minimize, maximize, move, resize, always on top) | Step 79 | `window-control` |
-| `clipboard` (set, paste, transform) | Step 79 | `clipboard` |
-| `run_command` (an allowed local command with an explicit argument list) | Step 79 | its own consent per command |
-| `notify` (a local notification) | Step 79 | — |
+| `window` (activate, minimize, maximize, restore, move/resize, always on top) | implemented in Step 79, §5.14 | `window-control` |
+| `clipboard` (set, clear, transform; paste is `type_text` with `method: paste`) | implemented in Step 79, §5.15 | `clipboard` |
+| `notify` (a local notification) | implemented in Step 79, §5.16 | — |
+| `tool` (a capability of another Kim tool) | implemented in Step 79, §5.17 | the tool's own, through Kim |
+| `run_command` (an allowed local command with an explicit argument list) | #102 | its own consent per command |
 | `repeat` (nested), `if`, user variables | not in v1 (#101); a bounded repeat of the whole rule is `times` (Step 78) | — |
 | Recorded macros (steps produced by the recorder) | Step 78: ordinary steps (`type_text`, `send_keys`, `delay`) | as their steps |
 
@@ -620,7 +645,7 @@ discloses before installing Ddalgak.
 | `input-injection` | `remap`, `send_keys`, `type_text`, `mouse_move`, `mouse_scroll`, `mouse_click` | Per rule |
 | `launch-programs` | `open_program`, `open_url` | Per rule, with a fingerprint of the exact targets |
 | `clipboard` | `type_text` with `method: paste` | Per rule |
-| `window-control` | future `window` steps | Per rule |
+| `window-control` | `window` steps (Step 79) | Per rule |
 
 The schema rejects an **enabled** rule that lacks a consent it needs. A disabled rule may lack
 consent: that is the state of every imported rule until the user reviews it.

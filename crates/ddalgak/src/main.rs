@@ -158,7 +158,8 @@ RULES (rules.json; these commands work without the app):
                   --step '<json>'.
                   Rule options: --title, --description, --on press|release|hold, --hold-ms,
                   --repeat, --pass-through, --accept-injected, --mode <m>..., --priority,
-                  --on-error stop|continue, --times <1-100>. Every step type runs; several
+                  --on-error stop|continue, --times <1-100>, --schedule <json> instead of
+                  --trigger (Step 79: every_minutes 1-1440, or at HH:MM with optional days). Every step type runs; several
                   --step values of different types, a delay or --times above 1 make a macro
                   (Step 78): the steps run in order, one macro at a time, cancelled by pause,
                   stop, reload or the emergency chord, at most a minute (remaps, blocks,

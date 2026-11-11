@@ -1088,3 +1088,30 @@ both lines. Press it again and press the emergency chord during the wait: nothin
 and no key stays down. In the editor, record a few keys (the banner shows; another program does
 not receive them), review, remove one, save.
 
+## 20. Window, clipboard, notification and tool steps, and schedules (Step 79)
+
+[ADR 0080](adr/0080-ddalgak-window-clipboard-notify-tool-schedule.md). The loader compiles the new
+steps into macro stages (`Stage::Window`, `Clip`, `Notify`, `Tool`) and `trigger.schedule` into
+`Binding::schedule`. The worker carries them out through `Env::desktop` (`win::desktop::WinDesktop`:
+asynchronous window calls, never elevated or locked-session windows, the tray's balloons),
+`Env::clipboard` (`actions::clipboard`) and `Env::tools` (`win::desktop::KimTools`: `kim tools
+invoke`, hidden, 30 s). Scheduled rules have one wall-clock deadline each in the worker's wait;
+the host tells the worker whether the engine runs (`Msg::Engine`). The debug test host records
+window and notification steps in `<test launch root>\desktop.jsonl`.
+
+| Evidence | What it shows |
+| --- | --- |
+| `actions::tests` | clipboard set, clear, trim and upper case; weekdays; every-N and at-HH:MM schedules; refused schedules |
+| `rules::tests::step79_steps_and_schedules_load` | the new steps and a schedule load; consent is required; a scheduled typing rule and an `activate` without a program are refused |
+| `worker::tests::window_clipboard_notify_and_tool_stages_…` | the stages reach their interfaces; the clipboard is closed again; no content in the activity |
+| `win::desktop::tests` | a program with no window, no tray, a missing Kim — graceful outcomes; the test host's recording |
+| editor `form::tests::step79_…` | forms for schedules, windows and the clipboard build rules the engine accepts |
+| `e2e/tests/step79_ddalgak_actions.rs` | headless rules and previews; the running engine fires a 1-minute schedule and records a window step and `tool_missing` |
+
+**Manual check (maintainer, real desktop).** A rule `Ctrl+Alt+Shift+F21` → `window` `maximize`
+with `app: notepad.exe`: with Notepad open (not elevated) it maximizes; with an elevated Notepad
+nothing happens (`skipped_elevated_target`). A `clipboard` `transform` `upper`: copied text becomes
+upper case; the activity list shows only `ok`. A `notify` rule shows a balloon from the tray icon.
+A schedule `every_minutes: 1` shows its balloon each minute; after the computer sleeps for a few
+minutes, one `skipped_missed` and no burst of balloons.
+

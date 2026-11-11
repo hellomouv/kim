@@ -13,11 +13,11 @@
       "future_profile_field": {"kept": true},
       "rules": [
         {
-          "id": "maximize-window",
-          "title": "Ctrl+Shift+Up maximizes the active window",
+          "id": "speak-time",
+          "title": "Ctrl+Shift+Up reads the time aloud",
           "enabled": true,
           "trigger": {"keys": "Ctrl+Shift+Up"},
-          "steps": [{"type": "window", "op": "maximize", "target": "active"}]
+          "steps": [{"type": "speak", "text": "time", "voice": "default"}]
         },
         {
           "id": "known-rule",

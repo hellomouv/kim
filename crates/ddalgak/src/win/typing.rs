@@ -348,6 +348,20 @@ fn copy_global(h: HANDLE) -> Option<Vec<u8>> {
 }
 
 impl Clipboard for WinClipboard {
+    fn text(&mut self) -> Option<String> {
+        // SAFETY: the clipboard is open (the caller opened it); the handle stays the clipboard's.
+        let h = unsafe { GetClipboardData(crate::run::CF_UNICODETEXT) };
+        let bytes = (!h.is_null()).then(|| copy_global(h)).flatten()?;
+        let units: Vec<u16> = bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .take_while(|u| *u != 0)
+            .collect();
+        Some(String::from_utf16_lossy(&units))
+    }
+
     fn open(&mut self) -> bool {
         // SAFETY: the app's own window; fails while another program has the clipboard open.
         unsafe { OpenClipboard(self.owner as HWND) != 0 }

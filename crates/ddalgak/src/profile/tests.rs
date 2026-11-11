@@ -579,7 +579,7 @@ fn import_reports_a_missing_program_a_deleted_mode_and_conflicting_hotkeys() {
                 { "id": "own-shortcut", "title": "uses the editor shortcut", "enabled": false,
                   "trigger": { "keys": "Ctrl+Alt+Shift+F17" }, "steps": [ { "type": "engine", "op": "pause" } ] },
                 { "id": "future", "title": "a newer step type", "enabled": false,
-                  "trigger": { "keys": "Ctrl+Alt+Shift+F18" }, "steps": [ { "type": "window", "op": "maximize" } ] }
+                  "trigger": { "keys": "Ctrl+Alt+Shift+F18" }, "steps": [ { "type": "speak", "text": "hello" } ] }
             ] } ]
     });
     let d = doc();

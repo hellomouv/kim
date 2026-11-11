@@ -331,6 +331,85 @@ fn effect(
             json!({"ms": d.ms.clamp(1, 10_000)}),
             0,
         ),
+        // Step 79: window, clipboard, notification and tool steps (never their personal content).
+        Action::Window(w) => {
+            let target = w.app.as_ref().map_or_else(
+                || "active window".to_string(),
+                |m| {
+                    m.exe.clone().unwrap_or_else(|| {
+                        crate::launch::program_name(m.path.as_deref().unwrap_or("")).to_string()
+                    })
+                },
+            );
+            let mut p = json!({"op": w.op.as_str(), "target": target});
+            if w.op == crate::model::WindowOp::Move {
+                let mut to = serde_json::Map::new();
+                for (k, v) in [
+                    ("x", w.x.map(i64::from)),
+                    ("y", w.y.map(i64::from)),
+                    ("width", w.width.map(i64::from)),
+                    ("height", w.height.map(i64::from)),
+                ] {
+                    if let Some(v) = v {
+                        to.insert(k.into(), json!(v));
+                    }
+                }
+                p["to"] = Value::Object(to);
+            }
+            if w.op == crate::model::WindowOp::Topmost {
+                p["on"] = json!(w.on != Some(false));
+            }
+            let s = format!(
+                "{} {}.",
+                match w.op.as_str() {
+                    "activate" => "Brings to the front:",
+                    "minimize" => "Minimizes",
+                    "maximize" => "Maximizes",
+                    "restore" => "Restores",
+                    "move" => "Moves",
+                    _ => "Keeps on top:",
+                },
+                p["target"].as_str().unwrap_or("")
+            );
+            ("window".into(), s, p, 0)
+        }
+        Action::Clipboard(c) => {
+            let mut p = json!({"op": c.op.as_str()});
+            if let Some(t) = &c.text {
+                p["characters"] = json!(t.chars().count().max(1));
+            }
+            if let Some(t) = c.to {
+                p["to"] = json!(t.as_str());
+            }
+            let s = match c.op.as_str() {
+                "set" => format!("Puts {} characters on the clipboard.", p["characters"]),
+                "clear" => "Empties the clipboard.".into(),
+                _ => format!(
+                    "Changes the clipboard text ({}).",
+                    c.to.map_or("", |t| t.as_str())
+                ),
+            };
+            ("clipboard".into(), s, p, 0)
+        }
+        Action::Notify(n) => {
+            let p = json!({"title_characters": n.title.chars().count().max(1), "body_characters": n.body.as_ref().map_or(0, |b| b.chars().count())});
+            ("notify".into(), "Shows a notification.".into(), p, 0)
+        }
+        Action::Tool(t) => {
+            let names: Vec<String> = t
+                .args
+                .as_ref()
+                .and_then(Value::as_object)
+                .map(|o| o.keys().cloned().collect())
+                .unwrap_or_default();
+            let p = json!({"capability": t.capability, "arguments": names});
+            (
+                "tool".into(),
+                format!("Asks another Kim tool for {}.", t.capability),
+                p,
+                0,
+            )
+        }
         Action::Future { kind, .. } => (
             kind.clone(),
             "Not supported by this Ddalgak.".into(),

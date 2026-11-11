@@ -4,6 +4,7 @@
 
 pub mod client;
 pub mod context;
+pub mod desktop;
 pub mod hook;
 pub mod host;
 pub mod inject;

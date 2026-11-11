@@ -19,13 +19,13 @@
   "decision": {
     "outcome": "skipped",
     "code": "step_unsupported",
-    "rule": "maximize-window",
+    "rule": "speak-time",
     "key_reaches_app": true,
     "candidates": [
       {
-        "rule": "maximize-window",
+        "rule": "speak-time",
         "result": "inactive",
-        "reason": "Step type `window` comes from a newer Ddalgak; this version never runs it."
+        "reason": "Step type `speak` comes from a newer Ddalgak; this version never runs it."
       }
     ]
   },

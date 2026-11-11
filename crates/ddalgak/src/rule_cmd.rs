@@ -721,6 +721,19 @@ fn new_rule(a: &Args) -> Result<NewRule, CliError> {
         }
         base = v;
     }
+    // Step 79: `--schedule '<json>'` (or a schedule in `--rule`) instead of keys.
+    if let Some(sc) = a.get("--schedule") {
+        let v: Value = serde_json::from_str(sc)
+            .map_err(|e| CliError::usage(format!("--schedule is not JSON: {e}")))?;
+        if a.has("--trigger") || a.has("--hotstring") {
+            return Err(CliError::usage(
+                "use --schedule or --trigger/--hotstring, not both",
+            ));
+        }
+        base["trigger"] = json!({ "schedule": v });
+    }
+    let scheduled =
+        base["trigger"].get("schedule").is_some() && !a.has("--trigger") && !a.has("--hotstring");
     let hotstring = match (a.get("--trigger"), a.get("--hotstring")) {
         (Some(_), Some(_)) => {
             return Err(CliError::usage(
@@ -736,6 +749,7 @@ fn new_rule(a: &Args) -> Result<NewRule, CliError> {
     let keys = match (a.get("--trigger"), &hotstring) {
         (Some(k), _) => canonical(k)?,
         (None, Some(_)) => String::new(),
+        (None, None) if scheduled => String::new(),
         (None, None) => base["trigger"]["keys"]
             .as_str()
             .map(canonical)
@@ -760,6 +774,7 @@ fn new_rule(a: &Args) -> Result<NewRule, CliError> {
     v["id"] = json!("placeholder");
     let shown = match &hotstring {
         Some(h) => format!("\"{h}\" (hotstring)"),
+        None if scheduled => "On a schedule".to_string(),
         None => keys.clone(),
     };
     if v.get("title").is_none() {
@@ -781,6 +796,7 @@ fn new_rule(a: &Args) -> Result<NewRule, CliError> {
             }
             v["trigger"]["hotstring"]["abbreviation"] = json!(h);
         }
+        None if scheduled => {}
         None => v["trigger"]["keys"] = json!(keys),
     }
     v["steps"] = serde_json::to_value(&steps).unwrap_or_default();
@@ -976,6 +992,14 @@ fn edit_patch(a: &Args) -> Result<Value, CliError> {
     }
     if let Some(t) = times(a)? {
         patch.insert("times".into(), if t > 1 { json!(t) } else { Value::Null });
+    }
+    if let Some(sc) = a.get("--schedule") {
+        let v: Value = serde_json::from_str(sc)
+            .map_err(|e| CliError::usage(format!("--schedule is not JSON: {e}")))?;
+        patch.insert(
+            "trigger".into(),
+            json!({ "schedule": v, "keys": null, "hotstring": null }),
+        );
     }
     if let Some(s) = steps(a)? {
         patch.insert("steps".into(), serde_json::to_value(&s).unwrap_or_default());

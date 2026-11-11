@@ -79,6 +79,7 @@ fn binding(rule: &str, keys: &str, injected: Injected, op: EngineOp) -> Binding 
         hotstring: None,
         modes: 0,
         when: None,
+        schedule: None,
     }
 }
 
@@ -484,6 +485,7 @@ fn remap_binding(rule: &str, keys: &str, to: &str, tap: Option<&str>) -> Binding
         hotstring: None,
         modes: 0,
         when: None,
+        schedule: None,
     }
 }
 

@@ -45,6 +45,7 @@
 //! Linux is not supported before milestone D7 (`DDALGAK-NFR-009`); the portable modules compile
 //! and are tested everywhere.
 
+pub mod actions;
 pub mod context;
 pub mod core;
 pub mod edit;

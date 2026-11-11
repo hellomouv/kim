@@ -1,0 +1,352 @@
+//! Step 79 (ADR 0080): the Windows side of window and notification steps, and other Kim tools.
+//!
+//! **Windows.** The target is the foreground window, or the first visible, unowned top-level
+//! window of the named program (`EnumWindows`; processes compared by image path, never by
+//! title). A window of a process with a higher integrity level (UIPI would ignore Ddalgak anyway)
+//! or with the session locked is never touched. Minimize, maximize and restore use
+//! `ShowWindowAsync` and moves `SetWindowPos` with `SWP_ASYNCWINDOWPOS`, so a hung program can
+//! never stall the worker. Bringing a window to the front may be refused by Windows' foreground
+//! rules (`focus_refused`).
+//!
+//! **Notifications** are a balloon of Ddalgak's own tray icon (`NIF_INFO`); without a tray icon
+//! (the debug test host) they are `unsupported_platform` unless recorded for a test.
+//!
+//! **Tools** run `kim tools invoke <capability> --params <json> --json --no-input` of the
+//! installed Kim (`%LOCALAPPDATA%\Programs\mouv\kim\current.json`), hidden, at most 30 s, with no
+//! consent flags: a capability that needs the user's consent is refused by Kim. No Kim: nothing is
+//! started and the step is `tool_missing`; Kim is never installed by Ddalgak.
+
+use crate::actions::{Desktop, NotifySpec, ToolSpec, Tools, WindowSpec};
+use crate::context::AppMatch;
+use crate::model::WindowOp;
+use std::os::windows::process::CommandExt;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use windows_sys::Win32::Foundation::{HWND, LPARAM};
+use windows_sys::Win32::UI::Shell::{
+    NIF_INFO, NIIF_INFO, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowThreadProcessId,
+    HWND_NOTOPMOST, HWND_TOPMOST, IsIconic, IsWindowVisible, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
+    SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetForegroundWindow,
+    SetWindowPos, ShowWindowAsync,
+};
+
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The app's tray icon (window and icon ID), when there is one.
+#[derive(Debug, Default)]
+pub struct WinDesktop {
+    pub tray: Mutex<Option<(isize, u32)>>,
+}
+
+fn image(hwnd: HWND) -> Option<(u32, String)> {
+    let mut pid = 0u32;
+    // SAFETY: `pid` is writable.
+    unsafe { GetWindowThreadProcessId(hwnd, &raw mut pid) };
+    if pid == 0 || pid == std::process::id() {
+        return None;
+    }
+    super::process_image(pid)
+        .ok()
+        .map(|p| (pid, p.to_string_lossy().to_lowercase()))
+}
+
+fn matches(m: &AppMatch, path: &str) -> bool {
+    match m {
+        AppMatch::Exe(e) => path.rsplit('\\').next() == Some(e.as_str()),
+        AppMatch::Path(p) => path == p,
+    }
+}
+
+/// The first visible, unowned top-level window of the program.
+fn find(app: &AppMatch) -> Option<HWND> {
+    struct Search<'a> {
+        app: &'a AppMatch,
+        found: Option<HWND>,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, l: LPARAM) -> i32 {
+        // SAFETY: `l` is the `Search` passed below, alive for the whole enumeration.
+        let s = unsafe { &mut *(l as *mut Search<'_>) };
+        // SAFETY: plain queries of a window handle from the enumeration.
+        let visible = unsafe { IsWindowVisible(hwnd) != 0 && GetWindow(hwnd, GW_OWNER).is_null() };
+        if visible && image(hwnd).is_some_and(|(_, p)| matches(s.app, &p)) {
+            s.found = Some(hwnd);
+            return 0;
+        }
+        1
+    }
+    let mut s = Search { app, found: None };
+    // SAFETY: the callback only reads window properties; `s` outlives the call.
+    unsafe { EnumWindows(Some(each), (&raw mut s) as LPARAM) };
+    s.found
+}
+
+impl Desktop for WinDesktop {
+    fn window(&self, w: &WindowSpec) -> &'static str {
+        if !super::input_desktop_available() {
+            return "skipped_secure_desktop";
+        }
+        let hwnd = match &w.app {
+            // SAFETY: no preconditions.
+            None => unsafe { GetForegroundWindow() },
+            Some(app) => match find(app) {
+                Some(h) => h,
+                None => return "window_not_found",
+            },
+        };
+        if hwnd.is_null() || image(hwnd).is_none() {
+            return "window_not_found";
+        }
+        let own = super::own_integrity().unwrap_or(0x2000);
+        if super::context::is_elevated_window(hwnd, own) {
+            return "skipped_elevated_target";
+        }
+        // SAFETY: asynchronous window calls on a window of another process; none blocks.
+        let ok = unsafe {
+            match w.op {
+                // The return value is the previous visibility, not success.
+                WindowOp::Minimize => {
+                    ShowWindowAsync(hwnd, SW_MINIMIZE);
+                    true
+                }
+                WindowOp::Maximize => {
+                    ShowWindowAsync(hwnd, SW_MAXIMIZE);
+                    true
+                }
+                WindowOp::Restore => {
+                    ShowWindowAsync(hwnd, SW_RESTORE);
+                    true
+                }
+                WindowOp::Activate => {
+                    if IsIconic(hwnd) != 0 {
+                        ShowWindowAsync(hwnd, SW_RESTORE);
+                    }
+                    if SetForegroundWindow(hwnd) == 0 {
+                        return "focus_refused";
+                    }
+                    true
+                }
+                WindowOp::Move => {
+                    let (x, y) = w.pos.unwrap_or((0, 0));
+                    let (cx, cy) = w.size.map_or((0, 0), |(a, b)| {
+                        (
+                            i32::try_from(a).unwrap_or(50),
+                            i32::try_from(b).unwrap_or(50),
+                        )
+                    });
+                    let mut flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
+                    if w.pos.is_none() {
+                        flags |= SWP_NOMOVE;
+                    }
+                    if w.size.is_none() {
+                        flags |= SWP_NOSIZE;
+                    }
+                    SetWindowPos(hwnd, std::ptr::null_mut(), x, y, cx, cy, flags) != 0
+                }
+                WindowOp::Topmost => {
+                    let after = if w.on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+                    SetWindowPos(
+                        hwnd,
+                        after,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+                    ) != 0
+                }
+            }
+        };
+        if ok { "ok" } else { "window_failed" }
+    }
+
+    fn notify(&self, n: &NotifySpec) -> &'static str {
+        let Some((hwnd, id)) = self.tray.lock().ok().and_then(|g| *g) else {
+            return "unsupported_platform";
+        };
+        let mut d = NOTIFYICONDATAW {
+            cbSize: u32::try_from(size_of::<NOTIFYICONDATAW>()).unwrap_or(0),
+            hWnd: hwnd as HWND,
+            uID: id,
+            uFlags: NIF_INFO,
+            dwInfoFlags: NIIF_INFO,
+            ..Default::default()
+        };
+        let put = |dst: &mut [u16], t: &str| {
+            let w: Vec<u16> = t.encode_utf16().take(dst.len() - 1).collect();
+            dst[..w.len()].copy_from_slice(&w);
+            dst[w.len()] = 0;
+        };
+        put(&mut d.szInfoTitle, &n.title);
+        put(&mut d.szInfo, if n.body.is_empty() { " " } else { &n.body });
+        // SAFETY: `d` is a fully initialized NOTIFYICONDATAW for the app's own icon.
+        if unsafe { Shell_NotifyIconW(NIM_MODIFY, &raw const d) } != 0 {
+            "ok"
+        } else {
+            "notify_failed"
+        }
+    }
+}
+
+/// The debug test host: window and notification steps are written to `<root>\desktop.jsonl`
+/// (the operation and target only) and never touch a real window or the tray.
+#[derive(Debug)]
+pub struct RecordingDesktop {
+    pub file: Option<PathBuf>,
+}
+
+impl RecordingDesktop {
+    fn write(&self, line: &serde_json::Value) -> &'static str {
+        let Some(f) = &self.file else {
+            return "unsupported_platform";
+        };
+        use std::io::Write;
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(f)
+        {
+            Ok(mut h) => {
+                let _ = writeln!(h, "{line}");
+                "ok"
+            }
+            Err(_) => "window_failed",
+        }
+    }
+}
+
+impl Desktop for RecordingDesktop {
+    fn window(&self, w: &WindowSpec) -> &'static str {
+        let app = w.app.as_ref().map(|a| match a {
+            AppMatch::Exe(e) | AppMatch::Path(e) => e.clone(),
+        });
+        self.write(&serde_json::json!({ "window": w.op.as_str(), "app": app, "pos": w.pos, "size": w.size }))
+    }
+    fn notify(&self, n: &NotifySpec) -> &'static str {
+        self.write(&serde_json::json!({ "notify": n.title.chars().count(), "body": n.body.chars().count() }))
+    }
+}
+
+/// `kim tools invoke` of the installed Kim.
+#[derive(Debug, Default)]
+pub struct KimTools;
+
+/// The installed `kim.exe` (`KIM_EXE` overrides it for tests).
+pub fn kim_exe() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("KIM_EXE").map(PathBuf::from) {
+        return p.is_file().then_some(p);
+    }
+    let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
+        .join("Programs")
+        .join("mouv")
+        .join("kim");
+    let rec: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("current.json")).ok()?).ok()?;
+    let exe = dir.join(rec["entrypoint"].as_str()?.replace('/', "\\"));
+    exe.is_file().then_some(exe)
+}
+
+impl Tools for KimTools {
+    fn invoke(&self, t: &ToolSpec) -> &'static str {
+        let Some(kim) = kim_exe() else {
+            return "tool_missing";
+        };
+        let child = std::process::Command::new(kim)
+            .args([
+                "tools",
+                "invoke",
+                &t.capability,
+                "--params",
+                &t.args.to_string(),
+                "--json",
+                "--no-input",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        let Ok(mut child) = child else {
+            return "tool_missing";
+        };
+        let until = Instant::now() + Duration::from_secs(30);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break Some(s),
+                Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(50)),
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+            }
+        };
+        let Some(status) = status else {
+            return "timeout";
+        };
+        let mut out = String::new();
+        if let Some(o) = child.stdout.take() {
+            use std::io::Read;
+            let _ = o.take(1 << 20).read_to_string(&mut out);
+        }
+        let code = serde_json::from_str::<serde_json::Value>(&out)
+            .ok()
+            .and_then(|v| v["error"]["code"].as_str().map(String::from));
+        match (status.success(), code.as_deref()) {
+            (true, _) => "ok",
+            (_, Some("capability_missing" | "not_installed")) => "tool_missing",
+            (_, Some("tool_incompatible")) => "tool_incompatible",
+            (_, Some("confirmation_required")) => "consent_missing",
+            (_, Some("timeout")) => "timeout",
+            _ => "tool_failed",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// No real window is touched: a program with no window is `window_not_found`, a balloon
+    /// without a tray icon is refused, the test host records, a missing Kim is `tool_missing`.
+    #[test]
+    fn nothing_real_is_touched_and_absence_fails_gracefully() {
+        let d = WinDesktop::default();
+        let w = WindowSpec {
+            op: WindowOp::Minimize,
+            app: Some(AppMatch::Exe("no-such-program-kim-e2e.exe".into())),
+            pos: None,
+            size: None,
+            on: true,
+        };
+        if super::super::input_desktop_available() {
+            assert_eq!(d.window(&w), "window_not_found");
+        }
+        let n = NotifySpec {
+            title: "t".into(),
+            body: String::new(),
+        };
+        assert_eq!(d.notify(&n), "unsupported_platform");
+        let dir = std::env::temp_dir().join(format!("ddalgak-desktop-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let r = RecordingDesktop {
+            file: Some(dir.join("desktop.jsonl")),
+        };
+        assert_eq!((r.window(&w), r.notify(&n)), ("ok", "ok"));
+        let lines = std::fs::read_to_string(dir.join("desktop.jsonl")).unwrap();
+        assert_eq!(lines.lines().count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: no other thread of this test reads or writes the environment meanwhile.
+        unsafe { std::env::set_var("KIM_EXE", dir.join("missing-kim.exe")) };
+        let t = ToolSpec {
+            capability: "pin.list".into(),
+            args: serde_json::json!({}),
+        };
+        assert_eq!(KimTools.invoke(&t), "tool_missing");
+        // SAFETY: as above.
+        unsafe { std::env::remove_var("KIM_EXE") };
+    }
+}

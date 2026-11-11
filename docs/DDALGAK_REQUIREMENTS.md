@@ -141,11 +141,11 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | --- | --- | --- | --- | --- |
 | DDALGAK-FR-070 | Hotstrings: typed abbreviations as triggers, with word boundaries, case options and replacement, never in password fields and without keeping typing history. | P1 | D3 | T, M |
 | DDALGAK-FR-071 | Mouse buttons as triggers (needs a low-level mouse hook, disclosed in the catalog before it ships). Step 68: the middle and X buttons, through a mouse hook that exists only while such a rule is active; the primary and secondary buttons are never triggers (ADR 0031). | P1 | D3 | T, M |
-| DDALGAK-FR-072 | Window actions (activate, minimize, maximize, move, resize) under the `window-control` permission. | P2 | D5 | T, M |
-| DDALGAK-FR-073 | Clipboard actions (set, paste, transform) under the `clipboard` permission, never logging contents. | P2 | D5 | T, M |
+| DDALGAK-FR-072 | Window actions (activate, minimize, maximize, move, resize) under the `window-control` permission. Step 79: implemented (ADR 0080; never elevated or locked-session windows). | P2 | D5 | T, M |
+| DDALGAK-FR-073 | Clipboard actions (set, paste, transform) under the `clipboard` permission, never logging contents. Step 79: implemented (set, clear, transform; paste is `type_text` paste). | P2 | D5 | T, M |
 | DDALGAK-FR-074 | Macro recorder: explicit start and stop with a visible banner, password fields and secure contexts excluded, every recorded event reviewable and removable before saving. Step 78: implemented in the editor, recording only keys typed into its own window (ADR 0079); mouse recording: #101. | P2 | D5 | T, M |
 | DDALGAK-FR-075 | Richer macro control: bounded repeat, conditions and variables, with timeouts and cancellation. | P2 | D5 | T |
-| DDALGAK-FR-076 | Scheduled and time-based triggers in a running app, with an idle budget and no hidden timers. | P2 | D5 | T, M |
+| DDALGAK-FR-076 | Scheduled and time-based triggers in a running app, with an idle budget and no hidden timers. Step 79: implemented (`trigger.schedule`; one deadline per scheduled rule, none without; missed times skipped). | P2 | D5 | T, M |
 
 ## 3. Non-functional requirements
 

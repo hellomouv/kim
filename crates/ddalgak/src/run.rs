@@ -136,6 +136,11 @@ pub trait Clipboard: Send {
     fn restore(&mut self, s: &Snapshot) -> bool;
     /// `GetClipboardSequenceNumber`: changes with every change of the clipboard.
     fn sequence(&mut self) -> u32;
+    /// Step 79: the clipboard's text while it is open (`None`: no text), for a `transform`. Never
+    /// logged or recorded.
+    fn text(&mut self) -> Option<String> {
+        None
+    }
 }
 
 /// A clipboard that is always busy: the debug test host never touches the real clipboard.
@@ -236,6 +241,15 @@ impl Clipboard for FakeClipboard {
             })
         })
     }
+    fn text(&mut self) -> Option<String> {
+        let s = self.0.lock().ok()?;
+        assert!(s.open, "the clipboard is read only while open");
+        s.formats.iter().find_map(|(f, d)| match (f, d) {
+            (&CF_UNICODETEXT, ClipData::Bytes(b)) => String::from_utf8(b.clone()).ok(),
+            _ => None,
+        })
+    }
+
     fn set_text(&mut self, text: &str) -> bool {
         self.with(|s| {
             assert!(s.open);
@@ -301,6 +315,9 @@ pub struct Env {
     pub launcher: std::sync::Arc<dyn crate::launch::Launcher>,
     /// The monitors, the pointer position and who would receive pointer input (Step 71).
     pub screen: Box<dyn crate::mouse::Screen>,
+    /// Step 79: windows and notifications, and other Kim tools.
+    pub desktop: std::sync::Arc<dyn crate::actions::Desktop>,
+    pub tools: std::sync::Arc<dyn crate::actions::Tools>,
 }
 
 impl std::fmt::Debug for Env {
@@ -321,6 +338,8 @@ impl Env {
             clock: || LocalTime::utc(crate::time::now_secs()),
             launcher: std::sync::Arc::new(crate::launch::NoLauncher),
             screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
+            desktop: std::sync::Arc::new(crate::actions::NoDesktop),
+            tools: std::sync::Arc::new(crate::actions::NoTools),
         }
     }
 }
@@ -838,6 +857,8 @@ mod tests {
                     clock: now,
                     launcher: std::sync::Arc::new(crate::launch::NoLauncher),
                     screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
+                    desktop: std::sync::Arc::new(crate::actions::NoDesktop),
+                    tools: std::sync::Arc::new(crate::actions::NoTools),
                 },
                 probe,
                 clip,

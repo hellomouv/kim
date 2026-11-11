@@ -159,6 +159,10 @@ pub enum Msg {
         signal: Signal,
     },
     Rules(Rules),
+    /// Step 79: the engine runs (`true`) or is paused or off: schedules fire only while it runs.
+    Engine {
+        running: bool,
+    },
     /// Cancel timers (pause, stop, profile switch).
     Cancel,
     Stop,
@@ -797,6 +801,38 @@ impl Ctx<'_> {
                     let rule = m.rule.clone();
                     (self.control)(Control::Engine { op, rule });
                 }
+                // Step 79 (ADR 0080): windows, the clipboard and notifications at once; a tool
+                // on its own thread like a launch (another program answers, up to 30 s).
+                Stage::Window(w) => {
+                    let code = self.env.desktop.window(&w);
+                    self.stage_done(code);
+                }
+                Stage::Notify(n) => {
+                    let code = self.env.desktop.notify(&n);
+                    self.stage_done(code);
+                }
+                Stage::Clip(c) => {
+                    let code = crate::actions::clipboard(&mut *self.env.clipboard, &c);
+                    self.stage_done(code);
+                }
+                Stage::Tool(t) => {
+                    let slot = Arc::new(Mutex::new(None));
+                    m.launch = Some(Arc::clone(&slot));
+                    m.due = now;
+                    let tools = Arc::clone(&self.env.tools);
+                    let spawned = std::thread::Builder::new()
+                        .name("ddalgak-tool".into())
+                        .spawn(move || {
+                            let code = tools.invoke(&t);
+                            if let Ok(mut g) = slot.lock() {
+                                *g = Some(code);
+                            }
+                        });
+                    if spawned.is_err() {
+                        m.launch = None;
+                        self.stage_done("tool_failed");
+                    }
+                }
             }
         }
     }
@@ -934,9 +970,43 @@ pub fn execute_with(inj: &mut Injector<impl Backend>, op: RemapOp, pre: &[OutEve
 }
 
 #[allow(clippy::too_many_lines)]
+/// Step 79: a scheduled rule and when it fires next (wall clock: it keeps counting while the
+/// computer sleeps, so a missed time is recognized).
+struct Due {
+    generation: u32,
+    binding: u16,
+    at: std::time::SystemTime,
+}
+
+/// The schedules of these rules, from now.
+fn schedules(r: &Rules, local: &crate::time::LocalTime) -> Vec<Due> {
+    let now = std::time::SystemTime::now();
+    r.bindings
+        .iter()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            let s = b.schedule.as_ref()?;
+            Some(Due {
+                generation: r.generation,
+                binding: u16::try_from(i).ok()?,
+                at: s.next(now, local),
+            })
+        })
+        .collect()
+}
+
+/// The monotonic time of a wall-clock time (now when it is past).
+fn instant_of(at: std::time::SystemTime) -> Instant {
+    Instant::now()
+        + at.duration_since(std::time::SystemTime::now())
+            .unwrap_or_default()
+}
+
 fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
     let mut rules: Option<Rules> = None;
     let mut holds: Vec<Hold> = Vec::new();
+    let mut due: Vec<Due> = Vec::new();
+    let mut running = true;
     let activity = ctx.activity;
     loop {
         let next = holds
@@ -945,6 +1015,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             .chain(ctx.active.as_ref().map(|a| a.due))
             .chain(ctx.macro_due())
             .chain(ctx.motion_due())
+            .chain(due.iter().map(|d| instant_of(d.at)))
             .min();
         let msg = match next {
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -959,6 +1030,34 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                 break;
             }
             Err(RecvTimeoutError::Timeout) => {
+                // Step 79: schedules that are due fire while the engine runs; a time missed by
+                // more than a minute (the computer slept) or while paused or off is skipped.
+                let wall = std::time::SystemTime::now();
+                let local = (ctx.env.clock)();
+                for d in &mut due {
+                    if d.at > wall {
+                        continue;
+                    }
+                    let late = wall.duration_since(d.at).unwrap_or_default();
+                    let spec = current(rules.as_ref(), d.generation, d.binding)
+                        .and_then(|(_, b)| b.schedule.clone());
+                    if let Some(s) = &spec {
+                        d.at = s.next(wall, &local);
+                    }
+                    if late > crate::actions::MISSED {
+                        record(
+                            rules.as_ref(),
+                            d.generation,
+                            d.binding,
+                            "skipped_missed",
+                            activity,
+                        );
+                    } else if running
+                        && let Some((r, b)) = current(rules.as_ref(), d.generation, d.binding)
+                    {
+                        ctx.start(r, b, None);
+                    }
+                }
                 let now = Instant::now();
                 let due: Vec<Hold> = {
                     let (due, keep): (Vec<Hold>, Vec<Hold>) =
@@ -974,8 +1073,18 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                     }
                 }
             }
+            Ok(Msg::Engine { running: on }) => {
+                if on && !running {
+                    // Counting starts again from now: nothing missed is caught up.
+                    if let Some(r) = rules.as_ref() {
+                        due = schedules(r, &(ctx.env.clock)());
+                    }
+                }
+                running = on;
+            }
             Ok(Msg::Rules(r)) => {
                 holds.clear();
+                due = schedules(&r, &(ctx.env.clock)());
                 // Requests for the old table are ignored by the hook thread: no answer comes.
                 ctx.mode_pending.clear();
                 ctx.cancel();
@@ -1221,6 +1330,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         };
         Rules {
             generation,
@@ -1615,6 +1725,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         };
         Rules {
             generation,
@@ -1842,6 +1953,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         };
         Rules {
             generation,
@@ -2024,6 +2136,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         }
     }
 
@@ -2563,6 +2676,7 @@ mod tests {
                 hotstring: None,
                 modes: 0,
                 when: None,
+                schedule: None,
             }]),
             profile: "default".into(),
             mode: "base".into(),
@@ -2777,5 +2891,63 @@ mod tests {
         );
         std::thread::sleep(Duration::from_millis(150));
         assert_eq!(outcomes(&w).len(), 1, "{:?}", outcomes(&w));
+    }
+
+    // ---- Step 79: window, clipboard, notification and tool stages (ADR 0080), all fakes.
+
+    #[test]
+    fn window_clipboard_notify_and_tool_stages_run_through_their_interfaces() {
+        use crate::actions::{ClipSpec, FakeDesktop, NotifySpec, WindowSpec};
+        let desk = Arc::new(FakeDesktop::default());
+        let clip = run::FakeClipboard::with_text("  draft  ");
+        let w = Worker::start(
+            Arc::new(Stats::default()),
+            Box::new(|_| {}),
+            Arc::new(Mutex::new(Activity::default())),
+            Box::new(Recorder::default()),
+            Env {
+                desktop: Arc::clone(&desk) as Arc<dyn crate::actions::Desktop>,
+                clipboard: Box::new(clip.clone()),
+                ..Env::inert()
+            },
+        );
+        let q = w.queue();
+        let win = WindowSpec {
+            op: crate::model::WindowOp::Maximize,
+            app: None,
+            pos: None,
+            size: None,
+            on: true,
+        };
+        q.send(Msg::Rules(macro_rules(
+            vec![
+                Stage::Window(Arc::new(win.clone())),
+                Stage::Clip(Arc::new(ClipSpec::Transform(
+                    crate::model::ClipTransform::Trim,
+                ))),
+                Stage::Notify(Arc::new(NotifySpec {
+                    title: "Done".into(),
+                    body: String::new(),
+                })),
+                Stage::Tool(Arc::new(crate::actions::ToolSpec {
+                    capability: "pin.list".into(),
+                    args: serde_json::json!({}),
+                })),
+            ],
+            true,
+        )));
+        q.signal(1, fire(0));
+        // No Kim in tests: the tool stage fails gracefully and is the macro's outcome.
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "tool_missing".to_string())]
+        );
+        assert_eq!(*desk.windows.lock().unwrap(), [win]);
+        assert_eq!(desk.notes.lock().unwrap().len(), 1);
+        let st = clip.state();
+        assert!(!st.open, "the clipboard is closed again");
+        assert_eq!(st.formats[0].1, run::ClipData::Bytes(b"draft".to_vec()));
+        let j = w.activity.lock().unwrap().to_json(10).to_string();
+        assert!(!j.contains("draft") && !j.contains("Done"), "{j}");
     }
 }

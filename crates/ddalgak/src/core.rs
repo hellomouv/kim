@@ -1718,6 +1718,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         }
     }
 
@@ -2319,6 +2320,7 @@ mod tests {
             hotstring: None,
             modes: 0,
             when: None,
+            schedule: None,
         }
     }
 
@@ -3175,6 +3177,7 @@ mod tests {
             hotstring: Some(Arc::new(spec)),
             modes: 0,
             when: None,
+            schedule: None,
         }
     }
 

@@ -306,6 +306,10 @@ impl Host {
             State::Running => STATE_RUNNING,
             State::Paused => STATE_PAUSED,
         });
+        // Step 79: schedules fire only while the engine runs.
+        self.worker.queue().send(Msg::Engine {
+            running: change.to == State::Running,
+        });
         if change.releases_keys() {
             // The worker owns the output ledger: it releases every held key and button.
             self.worker.queue().send(Msg::Cancel);
@@ -1287,6 +1291,8 @@ pub fn run(opts: Options) -> Result<(), RunError> {
     let hwnd_bits = hwnd as isize;
     let control_tx = Mutex::new(control_tx);
     let activity = Arc::new(Mutex::new(Activity::default()));
+    // Step 79: the tray's balloons need the icon, set below once it exists.
+    let desktop = Arc::new(super::desktop::WinDesktop::default());
     let worker = Worker::start(
         Arc::clone(&stats),
         Box::new(move |c| {
@@ -1317,6 +1323,15 @@ pub fn run(opts: Options) -> Result<(), RunError> {
                     Arc::new(super::launch::WinLauncher),
                     opts.test_launch_root.clone(),
                 )),
+                // Step 79: window and notification steps are recorded in the test folder, never
+                // carried out; tools are the installed Kim's (none in a test profile).
+                desktop: Arc::new(super::desktop::RecordingDesktop {
+                    file: opts
+                        .test_launch_root
+                        .as_ref()
+                        .map(|r| r.join("desktop.jsonl")),
+                }),
+                tools: Arc::new(super::desktop::KimTools),
                 ..crate::run::Env::inert()
             }
         } else {
@@ -1327,6 +1342,9 @@ pub fn run(opts: Options) -> Result<(), RunError> {
                 launcher: Arc::new(super::launch::WinLauncher),
                 // Mouse actions (Step 71) read the monitors and the pointer when they run.
                 screen: Box::new(super::mouse::WinScreen::new(Arc::clone(&shared))),
+                // Step 79: windows and the tray's balloons; other Kim tools.
+                desktop: Arc::clone(&desktop) as Arc<dyn crate::actions::Desktop>,
+                tools: Arc::new(super::desktop::KimTools),
             }
         },
     );
@@ -1338,7 +1356,11 @@ pub fn run(opts: Options) -> Result<(), RunError> {
             floating: loaded.floating_indicator,
             ..indicator::Facts::default()
         });
-        Some(Tray::new(hwnd, WM_TRAY, first).map_err(|e| RunError::Io(e.to_string()))?)
+        let t = Tray::new(hwnd, WM_TRAY, first).map_err(|e| RunError::Io(e.to_string()))?;
+        if let Ok(mut g) = desktop.tray.lock() {
+            *g = Some((hwnd as isize, super::tray::ID));
+        }
+        Some(t)
     } else {
         None
     };

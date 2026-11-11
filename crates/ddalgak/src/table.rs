@@ -124,6 +124,11 @@ pub enum Stage {
     /// A mode step: the hook thread runs it (the mode state stays in one place).
     Mode(crate::modes::ModeAction),
     Engine(EngineOp),
+    /// Step 79 (ADR 0080).
+    Window(Arc<crate::actions::WindowSpec>),
+    Clip(Arc<crate::actions::ClipSpec>),
+    Notify(Arc<crate::actions::NotifySpec>),
+    Tool(Arc<crate::actions::ToolSpec>),
 }
 
 impl Stage {
@@ -196,6 +201,8 @@ pub struct Binding {
     pub modes: u32,
     /// Step 77: the rule's `when`, evaluated when its trigger matches (`None`: always).
     pub when: Option<Arc<crate::context::Cond>>,
+    /// Step 79: fired by the clock (the trigger is then [`Trigger::none`]; the worker times it).
+    pub schedule: Option<Arc<crate::actions::ScheduleSpec>>,
 }
 
 impl Binding {

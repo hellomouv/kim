@@ -272,7 +272,8 @@ pub struct Tray {
     added: bool,
 }
 
-const ID: u32 = 1;
+/// The tray icon's ID (Step 79: notifications are its balloons).
+pub const ID: u32 = 1;
 
 impl Tray {
     /// Adds the icon. `callback` is the window message the shell sends for mouse events.

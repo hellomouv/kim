@@ -301,6 +301,7 @@ impl Rule {
             Permission::InputInjection => c.input_injection.as_ref(),
             Permission::LaunchPrograms => c.launch_programs.as_ref(),
             Permission::Clipboard => c.clipboard.as_ref(),
+            Permission::WindowControl => c.window_control.as_ref(),
         }
     }
 
@@ -311,10 +312,12 @@ impl Rule {
             Permission::InputInjection => c.input_injection = g,
             Permission::LaunchPrograms => c.launch_programs = g,
             Permission::Clipboard => c.clipboard = g,
+            Permission::WindowControl => c.window_control = g,
         }
         if c.input_injection.is_none()
             && c.launch_programs.is_none()
             && c.clipboard.is_none()
+            && c.window_control.is_none()
             && c.extra.is_empty()
         {
             self.consent = None;
@@ -335,6 +338,9 @@ pub struct Trigger {
     /// A typed abbreviation (§3.4, Step 69); absent for a keys trigger.
     #[serde(default, skip_serializing_if = "none")]
     pub hotstring: Option<Hotstring>,
+    /// Step 79: fired by the clock while the engine runs (no keys).
+    #[serde(default, skip_serializing_if = "none")]
+    pub schedule: Option<Schedule>,
     #[serde(default, skip_serializing_if = "none")]
     pub on: Option<TriggerOn>,
     #[serde(default, skip_serializing_if = "none")]
@@ -354,6 +360,7 @@ impl Trigger {
         Trigger {
             keys: Some(keys.into()),
             hotstring: None,
+            schedule: None,
             on: None,
             hold_ms: None,
             repeat: None,
@@ -367,6 +374,7 @@ impl Trigger {
     pub fn hotstring(abbreviation: impl Into<String>) -> Trigger {
         Trigger {
             hotstring: Some(Hotstring::new(abbreviation)),
+            schedule: None,
             keys: None,
             ..Trigger::keys("")
         }
@@ -530,13 +538,16 @@ pub enum Permission {
     InputInjection,
     LaunchPrograms,
     Clipboard,
+    /// Step 79: `window` steps.
+    WindowControl,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 3] = [
+    pub const ALL: [Permission; 4] = [
         Permission::InputInjection,
         Permission::LaunchPrograms,
         Permission::Clipboard,
+        Permission::WindowControl,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -544,6 +555,7 @@ impl Permission {
             Permission::InputInjection => "input-injection",
             Permission::LaunchPrograms => "launch-programs",
             Permission::Clipboard => "clipboard",
+            Permission::WindowControl => "window-control",
         }
     }
 
@@ -561,6 +573,8 @@ pub struct Consent {
     pub launch_programs: Option<Grant>,
     #[serde(default, skip_serializing_if = "none")]
     pub clipboard: Option<Grant>,
+    #[serde(rename = "window-control", default, skip_serializing_if = "none")]
+    pub window_control: Option<Grant>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -751,6 +765,61 @@ step_struct!(
     /// `delay` (§5.12).
     Delay { ms: u32 }
 );
+step_struct!(
+    /// `window` (Step 79): the active window, or with `app` a visible window of that program.
+    WindowStep {
+        op: WindowOp,
+        #[serde(default, skip_serializing_if = "none")]
+        app: Option<AppMatcher>,
+        #[serde(default, skip_serializing_if = "none")]
+        x: Option<i32>,
+        #[serde(default, skip_serializing_if = "none")]
+        y: Option<i32>,
+        #[serde(default, skip_serializing_if = "none")]
+        width: Option<u32>,
+        #[serde(default, skip_serializing_if = "none")]
+        height: Option<u32>,
+        #[serde(default, skip_serializing_if = "none")]
+        on: Option<bool>,
+    }
+);
+step_struct!(
+    /// `clipboard` (Step 79).
+    ClipboardStep {
+        op: ClipboardOp,
+        #[serde(default, skip_serializing_if = "none")]
+        text: Option<String>,
+        #[serde(default, skip_serializing_if = "none")]
+        to: Option<ClipTransform>,
+    }
+);
+step_struct!(
+    /// `notify` (Step 79): a local notification.
+    NotifyStep {
+        title: String,
+        #[serde(default, skip_serializing_if = "none")]
+        body: Option<String>,
+    }
+);
+step_struct!(
+    /// `tool` (Step 79): a capability of another Kim tool, through `kim tools invoke`.
+    ToolStep {
+        capability: String,
+        #[serde(default, skip_serializing_if = "none")]
+        args: Option<Value>,
+    }
+);
+step_struct!(
+    /// `trigger.schedule` (Step 79).
+    Schedule {
+        #[serde(default, skip_serializing_if = "none")]
+        every_minutes: Option<u32>,
+        #[serde(default, skip_serializing_if = "none")]
+        at: Option<String>,
+        #[serde(default, skip_serializing_if = "none")]
+        days: Option<Vec<String>>,
+    }
+);
 
 macro_rules! snake_enum {
     ($(#[$m:meta])* $name:ident { $($v:ident = $s:literal),* $(,)? }) => {
@@ -777,6 +846,16 @@ macro_rules! snake_enum {
 }
 
 snake_enum!(TextMethod { Unicode = "unicode", Paste = "paste" });
+snake_enum!(WindowOp {
+    Activate = "activate",
+    Minimize = "minimize",
+    Maximize = "maximize",
+    Restore = "restore",
+    Move = "move",
+    Topmost = "topmost",
+});
+snake_enum!(ClipboardOp { Set = "set", Clear = "clear", Transform = "transform" });
+snake_enum!(ClipTransform { Upper = "upper", Lower = "lower", Trim = "trim", Plain = "plain" });
 snake_enum!(HotstringCase {
     Conform = "conform",
     Insensitive = "insensitive",
@@ -824,6 +903,11 @@ pub enum Action {
     Mode(ModeStep),
     Engine(EngineStep),
     Delay(Delay),
+    /// Step 79.
+    Window(WindowStep),
+    Clipboard(ClipboardStep),
+    Notify(NotifyStep),
+    Tool(ToolStep),
     /// A step type of a later version: kept as written; the rule is inactive
     /// (`step_unsupported`, §5.13).
     Future {
@@ -833,7 +917,7 @@ pub enum Action {
 }
 
 /// The step types of rules document v1 (schema `known_step_types`).
-pub const STEP_TYPES: [&str; 12] = [
+pub const STEP_TYPES: [&str; 16] = [
     "remap",
     "block",
     "send_keys",
@@ -846,6 +930,10 @@ pub const STEP_TYPES: [&str; 12] = [
     "mode",
     "engine",
     "delay",
+    "window",
+    "clipboard",
+    "notify",
+    "tool",
 ];
 
 impl Action {
@@ -863,6 +951,10 @@ impl Action {
             Action::Mode(_) => "mode",
             Action::Engine(_) => "engine",
             Action::Delay(_) => "delay",
+            Action::Window(_) => "window",
+            Action::Clipboard(_) => "clipboard",
+            Action::Notify(_) => "notify",
+            Action::Tool(_) => "tool",
             Action::Future { kind, .. } => kind,
         }
     }
@@ -894,6 +986,10 @@ impl Action {
             Action::Mode(s) => first(&s.extra, ""),
             Action::Engine(s) => first(&s.extra, ""),
             Action::Delay(s) => first(&s.extra, ""),
+            Action::Window(s) => first(&s.extra, ""),
+            Action::Clipboard(s) => first(&s.extra, ""),
+            Action::Notify(s) => first(&s.extra, ""),
+            Action::Tool(s) => first(&s.extra, ""),
             Action::Future { .. } => None,
         }
     }
@@ -913,9 +1009,14 @@ impl Action {
             Permission::LaunchPrograms => {
                 matches!(self, Action::OpenProgram(_) | Action::OpenUrl(_))
             }
-            Permission::Clipboard => {
-                matches!(self, Action::TypeText(t) if t.method == Some(TextMethod::Paste))
-            }
+            Permission::Clipboard => matches!(
+                self,
+                Action::TypeText(TypeText {
+                    method: Some(TextMethod::Paste),
+                    ..
+                }) | Action::Clipboard(_)
+            ),
+            Permission::WindowControl => matches!(self, Action::Window(_)),
         }
     }
 
@@ -950,6 +1051,10 @@ impl Serialize for Action {
             Action::Mode(x) => serde_json::to_value(x),
             Action::Engine(x) => serde_json::to_value(x),
             Action::Delay(x) => serde_json::to_value(x),
+            Action::Window(x) => serde_json::to_value(x),
+            Action::Clipboard(x) => serde_json::to_value(x),
+            Action::Notify(x) => serde_json::to_value(x),
+            Action::Tool(x) => serde_json::to_value(x),
             Action::Future { fields, .. } => Ok(Value::Object(fields.clone())),
         }
         .map_err(serde::ser::Error::custom)?;
@@ -990,6 +1095,10 @@ impl<'de> Deserialize<'de> for Action {
             "mode" => Action::Mode(de(rest)?),
             "engine" => Action::Engine(de(rest)?),
             "delay" => Action::Delay(de(rest)?),
+            "window" => Action::Window(de(rest)?),
+            "clipboard" => Action::Clipboard(de(rest)?),
+            "notify" => Action::Notify(de(rest)?),
+            "tool" => Action::Tool(de(rest)?),
             _ => Action::Future { kind, fields: m },
         })
     }

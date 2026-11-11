@@ -570,7 +570,7 @@
           "profile": { "type": "string" },
           "mode": { "type": "string" },
           "outcome": {
-            "enum": ["ok", "skipped_paused", "skipped_password_field", "skipped_secure_desktop", "skipped_elevated_target", "skipped_ime_composition", "skipped_injected_input", "skipped_disabled_field", "busy", "rate_limited", "injection_failed", "focus_changed", "clipboard_busy", "clipboard_not_restorable", "clipboard_restore_failed", "cancelled", "timeout"]
+            "enum": ["ok", "skipped_paused", "skipped_password_field", "skipped_secure_desktop", "skipped_elevated_target", "skipped_ime_composition", "skipped_injected_input", "skipped_disabled_field", "busy", "rate_limited", "injection_failed", "focus_changed", "clipboard_busy", "clipboard_not_restorable", "clipboard_restore_failed", "cancelled", "timeout", "window_not_found", "window_failed", "focus_refused", "notify_failed", "unsupported_platform", "clipboard_no_text", "tool_missing", "tool_incompatible", "tool_failed", "consent_missing", "skipped_missed", "program_not_found", "program_requires_elevation", "browser_unavailable", "launch_failed"]
           }
         }
       }

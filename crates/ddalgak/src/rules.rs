@@ -115,7 +115,7 @@ impl Loaded {
 /// `block` steps is an engine-control rule; a `remap`, a `block` among other steps, a held button,
 /// a mode hold and a move while held are always the rule's only step (schema `holds_trigger`);
 /// any other mix, a delay or `times` above 1 is a macro (Step 78, ADR 0079).
-pub const RUNNABLE_STEPS: [&str; 12] = [
+pub const RUNNABLE_STEPS: [&str; 16] = [
     "engine",
     "remap",
     "block",
@@ -128,6 +128,10 @@ pub const RUNNABLE_STEPS: [&str; 12] = [
     "mouse_click",
     "mode",
     "delay",
+    "window",
+    "clipboard",
+    "notify",
+    "tool",
 ];
 
 const HOTSTRING_STEPS: &str =
@@ -203,6 +207,7 @@ const TRIGGER_FIELDS: &[&str] = &[
     "repeat",
     "pass_through",
     "injected",
+    "schedule",
 ];
 
 const HOTSTRING_FIELDS: &[&str] = &[
@@ -361,6 +366,48 @@ fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'sta
             "remap" | "block" => {
                 return Err(bad(format!("a `{ty}` is the rule's only step")));
             }
+            // Step 79 (ADR 0080).
+            "window" => Stage::Window(Arc::new(compile_window(s).map_err(bad)?)),
+            "clipboard" => Stage::Clip(Arc::new(compile_clipboard(s).map_err(bad)?)),
+            "notify" => {
+                let title = s
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .unwrap_or("");
+                let body = s.get("body").and_then(Value::as_str).unwrap_or("").trim();
+                if !(1..=63).contains(&title.chars().count()) || body.chars().count() > 255 {
+                    return Err(bad(
+                        "a notification has a title of 1–63 characters and a body of at most 255"
+                            .into(),
+                    ));
+                }
+                Stage::Notify(Arc::new(crate::actions::NotifySpec {
+                    title: title.to_string(),
+                    body: body.to_string(),
+                }))
+            }
+            "tool" => {
+                let cap = s.get("capability").and_then(Value::as_str).unwrap_or("");
+                let ok = cap.len() <= 64
+                    && cap.split('.').count() >= 2
+                    && cap.split('.').all(|p| {
+                        p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                            && p.chars()
+                                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    });
+                if !ok {
+                    return Err(bad("`capability` is a name like `pin.list`".into()));
+                }
+                let args = s.get("args").cloned().unwrap_or_else(|| json!({}));
+                if !args.is_object() {
+                    return Err(bad("`args` is an object".into()));
+                }
+                Stage::Tool(Arc::new(crate::actions::ToolSpec {
+                    capability: cap.to_string(),
+                    args,
+                }))
+            }
             _ => {
                 return Err((
                     "step_unsupported",
@@ -370,6 +417,69 @@ fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'sta
         });
     }
     Ok(out)
+}
+
+/// Step 79: a `window` step.
+fn compile_window(s: &Value) -> Result<crate::actions::WindowSpec, String> {
+    use crate::model::WindowOp;
+    let op: WindowOp = serde_json::from_value(s.get("op").cloned().unwrap_or(Value::Null))
+        .map_err(|_| "unknown window `op`".to_string())?;
+    let app = match s.get("app") {
+        None => None,
+        Some(m) => {
+            let c = crate::context::Cond::compile(&json!({ "apps": [m] }))?;
+            c.apps.into_iter().next()
+        }
+    };
+    let int = |k: &str| s.get(k).and_then(Value::as_i64);
+    let pos = match (int("x"), int("y")) {
+        (Some(x), Some(y)) => Some((
+            i32::try_from(x).map_err(|_| "x is too large")?,
+            i32::try_from(y).map_err(|_| "y is too large")?,
+        )),
+        (None, None) => None,
+        _ => return Err("give both `x` and `y`".into()),
+    };
+    let size = match (int("width"), int("height")) {
+        (Some(w), Some(h)) if (50..=32767).contains(&w) && (50..=32767).contains(&h) => Some((
+            u32::try_from(w).unwrap_or(50),
+            u32::try_from(h).unwrap_or(50),
+        )),
+        (None, None) => None,
+        _ => return Err("give both `width` and `height` (50–32767)".into()),
+    };
+    if op == WindowOp::Move && pos.is_none() && size.is_none() {
+        return Err("a move needs a position or a size".into());
+    }
+    if op == WindowOp::Activate && app.is_none() {
+        return Err("`activate` names the program (`app`)".into());
+    }
+    Ok(crate::actions::WindowSpec {
+        op,
+        app,
+        pos,
+        size,
+        on: s.get("on").and_then(Value::as_bool) != Some(false),
+    })
+}
+
+/// Step 79: a `clipboard` step.
+fn compile_clipboard(s: &Value) -> Result<crate::actions::ClipSpec, String> {
+    use crate::actions::ClipSpec;
+    match s.get("op").and_then(Value::as_str) {
+        Some("set") => {
+            let t = s.get("text").and_then(Value::as_str).unwrap_or("");
+            if !(1..=20_000).contains(&t.chars().count()) {
+                return Err("`set` takes a text of 1–20000 characters".into());
+            }
+            Ok(ClipSpec::Set(t.to_string()))
+        }
+        Some("clear") => Ok(ClipSpec::Clear),
+        Some("transform") => serde_json::from_value(s.get("to").cloned().unwrap_or(Value::Null))
+            .map(ClipSpec::Transform)
+            .map_err(|_| "`transform` takes `to`: upper, lower, trim or plain".into()),
+        _ => Err("unknown clipboard `op`".into()),
+    }
 }
 
 fn compile_run(s: &Value, ty: &str) -> Result<Action, (&'static str, String)> {
@@ -574,7 +684,23 @@ fn compile(
         return Err(("rule_unsupported", format!("unknown trigger field `{f}`")));
     }
     let hotstring = t.get("hotstring").map(compile_hotstring).transpose()?;
+    // Step 79: a schedule fires by the clock; its rule is a macro the worker times.
+    let schedule = t
+        .get("schedule")
+        .map(crate::actions::ScheduleSpec::compile)
+        .transpose()
+        .map_err(|e| ("trigger_invalid", e))?
+        .map(Arc::new);
     let trigger = match (t.get("keys"), &hotstring) {
+        _ if schedule.is_some() => {
+            if t.contains_key("keys") || hotstring.is_some() {
+                return Err((
+                    "trigger_invalid",
+                    "a schedule has no `keys` or `hotstring`".into(),
+                ));
+            }
+            Trigger::none()
+        }
         (Some(k), None) => {
             let k = k
                 .as_str()
@@ -634,8 +760,13 @@ fn compile(
         return Err(("step_invalid", "`times` is 1–100".into()));
     }
     let same = |f: fn(&str) -> bool| kinds.iter().all(|k| f(k));
+    // Step 79: window, clipboard, notification and tool steps, and every scheduled rule, run as
+    // macro stages on the worker.
     let macro_run = times > 1
-        || kinds.contains(&"delay")
+        || schedule.is_some()
+        || kinds
+            .iter()
+            .any(|k| matches!(*k, "delay" | "window" | "clipboard" | "notify" | "tool"))
         || (kinds.len() > 1
             && !same(is_launch)
             && !same(is_mouse)
@@ -672,6 +803,12 @@ fn compile(
             .flatten()
             .collect();
         let injects = stages.iter().any(Stage::injects);
+        if schedule.is_some() && injects {
+            return Err((
+                "step_invalid",
+                "a scheduled rule never types, presses keys or moves the pointer (nobody is at the keys when it fires)".into(),
+            ));
+        }
         return Ok((
             Binding {
                 rule: r["id"].as_str().unwrap_or_default().to_string(),
@@ -689,6 +826,7 @@ fn compile(
                 hotstring: None,
                 modes: 0,
                 when,
+                schedule,
             },
             priority,
         ));
@@ -856,6 +994,7 @@ fn compile(
             hotstring: hotstring.map(Arc::new),
             modes: 0,
             when,
+            schedule: None,
         },
         priority,
     ))
@@ -1427,6 +1566,57 @@ mod tests {
             [
                 ("grid-glide", "step_invalid"),
                 ("repeat-hold", "step_invalid"),
+            ]
+        );
+    }
+
+    /// Step 79: window, clipboard, notification and tool steps load as macro stages; a schedule
+    /// loads without keys; a scheduled rule that would inject is refused.
+    #[test]
+    fn step79_steps_and_schedules_load() {
+        let mut sched = engine_rule("tick", "F13", "pause");
+        sched["trigger"] = json!({"schedule": {"every_minutes": 5}});
+        sched["steps"] = json!([{"type": "notify", "title": "Stretch"}]);
+        let mut typing = sched.clone();
+        typing["id"] = json!("typing");
+        typing["steps"] = json!([{"type": "type_text", "text": "x"}]);
+        let mut win = engine_rule("win", "F14", "pause");
+        win["steps"] =
+            json!([{"type": "window", "op": "move", "x": 0, "y": 0, "width": 800, "height": 600}]);
+        let mut clip = engine_rule("clip", "F15", "pause");
+        clip["steps"] = json!([{"type": "clipboard", "op": "transform", "to": "plain"}]);
+        let mut tool = engine_rule("tool", "F16", "pause");
+        tool["steps"] = json!([{"type": "tool", "capability": "pin.list"}]);
+        let mut bad = engine_rule("bad", "F17", "pause");
+        bad["steps"] = json!([{"type": "window", "op": "activate"}]);
+        // Without consent, window and clipboard steps stay inactive.
+        let mut no_consent = win.clone();
+        no_consent["id"] = json!("no-consent");
+        let grant = json!({"granted_at": "2026-11-04T09:00:00Z", "via": "gui"});
+        win["consent"] = json!({"window-control": grant});
+        clip["consent"] = json!({"clipboard": grant});
+        let l = parse(&doc(json!([
+            sched, typing, win, clip, tool, bad, no_consent
+        ])));
+        let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
+        assert_eq!(active, ["tick", "win", "clip", "tool"]);
+        assert!(l.bindings[0].schedule.is_some() && l.bindings[0].trigger.steps().is_empty());
+        assert!(
+            l.bindings
+                .iter()
+                .all(|b| matches!(b.action, Action::Sequence(_)) && !b.injects)
+        );
+        let codes: Vec<(&str, &str)> = l
+            .inactive
+            .iter()
+            .map(|i| (i.rule.as_str(), i.code))
+            .collect();
+        assert_eq!(
+            codes,
+            [
+                ("typing", "step_invalid"),
+                ("bad", "step_invalid"),
+                ("no-consent", "consent_missing")
             ]
         );
     }

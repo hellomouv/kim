@@ -151,7 +151,7 @@
       "required": ["step", "type", "performed", "summary", "preview"],
       "properties": {
         "step": {"type": "integer", "minimum": 0, "maximum": 31},
-        "type": {"enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay"]},
+        "type": {"enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool"]},
         "performed": {"description": "Whether this effect really happened (live only).", "type": "boolean"},
         "needs_confirmation": {"description": "Live: the user must confirm this launch first; it was not performed.", "type": "boolean"},
         "confirmed": {"description": "Live: the user confirmed this launch.", "type": "boolean"},
@@ -178,6 +178,10 @@
         {"anyOf": [{"properties": {"type": {"not": {"const": "mode"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_mode"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "engine"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_engine"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "delay"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_delay"}}}]},
+        {"anyOf": [{"properties": {"type": {"not": {"const": "window"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_window"}}}]},
+        {"anyOf": [{"properties": {"type": {"not": {"const": "clipboard"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_clipboard"}}}]},
+        {"anyOf": [{"properties": {"type": {"not": {"const": "notify"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_notify"}}}]},
+        {"anyOf": [{"properties": {"type": {"not": {"const": "tool"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_tool"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "block"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_block"}}}]}
       ]
     },
@@ -271,6 +275,43 @@
       "required": ["ms"],
       "properties": {"ms": {"type": "integer", "minimum": 1, "maximum": 10000}}
     },
-    "preview_block": {"type": "object", "additionalProperties": false}
+    "preview_block": {"type": "object", "additionalProperties": false},
+    "preview_window": {
+      "description": "Step 79: the operation and its target: the active window, or a program's file name (never a window title).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "target"],
+      "properties": {
+        "op": {"enum": ["activate", "minimize", "maximize", "restore", "move", "topmost"]},
+        "target": {"type": "string", "minLength": 1, "maxLength": 260},
+        "to": {"type": "object", "additionalProperties": false, "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"}}},
+        "on": {"type": "boolean"}
+      }
+    },
+    "preview_clipboard": {
+      "description": "Step 79: what happens to the clipboard; a text as its character count, never its content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": {
+        "op": {"enum": ["set", "clear", "transform"]},
+        "characters": {"type": "integer", "minimum": 1},
+        "to": {"enum": ["upper", "lower", "trim", "plain"]}
+      }
+    },
+    "preview_notify": {
+      "description": "Step 79: the notification's lengths (its words are the user's own; counts only).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title_characters", "body_characters"],
+      "properties": {"title_characters": {"type": "integer", "minimum": 1}, "body_characters": {"type": "integer", "minimum": 0}}
+    },
+    "preview_tool": {
+      "description": "Step 79: the capability asked of another Kim tool and the argument names (not their values).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "arguments"],
+      "properties": {"capability": {"type": "string"}, "arguments": {"type": "array", "items": {"type": "string"}}}
+    }
   }
 }

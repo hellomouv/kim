@@ -8,17 +8,20 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 79** (#84) — the earliest unfinished Ddalgak Step (check its dependencies)
+- Current Step: **Step 80** (#85) — the earliest unfinished Ddalgak Step (check its dependencies)
 - Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #84 (Step 79). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81), 77 (#82) and 78 (#83) stay OPEN
+- Next action: re-query open issues; read #85 (Step 80). Step 79 (#84) delivered (window, clipboard, notify, tool, schedules; follow-up #102). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81), 77 (#82), 78 (#83) and 79 (#84) stay OPEN
   for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-12: Step 79 — `actions::tests` 2/2, loader, worker and Windows desktop tests, editor
+  form test; e2e step79 2/2 (a 1-minute schedule fired in the running engine); `cargo xtask ci`
+  EXIT 0.
 - 2026-11-12: Step 78 — worker macro tests 5/5, loader tests updated (mixes are macros), editor
   recorder 2/2 and macro flow test, CLI tests 31/31; e2e step78 A 1/1, B passed its ordered-run
   part before the desktop locked (cancel part then skipped); `cargo xtask ci` EXIT 0.
@@ -149,4 +152,4 @@ checkpoint."*
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):
-  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#83.
+  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#84.
