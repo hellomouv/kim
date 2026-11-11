@@ -617,6 +617,70 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "mcp.serve",
+      "usage": "ddalgak mcp serve [--allow rules|modes|profiles|engine]... [--endpoint <name>]",
+      "summary": "The optional MCP adapter for agents over stdin/stdout, started only by the user's MCP client: status, rules, checks, modes, profiles and explain to read; with --allow a granted area can turn rules on or off, switch the mode or profile, or pause and resume; never runs a rule, types, opens programs or grants consent",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "mcp.tools",
+      "usage": "ddalgak mcp tools [--allow rules|modes|profiles|engine]... [--json]",
+      "summary": "The MCP tools `mcp serve` would offer with these grants",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "interop.invoke",
+      "usage": "ddalgak interop invoke --json --no-input [--dry-run] [--endpoint <name>] < kim.interop.request",
+      "summary": "Kim interop: run one capability Ddalgak provides (keys.explain, rules.list, mode.status, mode.set); never starts the app, never opens a window",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    }
+  ],
+  "provides": [
+    {
+      "id": "keys.explain",
+      "version": "1.0.0",
+      "summary": "Which rule a key would fire in a context (params: keys, context), every candidate and a preview of each step; nothing runs",
+      "effect": "read",
+      "network": false,
+      "opens_window": false
+    },
+    {
+      "id": "rules.list",
+      "version": "1.0.0",
+      "summary": "The rules with titles, triggers, step types and states (params: profile, mode); never typed text, paths or URLs",
+      "effect": "read",
+      "network": false,
+      "opens_window": false
+    },
+    {
+      "id": "mode.status",
+      "version": "1.0.0",
+      "summary": "The active profile's modes and which one is active",
+      "effect": "read",
+      "network": false,
+      "opens_window": false
+    },
+    {
+      "id": "mode.set",
+      "version": "1.0.0",
+      "summary": "Switch the running engine to a mode (params: mode)",
+      "effect": "write",
+      "network": false,
+      "opens_window": false
     }
   ]
 }

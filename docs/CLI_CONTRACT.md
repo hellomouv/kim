@@ -317,7 +317,7 @@ commands, [DDALGAK_RULE_MODEL §13](DDALGAK_RULE_MODEL.md)). `ddalgak` also uses
 reserved) with the meaning and exit code above. `crates/ddalgak/src/output.rs` tests that this
 table matches its code; the `data` of every command is published as
 [ddalgak-cli-v1](contracts/schemas/ddalgak-cli-v1.schema.json), with examples generated from
-real runs. The mode commands (Step 72) and the profile commands (Steps 75, 81) use the codes below.
+real runs. The mode commands (Step 72) and the profile commands (Steps 75, 81) use the codes below. Since Step 81 `ddalgak interop invoke` also uses `capability_missing` and `tool_incompatible` (exit 5), and `ddalgak mcp serve` is documented in [DDALGAK_MCP](DDALGAK_MCP.md).
 
 | Code | Exit | Meaning |
 | --- | --- | --- |

@@ -17,6 +17,8 @@ mod cli;
 mod mode_cmd;
 // Portable, but until the Linux engine (D7, ADR 0011) only the Windows client uses every code.
 #[cfg_attr(not(windows), allow(dead_code))]
+mod mcp_cmd;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod output;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod profile_cmd;
@@ -51,6 +53,9 @@ USAGE:
     ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
                      [--focus normal|password_field|elevated_window|secure_desktop]
                      [--app <exe>] [--title <text>] [--ime] [--injected] [--draft] [--dry-run] [--json]
+    ddalgak mcp serve [--allow rules|modes|profiles|engine]... [--endpoint <name>]
+    ddalgak mcp tools [--allow <area>]... [--json]
+    ddalgak interop invoke [--dry-run] [--json]    (one kim.interop.request on stdin)
     ddalgak explain <keys> [--context <json>] [--on <kind>] [--profile <p>] [--injected] [--draft]
                      [--dry-run] [--json]
     ddalgak rule check [--draft] [--json]
@@ -384,6 +389,11 @@ fn main() -> ExitCode {
             let _ = writeln!(std::io::stdout().lock(), "ddalgak {}", ddalgak::VERSION);
             ExitCode::SUCCESS
         }
+        // Step 81: stdout carries only JSON-RPC messages; no envelope follows.
+        Cmd::McpServe => match mcp_cmd::serve(args.all("--allow"), args.endpoint.as_deref()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(m) => fail(&cmd.name(), &CliError::usage(m), args.json),
+        },
         _ => match run(cmd, &args) {
             Ok((data, warnings)) => {
                 let mut out = std::io::stdout().lock();
@@ -431,6 +441,23 @@ fn run(cmd: Cmd, a: &Args) -> Outcome {
     if cmd == Cmd::Capabilities {
         let data: Value = serde_json::from_str(CAPABILITIES).expect("valid built-in JSON");
         return Ok((data, Vec::new()));
+    }
+    // Step 81: what the MCP adapter offers; the Kim interop provider.
+    if cmd == Cmd::McpTools {
+        return mcp_cmd::tools_json(a.all("--allow"))
+            .map(|v| (v, Vec::new()))
+            .map_err(CliError::usage);
+    }
+    if cmd == Cmd::InteropInvoke {
+        return mcp_cmd::interop_invoke(a.dry_run, a.endpoint.as_deref())
+            .map(|v| (v, Vec::new()))
+            .map_err(|(code, m)| {
+                let c = Code::ALL
+                    .into_iter()
+                    .find(|c| c.as_str() == code)
+                    .unwrap_or(Code::Internal);
+                CliError::new(c, m)
+            });
     }
     let endpoint = match &a.endpoint {
         Some(e) => e.clone(),
@@ -556,6 +583,23 @@ fn run(cmd: Cmd, a: &Args) -> Outcome {
     if cmd == Cmd::Capabilities {
         let data: Value = serde_json::from_str(CAPABILITIES).expect("valid built-in JSON");
         return Ok((data, Vec::new()));
+    }
+    // Step 81: what the MCP adapter offers; the Kim interop provider.
+    if cmd == Cmd::McpTools {
+        return mcp_cmd::tools_json(a.all("--allow"))
+            .map(|v| (v, Vec::new()))
+            .map_err(CliError::usage);
+    }
+    if cmd == Cmd::InteropInvoke {
+        return mcp_cmd::interop_invoke(a.dry_run, a.endpoint.as_deref())
+            .map(|v| (v, Vec::new()))
+            .map_err(|(code, m)| {
+                let c = Code::ALL
+                    .into_iter()
+                    .find(|c| c.as_str() == code)
+                    .unwrap_or(Code::Internal);
+                CliError::new(c, m)
+            });
     }
     // ADR 0011: no Linux engine before milestone D7 (DDALGAK-NFR-009).
     Err(CliError::new(

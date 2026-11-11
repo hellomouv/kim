@@ -86,8 +86,13 @@ check their own limits as well (Subak never starts a program of the caller's cho
 | `pin.list` | 1.0.0 | Noeul | read | — → the open pins (ids, rectangles, zoom, visibility); needs a running Noeul, never starts it |
 | `image.pin` | 1.0.0 | Noeul | write | `{path}` (a local image file) → the pin; without focus |
 | `screen.capture-file` | 1.0.0 | Noeul | write | `{region \| monitor, output, replace?}` → `{file: {written, bytes}}`; a PNG at an absolute local path; Noeul's `privacy.cli` applies (a notice, or `capture_not_allowed`) |
+| `keys.explain` | 1.0.0 | Ddalgak | read | `{keys, context?}` → the `ddalgak-simulation-v1` trace; needs no running app; nothing is pressed |
+| `rules.list` | 1.0.0 | Ddalgak | read | `{profile?, mode?}` → titles, triggers, step types, states (never typed text, paths or URLs) |
+| `mode.status` | 1.0.0 | Ddalgak | read | — → the active profile's modes and the active one |
+| `mode.set` | 1.0.0 | Ddalgak | write | `{mode}` → the running engine switches mode |
 
-Noeul provides since Step 62 ([NOEUL_CLI](NOEUL_CLI.md)); Ddalgak becomes a provider and caller in Step 81;
+Noeul provides since Step 62 ([NOEUL_CLI](NOEUL_CLI.md)); Ddalgak provides since Step 81 and calls through its
+`tool` step since Step 79 ([DDALGAK_MCP](DDALGAK_MCP.md));
 until then the workflows below are run by an agent or a script through `kim tools invoke`.
 
 ## 5. Workflows

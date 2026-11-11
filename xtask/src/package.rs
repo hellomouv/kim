@@ -1,4 +1,4 @@
-//! `cargo xtask package <kim|subak|noeul> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
+//! `cargo xtask package <kim|subak|noeul|ddalgak> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
 //! distributable of one tool, built from this checkout.
 //!
 //! - Builds the release binaries (`cargo build --release -p <crates>`), unless `--skip-build`.
@@ -26,7 +26,7 @@ struct Tool {
     summary: &'static str,
 }
 
-const TOOLS: [Tool; 3] = [
+const TOOLS: [Tool; 4] = [
     Tool {
         id: "kim",
         crates: &["kim", "kim-manager", "kim-setup"],
@@ -49,6 +49,15 @@ const TOOLS: [Tool; 3] = [
         exes: &["noeul.exe"],
         entrypoint: "noeul.exe",
         summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider)",
+    },
+    // Step 81: Ddalgak, so Kim can install it (the headless CLI with its MCP adapter and interop
+    // provider, the tray app that owns the engine, and the rule editor).
+    Tool {
+        id: "ddalgak",
+        crates: &["ddalgak", "ddalgak-editor"],
+        exes: &["ddalgak.exe", "ddalgak-gui.exe", "ddalgak-editor.exe"],
+        entrypoint: "ddalgak.exe",
+        summary: "Ddalgak: key remapping and automation (ddalgak.exe: the CLI, MCP adapter and Kim interop provider; ddalgak-gui.exe: the tray app that owns the engine; ddalgak-editor.exe: the rule editor)",
     },
 ];
 
@@ -135,7 +144,7 @@ fn sha_hex(b: &[u8]) -> String {
 pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let id = args.first().map(String::as_str).unwrap_or("");
     let Some(tool) = TOOLS.iter().find(|t| t.id == id) else {
-        return Err("usage: cargo xtask package <kim|subak|noeul> [--skip-build]".into());
+        return Err("usage: cargo xtask package <kim|subak|noeul|ddalgak> [--skip-build]".into());
     };
     if !cfg!(windows) {
         return Err("package builds the Windows distributable; run it on Windows".into());

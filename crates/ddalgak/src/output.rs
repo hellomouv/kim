@@ -44,10 +44,13 @@ pub enum Code {
     // Step 75: profiles (docs/DDALGAK_RULE_MODEL.md §10, §13).
     ProfileInUse,
     ImportInvalid,
+    // Step 81: the Kim interop provider (docs/INTEROP.md).
+    CapabilityMissing,
+    ToolIncompatible,
 }
 
 impl Code {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 35] = [
         Self::Io,
         Self::Internal,
         Self::PermissionDenied,
@@ -81,6 +84,8 @@ impl Code {
         Self::ModeDisabled,
         Self::ProfileInUse,
         Self::ImportInvalid,
+        Self::CapabilityMissing,
+        Self::ToolIncompatible,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -118,6 +123,8 @@ impl Code {
             Self::ModeDisabled => "mode_disabled",
             Self::ProfileInUse => "profile_in_use",
             Self::ImportInvalid => "import_invalid",
+            Self::CapabilityMissing => "capability_missing",
+            Self::ToolIncompatible => "tool_incompatible",
         }
     }
 
@@ -144,7 +151,11 @@ impl Code {
             | Self::AppIdentityMismatch
             | Self::RulesInvalid
             | Self::ImportInvalid => 4,
-            Self::UnsupportedPlatform | Self::RulesFromNewerVersion | Self::EngineElevated => 5,
+            Self::UnsupportedPlatform
+            | Self::RulesFromNewerVersion
+            | Self::EngineElevated
+            | Self::CapabilityMissing
+            | Self::ToolIncompatible => 5,
             Self::AppUnresponsive => 6,
             Self::EngineOff
             | Self::AppAlreadyRunning

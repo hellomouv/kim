@@ -612,10 +612,74 @@
         "requires_yes": false,
         "summary": "Validate a file and add its profiles, never active, every rule off and without consent; --dry-run previews it",
         "usage": "ddalgak profile import <file> [--id <id>] [--title <name>] [--show-targets] [--dry-run] [--draft] [--if-revision <n>] [--endpoint <name>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "mcp.serve",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The optional MCP adapter for agents over stdin/stdout, started only by the user's MCP client: status, rules, checks, modes, profiles and explain to read; with --allow a granted area can turn rules on or off, switch the mode or profile, or pause and resume; never runs a rule, types, opens programs or grants consent",
+        "usage": "ddalgak mcp serve [--allow rules|modes|profiles|engine]... [--endpoint <name>]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "mcp.tools",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The MCP tools `mcp serve` would offer with these grants",
+        "usage": "ddalgak mcp tools [--allow rules|modes|profiles|engine]... [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "interop.invoke",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Kim interop: run one capability Ddalgak provides (keys.explain, rules.list, mode.status, mode.set); never starts the app, never opens a window",
+        "usage": "ddalgak interop invoke --json --no-input [--dry-run] [--endpoint <name>] < kim.interop.request"
       }
     ],
     "implementation": "implemented",
     "json_schema_version": 1,
+    "provides": [
+      {
+        "effect": "read",
+        "id": "keys.explain",
+        "network": false,
+        "opens_window": false,
+        "summary": "Which rule a key would fire in a context (params: keys, context), every candidate and a preview of each step; nothing runs",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "read",
+        "id": "rules.list",
+        "network": false,
+        "opens_window": false,
+        "summary": "The rules with titles, triggers, step types and states (params: profile, mode); never typed text, paths or URLs",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "read",
+        "id": "mode.status",
+        "network": false,
+        "opens_window": false,
+        "summary": "The active profile's modes and which one is active",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "mode.set",
+        "network": false,
+        "opens_window": false,
+        "summary": "Switch the running engine to a mode (params: mode)",
+        "version": "1.0.0"
+      }
+    ],
     "schema": "kim.capabilities",
     "schema_version": 1,
     "summary": "Pre-alpha: engine status, health and control of the tray app, opt-in sign-in start, rule store (CRUD, validation, drafts, history, live reload); every core action; enable, disable, release; profiles",

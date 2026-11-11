@@ -21,6 +21,10 @@ pub enum Cmd {
     StartupDisable,
     RuleList,
     /// Step 76: `test` — the playground's simulation from the command line.
+    /// Step 81: the MCP adapter and the Kim interop provider.
+    McpServe,
+    McpTools,
+    InteropInvoke,
     Test,
     /// Step 77: `explain` — the same simulation for a context given as JSON.
     Explain,
@@ -192,6 +196,9 @@ impl Cmd {
             Self::RuleList => "rule.list".into(),
             Self::RuleShow => "rule.show".into(),
             Self::Test => "test".into(),
+            Self::McpServe => "mcp.serve".into(),
+            Self::McpTools => "mcp.tools".into(),
+            Self::InteropInvoke => "interop.invoke".into(),
             Self::Explain => "explain".into(),
             Self::RuleCheck => "rule.check".into(),
             Self::RuleAdd => "rule.add".into(),
@@ -281,6 +288,9 @@ impl Cmd {
                 ("--show-targets", Flag),
             ],
             Self::RuleCheck => vec![("--draft", Flag)],
+            Self::McpServe => vec![("--allow", Multi), ("--endpoint", Value)],
+            Self::McpTools => vec![("--allow", Multi)],
+            Self::InteropInvoke => vec![("--dry-run", Flag), ("--endpoint", Value)],
             Self::Explain => vec![
                 ("--draft", Flag),
                 ("--dry-run", Flag),
@@ -588,6 +598,9 @@ fn command(words: &[&str]) -> Result<(Cmd, usize), String> {
         ["rule", "list", ..] => (Cmd::RuleList, 2),
         ["rule", "show", ..] => (Cmd::RuleShow, 2),
         ["test", ..] => (Cmd::Test, 1),
+        ["mcp", "serve", ..] => (Cmd::McpServe, 2),
+        ["mcp", "tools", ..] => (Cmd::McpTools, 2),
+        ["interop", "invoke", ..] => (Cmd::InteropInvoke, 2),
         ["explain", ..] => (Cmd::Explain, 1),
         ["rule", "check", ..] => (Cmd::RuleCheck, 2),
         ["rule", "add", ..] => (Cmd::RuleAdd, 2),
