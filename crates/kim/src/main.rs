@@ -86,6 +86,8 @@ enum Command {
     Update(ops::UpdateArgs),
     /// Remove a tool's program files (user data is kept unless --purge-data)
     Uninstall(ops::UninstallArgs),
+    /// Make the previous version of a tool active again (kept by the last update; explicit)
+    Rollback(ops::RollbackArgs),
     /// Discover installed Kim tools and their capabilities (read-only; starts nothing)
     #[command(subcommand)]
     Tools(discover::ToolsCommand),
@@ -247,6 +249,7 @@ fn main() -> ExitCode {
         Command::Install(a) => ops::install(&a, ctx),
         Command::Update(a) => ops::update(&a, ctx),
         Command::Uninstall(a) => ops::uninstall(&a, ctx),
+        Command::Rollback(a) => ops::rollback(&a),
         Command::Tools(c) => discover::tools(&c),
         Command::Status => discover::status(),
         Command::Version => discover::version(),
@@ -269,6 +272,7 @@ fn command_name(c: &Command) -> &'static str {
         Command::Update(a) if a.is_check() => "update.check",
         Command::Update(_) => "update",
         Command::Uninstall(_) => "uninstall",
+        Command::Rollback(_) => "rollback",
         Command::Tools(discover::ToolsCommand::List) => "tools.list",
         Command::Tools(discover::ToolsCommand::Describe(_)) => "tools.describe",
         Command::Tools(discover::ToolsCommand::Find(_)) => "tools.find",
@@ -1035,6 +1039,7 @@ mod tests {
             &["update", "check"],
             &["update", "x"],
             &["uninstall", "x"],
+            &["rollback", "x"],
             &["tools", "list"],
             &["tools", "describe", "x"],
             &["tools", "find", "a.b"],

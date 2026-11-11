@@ -93,6 +93,16 @@
     },
     {
       "dry_run": true,
+      "effect": "install",
+      "name": "rollback",
+      "network": false,
+      "opens_window": false,
+      "requires_yes": false,
+      "summary": "Make the previous version active again (kept on disk by the last update; nothing downloaded; running programs are never stopped)",
+      "usage": "kim rollback <tool> [--dry-run]"
+    },
+    {
+      "dry_run": true,
       "effect": "destructive",
       "name": "uninstall",
       "network": false,

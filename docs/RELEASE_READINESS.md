@@ -14,7 +14,9 @@
 | 2 | No telemetry, no account, no cloud service | ✅ | ADR 0012; no network code outside the commands listed in SECURITY §7 |
 | 3 | Secrets never in logs, JSON, state, config, IPC | ✅ | leak scans in `ssh_sessions.rs`, `mcp_server.rs`, `scrollback_replay.rs`, `state_persistence.rs`; `redact` tests |
 | 4 | Catalog signatures, package integrity, rollback, atomic install | ✅ (dev key) | `crates/kim/tests/install.rs`, `cli_functional.rs` |
-| 5 | Release signing key ceremony; Authenticode signatures | ❌ | Step 40 (RELEASE_POLICY §signing keys) |
+| 5 | Release signing key ceremony; Authenticode signatures | ◐ pipeline ready, no certificate | `release.yml` signs only with configured certificate secrets; `xtask package --signed` verifies (Step 40); the release key is still to be created offline (RELEASE_POLICY §4) |
+| 5a | Distributables: deterministic zips with licenses, notices, manifests | ✅ | `cargo xtask package kim|subak` (Step 40, RELEASING §1) |
+| 5b | Install, update while running, rollback, uninstall keeping data, offline | ✅ | `e2e/tests/step40_release.rs` (real Subak package), `crates/kim/tests/rollback.rs` |
 | 6 | Host survives closing every client, detach, GUI crash | ✅ | `session_lifecycle.rs`, `milestone_a.rs`, `gui_window.rs` |
 | 7 | Crash recovery without data loss or duplicates | ✅ | `milestone_c.rs`, `recovery.rs`, `state_persistence.rs` |
 | 8 | Lock, sleep, hibernate, reboot, power loss | ⏳ maintainer | #31, `scripts/recovery-matrix.ps1` |
@@ -36,14 +38,17 @@
 
 Kim keeps the previous version's files until the next update and restores them when an install
 fails at its commit point (`cli_functional.rs::a_protected_install_record_aborts_the_update_at_the_commit_point_and_rolls_back`).
-A user-initiated downgrade is an explicit `kim install <tool> --version <older>`; an automatic
-rollback command is Step 40 (RELEASE_POLICY).
+`kim rollback <tool>` (Step 40) makes the kept previous version active again without
+downloading and can itself be undone; an older version beyond that is an explicit
+`kim install <tool> --version <older>`.
 
 ## 3. Blockers and known limitations
 
 | Item | Kind | Status |
 | --- | --- | --- |
-| Release signing key and Authenticode signing | **Blocker** | Step 40 |
+| Release signing key and Authenticode signing | **Blocker** | pipeline ready (Step 40); needs the offline release key and a legitimate certificate |
+| The release workflow has never run on GitHub | **Blocker** | the maintainer starts it once (RELEASING §2) |
+| Screenshots in the user docs | Gap | added with the maintainer's visible-window checks |
 | Power-transition matrix (#31) | **Blocker** for the recovery claim | maintainer runs it |
 | Visible-window/real-device checks of earlier Steps | **Blocker** for their features | the open maintainer-check issues |
 | Windows 10 inbox ConPTY keeps one exited-conhost handle per pane | Known limitation (measured: 1 per pane; released when the Host exits) | documented (PERFORMANCE §3); a regression test guards Subak's own code |

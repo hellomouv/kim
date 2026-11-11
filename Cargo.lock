@@ -3858,6 +3858,7 @@ dependencies = [
  "regex",
  "serde_json",
  "sha2",
+ "zip",
 ]
 
 [[package]]

@@ -57,6 +57,9 @@ did.
 | [SECURITY.md](SECURITY.md) | current | Step 39 threat model: local IPC, MCP, command input, SSH credentials, interop, packages and updates, capture and restoration, network — mitigations, evidence and residual risks |
 | [PERFORMANCE.md](PERFORMANCE.md) | current | Step 39 measured baseline and budgets (`cargo xtask bench`), the Windows 10 ConPTY handle limitation, what the bench does not measure |
 | [RELEASE_READINESS.md](RELEASE_READINESS.md) | current | Step 39 release checklist with evidence, rollback, blockers and known limitations |
+| [INSTALL.md](INSTALL.md) | current | Step 40 user guide: supported systems, independent Kim and Subak packages, install, first steps, update/rollback/uninstall without stopping running work, offline, known limitations |
+| [RELEASING.md](RELEASING.md) | current | Step 40: `cargo xtask package`, the deterministic zip and release manifest, the manual release workflow with optional verified signing, publishing, smoke tests |
+| [RELEASE_NOTES.md](RELEASE_NOTES.md) | draft | Step 40: Kim 0.0.1 and Subak 0.0.1 preview notes (not yet published) |
 
 Design tokens and mock-ups live in [`design/`](../design/README.md) (`cargo xtask design-check`
 enforces declared contrast pairs). GUI toolkit evidence: [`research/gui-eval/`](../research/gui-eval/README.md);

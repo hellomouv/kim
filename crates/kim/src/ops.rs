@@ -66,6 +66,50 @@ impl UpdateArgs {
     }
 }
 
+/// Step 40: `kim rollback <tool>`.
+#[derive(Debug, Args)]
+pub struct RollbackArgs {
+    /// Tool id, e.g. `subak`
+    tool: String,
+    /// Show what would change; change nothing
+    #[arg(long)]
+    dry_run: bool,
+}
+
+/// `kim rollback <tool>`: the previous version (kept by the last update) becomes active again.
+/// Refused while the tool runs; never downloads; the previous program is self-checked first.
+pub fn rollback(a: &RollbackArgs) -> Result<Outcome, KimError> {
+    let paths = Paths::from_env()?;
+    let plan = install::plan_rollback(&paths, &a.tool)?;
+    let mut text = format!(
+        "Plan: roll back {} {} → {} (files already on disk; nothing is downloaded)\n",
+        plan.tool, plan.from, plan.to
+    );
+    if !plan.running.is_empty() {
+        let pids: Vec<String> = plan.running.iter().map(|p| p.pid.to_string()).collect();
+        text.push_str(&format!(
+            "  running  PID {} — keeps running with its own files; the next start uses the version rolled back to\n",
+            pids.join(", ")
+        ));
+    }
+    if a.dry_run {
+        return Ok(Outcome {
+            data: json!({ "plan": plan, "dry_run": true, "result": null }),
+            human: format!("{text}Dry run: nothing was changed.\n"),
+            warnings: Vec::new(),
+        });
+    }
+    let out = install::execute_rollback(&plan, &paths)?;
+    Ok(Outcome {
+        human: format!(
+            "{text}{} {} is active again (the rolled-back {} is kept).\n",
+            out.tool, out.to, plan.from
+        ),
+        data: json!({ "plan": plan, "dry_run": false, "result": out }),
+        warnings: Vec::new(),
+    })
+}
+
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
     /// Tool id, e.g. `subak`
@@ -190,6 +234,12 @@ impl ProgressPrinter {
 fn plan_text(plan: &Plan) -> String {
     let what = match plan.action {
         install::Action::Install => format!("install {} {}", plan.tool, plan.to),
+        install::Action::Rollback => format!(
+            "roll back {} {} → {}",
+            plan.tool,
+            plan.from.as_deref().unwrap_or("?"),
+            plan.to
+        ),
         install::Action::Update => format!(
             "update {} {} → {}",
             plan.tool,

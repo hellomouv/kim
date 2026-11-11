@@ -108,6 +108,15 @@ const COMMANDS: &[Spec] = &[
         requires_yes: false,
     },
     Spec {
+        name: "rollback",
+        usage: "kim rollback <tool> [--dry-run]",
+        summary: "Make the previous version active again (kept on disk by the last update; nothing downloaded; running programs are never stopped)",
+        effect: Effect::Install,
+        network: false,
+        dry_run: true,
+        requires_yes: false,
+    },
+    Spec {
         name: "uninstall",
         usage: "kim uninstall <tool> [--purge-data] [--yes] [--dry-run]",
         summary: "Remove a tool's program files; user data is kept unless --purge-data",

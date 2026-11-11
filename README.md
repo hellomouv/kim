@@ -39,6 +39,12 @@ Kim never installs or updates a tool unless you explicitly ask it to.
 Exact requirements and their milestones live in
 [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md).
 
+## Install
+
+See [docs/INSTALL.md](docs/INSTALL.md): supported Windows versions, the independent Kim and Subak
+packages, install/update/rollback/uninstall, and the current known limitations. No release is
+published yet ([docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md)).
+
 ## Documentation
 
 Start with the [documentation index](docs/README.md):

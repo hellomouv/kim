@@ -27,6 +27,7 @@ Manager can do is available here (`KIM-FR-013`). The same list in machine-readab
 | `kim version` | read | no | — | — | Kim version, build, CLI contract and schema versions, whether the local catalog lists a newer Kim (Kim never updates itself) |
 | `kim capabilities` | read | no | — | — | Kim's own capabilities document |
 | `kim tools list` | read | no | — | — | Installed tools: version, executable, status, capabilities summary |
+| `kim rollback <tool>` | install | no | yes | — | Step 40: the version kept by the last update active again; nothing downloaded; running programs never stopped; `--dry-run` |
 | `kim tools find <capability>` | read | no | — | — | Step 38: the installed tools that provide a capability (interface version, effect, executable, available, compatible); `--require-version <req>`, `--probe` ([INTEROP](INTEROP.md)) |
 | `kim tools invoke <capability>` | destructive | no | yes | yes | Step 38: call a provider headlessly with `--params <json>`; `--allow-write` for write, also `--yes` for destructive, `--allow-window`, `--dry-run`, `--timeout <s>`, `--tool <id>`, `--require-version <req>` |
 | `kim tools describe <tool>` | read | no | — | — | One tool with its full capabilities; `--require-version <req>`, `--require-command <name>` (repeatable), `--probe [--timeout <s>]` |

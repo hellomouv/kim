@@ -371,6 +371,16 @@ fn every_command_matches_the_schemas_and_stable_outputs_match_golden_files() {
     assert_eq!(doc["data"]["plan"]["action"], "update");
     let doc = gold(&mut ck, &["update", "example-tool"], Some("update"));
     assert_eq!(doc["exit"], 0);
+    // Step 40: the version kept by the update, made active again (and back).
+    let doc = gold(
+        &mut ck,
+        &["rollback", "example-tool", "--dry-run"],
+        Some("rollback-dry-run"),
+    );
+    assert_eq!(doc["data"]["plan"]["to"], "1.0.0");
+    let doc = gold(&mut ck, &["rollback", "example-tool"], None);
+    assert_eq!(doc["data"]["result"]["action"], "rollback");
+    gold(&mut ck, &["rollback", "example-tool"], None);
     gold(
         &mut ck,
         &["uninstall", "example-tool", "--dry-run"],

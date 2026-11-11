@@ -1,0 +1,65 @@
+name: Release artifacts
+
+# Step 40 (docs/RELEASING.md): builds the Windows distributable of one tool on demand — never on
+# push (AGENTS.md §6) and never published by itself. The maintainer starts it, downloads the
+# artifact, checks it, and publishes by hand (RELEASE_POLICY §5).
+#
+# Code signing (Authenticode) runs only when the repository has the secrets
+# WINDOWS_SIGNING_PFX_BASE64 and WINDOWS_SIGNING_PFX_PASSWORD from a legitimate certificate.
+# Without them the artifact is unsigned and its release manifest says `"signed": false`; nothing
+# claims a signature it does not have.
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool to package (kim or subak)'
+        required: true
+        type: choice
+        options: [kim, subak]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  package-windows:
+    name: Windows x86_64 — ${{ inputs.tool }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      HAS_CERT: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - name: Gate (the same checks as before every push)
+        run: cargo xtask ci
+      - name: Package (deterministic zip, release manifest)
+        run: cargo xtask package ${{ inputs.tool }}
+      - name: Authenticode signing (only with a configured certificate)
+        if: ${{ env.HAS_CERT == 'true' }}
+        env:
+          PFX_B64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1
+          Get-ChildItem target/release/*.exe | ForEach-Object {
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:PFX_PASSWORD $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signing failed: $($_.Name)" }
+          }
+          Remove-Item $pfx
+          cargo xtask package ${{ inputs.tool }} --skip-build --signed
+      - name: Upload the artifact (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.tool }}-windows-x86_64
+          path: |
+            target/dist/*.zip
+            target/dist/*-release.json
+          if-no-files-found: error

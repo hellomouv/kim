@@ -17,6 +17,7 @@
     { "$ref": "#/$defs/ok_uninstall" },
     { "$ref": "#/$defs/ok_tools_list" },
     { "$ref": "#/$defs/ok_tools_describe" },
+    { "$ref": "#/$defs/ok_rollback" },
     { "$ref": "#/$defs/ok_tools_find" },
     { "$ref": "#/$defs/ok_tools_invoke" },
     { "$ref": "#/$defs/ok_status" },
@@ -167,6 +168,7 @@
     "ok_uninstall": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "uninstall" }, "data": { "$ref": "#/$defs/uninstall_data" } } } ] },
     "ok_tools_list": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.list" }, "data": { "$ref": "#/$defs/tools_list" } } } ] },
     "ok_tools_describe": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.describe" }, "data": { "$ref": "#/$defs/tools_describe" } } } ] },
+    "ok_rollback": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "rollback" }, "data": { "$ref": "#/$defs/rollback_data" } } } ] },
     "ok_tools_find": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.find" }, "data": { "$ref": "#/$defs/tools_find" } } } ] },
     "ok_tools_invoke": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.invoke" }, "data": { "$ref": "#/$defs/tools_invoke" } } } ] },
     "tools_find": {
@@ -523,7 +525,7 @@
       "additionalProperties": false,
       "properties": {
         "tool": { "$ref": "#/$defs/tool_id" },
-        "action": { "enum": ["install", "update", "downgrade", "reinstall"] },
+        "action": { "enum": ["install", "update", "downgrade", "reinstall", "rollback"] },
         "from": { "$ref": "#/$defs/nullable_semver" },
         "to": { "$ref": "#/$defs/semver" },
         "entrypoint": { "$ref": "#/$defs/path" },
@@ -546,6 +548,31 @@
         { "properties": { "dry_run": { "const": true }, "result": { "type": "null" } } },
         { "properties": { "dry_run": { "const": false }, "result": { "type": "object" } } }
       ]
+    },
+    "rollback_plan": {
+      "description": "Step 40: what `kim rollback` does — the version kept by the last update becomes active again.",
+      "type": "object",
+      "required": ["tool", "tool_dir", "from", "to", "entrypoint", "running"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "$ref": "#/$defs/tool_id" },
+        "tool_dir": { "type": "string" },
+        "from": { "$ref": "#/$defs/semver" },
+        "to": { "$ref": "#/$defs/semver" },
+        "entrypoint": { "type": "string" },
+        "running": { "type": "array" }
+      }
+    },
+    "rollback_data": {
+      "description": "Data of `kim rollback`. With --dry-run, `result` is null and nothing changed.",
+      "type": "object",
+      "required": ["plan", "dry_run", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "plan": { "$ref": "#/$defs/rollback_plan" },
+        "dry_run": { "type": "boolean" },
+        "result": { "anyOf": [ { "$ref": "#/$defs/install_result" }, { "type": "null" } ] }
+      }
     },
     "update_info": {
       "type": "object",

@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 40** (#40) — Windows release and documentation
+- Current Step: **Step 43** (#43, Windows part) — one-step installation; Steps 41–42 are Linux (blocked)
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #40 (Windows release). Release blockers: docs/RELEASE_READINESS.md §3;
-  perf baseline docs/perf/baseline.json (`cargo xtask bench --check`); Tabby leftovers #98
+- Next action: read #43 (Windows half only; Linux half blocked). Release: `cargo xtask package`,
+  `kim rollback`, release.yml (never run; no certificate), docs/INSTALL.md, RELEASING.md
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 40 — `cargo xtask package kim|subak` (deterministic, re-pack same SHA-256,
+  notices), `kim rollback` (rollback.rs 1/1, contract goldens), `package --signed` refuses
+  unsigned programs, e2e step40 1/1 (install → running → side-by-side update → rollback →
+  offline → uninstall keeping data); release.yml not run (no certificate).
 
 - 2026-11-12: Step 39 — `cargo xtask bench --record`/`--check` (22 measurements, budgets in
   docs/perf/baseline.json), found and pinned the Windows 10 inbox ConPTY handle per pane

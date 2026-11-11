@@ -53,6 +53,8 @@ pub enum Action {
     Update,
     Downgrade,
     Reinstall,
+    /// Step 40: the previous version, kept on disk, made active again.
+    Rollback,
 }
 
 /// What an install/update would do. Computing it changes nothing (`--dry-run` prints it).
@@ -602,6 +604,107 @@ pub fn execute(
         removed_versions,
         kept_in_use,
         running: plan.running.clone(),
+    })
+}
+
+/// Step 40: `kim rollback <tool>` — make the previous version (kept on disk by the last update)
+/// the active one again. Nothing is downloaded; the files are checked and self-checked first.
+#[derive(Debug, Clone, Serialize)]
+pub struct RollbackPlan {
+    pub tool: String,
+    pub tool_dir: PathBuf,
+    pub from: String,
+    pub to: String,
+    /// The previous version's entrypoint, `/`-separated, relative to the tool directory.
+    pub entrypoint: String,
+    pub running: Vec<RunningProcess>,
+}
+
+/// What `kim rollback` would do; refuses when no previous version is kept.
+pub fn plan_rollback(paths: &Paths, tool: &str) -> Result<RollbackPlan> {
+    let path = paths.install_record(tool);
+    let bytes = std::fs::read(&path).map_err(|_| {
+        KimError::new(ErrorCode::NotInstalled, format!("{tool} is not installed"))
+            .with_hint(format!("install it explicitly with `kim install {tool}`"))
+    })?;
+    let record: InstallRecord = serde_json::from_slice(&bytes).map_err(|e| {
+        KimError::new(
+            ErrorCode::PackageInvalid,
+            format!("{}: {e}", path.display()),
+        )
+    })?;
+    let Some(prev) = record.previous_version.clone() else {
+        return Err(KimError::new(
+            ErrorCode::NoRelease,
+            format!(
+                "{tool} {} has no previous version to go back to",
+                record.version
+            ),
+        )
+        .with_hint(format!(
+            "install an older version explicitly with `kim install {tool} --version <v>`"
+        )));
+    };
+    let tool_dir = paths.tool_dir(tool);
+    let current_prefix = format!("versions/{}/", record.version);
+    let file = record
+        .entrypoint
+        .strip_prefix(&current_prefix)
+        .unwrap_or(&record.entrypoint)
+        .to_string();
+    let entrypoint = format!("versions/{prev}/{file}");
+    if !entrypoint_path(&tool_dir, &entrypoint).is_file() {
+        return Err(KimError::new(
+            ErrorCode::PackageInvalid,
+            format!("the files of {tool} {prev} are no longer on disk"),
+        )
+        .with_hint(format!(
+            "install it explicitly with `kim install {tool} --version {prev}`"
+        )));
+    }
+    Ok(RollbackPlan {
+        tool: tool.to_string(),
+        running: running::processes_under(&tool_dir),
+        tool_dir,
+        from: record.version,
+        to: prev,
+        entrypoint,
+    })
+}
+
+/// Activates the previous version: the previous program must pass its self-check, then
+/// `current.json` is replaced atomically. As with an update, running programs are never stopped:
+/// they keep their own files and the next start uses the version rolled back to. Nothing is
+/// deleted, so the rollback can itself be undone.
+pub fn execute_rollback(plan: &RollbackPlan, paths: &Paths) -> Result<Outcome> {
+    let _lock = ToolLock::acquire(paths, &plan.tool)?;
+    let running = running::processes_under(&plan.tool_dir);
+    let entry = entrypoint_path(&plan.tool_dir, &plan.entrypoint);
+    self_check(&entry)?;
+    let record = InstallRecord {
+        schema: RECORD_SCHEMA.into(),
+        schema_version: 1,
+        tool: plan.tool.clone(),
+        version: plan.to.clone(),
+        entrypoint: plan.entrypoint.clone(),
+        installed_at: now_rfc3339(),
+        // The package of the version rolled back to was verified when it was installed; its
+        // hash is not kept, so this record says where it came from instead.
+        sha256: String::new(),
+        source_url: format!("rollback:{}", plan.from),
+        catalog_version: 0,
+        previous_version: Some(plan.from.clone()),
+    };
+    write_record(paths, &record)?;
+    Ok(Outcome {
+        tool: plan.tool.clone(),
+        action: Action::Rollback,
+        from: Some(plan.from.clone()),
+        to: plan.to.clone(),
+        entrypoint: entry,
+        removed_versions: Vec::new(),
+        kept_in_use: Vec::new(),
+        running,
     })
 }
 

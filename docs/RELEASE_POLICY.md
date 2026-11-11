@@ -61,8 +61,13 @@ install therefore never leaves a half-activated tool.
 - Each tool uses SemVer independently; release tags are `<tool>-v<version>` (CONTRIBUTING).
 - Channels: `stable` (default) and `preview`; `--channel preview` considers both. A downgrade
   happens only with an explicit `--version`.
-- The previous version stays on disk after an update. A dedicated `kim rollback` command is
-  planned with the release work (Step 40); until then reinstall the previous version explicitly.
+- The previous version stays on disk after an update. `kim rollback <tool>` (Step 40) makes it
+  active again: nothing is downloaded, its program is self-checked, `current.json` is replaced
+  atomically, running programs are never stopped (they keep their files), and the version rolled
+  back from stays on disk so the rollback can be undone.
+- An update while the tool runs installs side by side and stops nothing: the running programs
+  keep their version, the next start uses the new one. An uninstall while it runs is refused
+  (`tool_running`).
 
 ## 4. Signing keys
 
@@ -76,13 +81,16 @@ the new key, remove the old key one release later. A compromised key is removed 
 the catalog version is bumped so caches move off the old catalog.
 
 Package integrity is anchored in the signed catalog (SHA-256 per asset). Authenticode signing of
-the binaries themselves is additional and is used only when a legitimate certificate exists
-(Step 40); Kim never fakes or claims a signature it does not have.
+the binaries themselves is additional and is used only when a legitimate certificate exists:
+the release workflow signs when the certificate secrets are configured and `cargo xtask package
+--signed` refuses unless every program's signature is valid ([RELEASING §2](RELEASING.md)); Kim
+never fakes or claims a signature it does not have.
 
 ## 5. Publishing a release (maintainer checklist)
 
-1. Build the tool with the MSVC target in CI; produce `<tool>-<version>-windows-x86_64.zip`.
-2. Compute size and SHA-256; upload to the GitHub release `<tool>-v<version>`.
+1. Run the `Release artifacts` workflow for the tool (or `cargo xtask package <tool>` locally):
+   `<tool>-<version>-windows-x86_64.zip` and its release manifest ([RELEASING](RELEASING.md)).
+2. Check the size and SHA-256 against the manifest; upload to the GitHub release `<tool>-v<version>`.
 3. Add the release to `catalog/catalog.json`, bump `catalog_version`, keep `expires_at` ≤ 6
    months ahead.
 4. `cargo xtask catalog-sign --key <secret key file>`; copy the catalog to
