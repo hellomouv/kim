@@ -188,6 +188,7 @@ specified in [HOTKEY_CONTRACT.md](HOTKEY_CONTRACT.md) ([ADR 0017](adr/0017-unive
 | SUBAK-FR-051 | States aggregate to Window, tab, session manager and floating icon with priority `need-input` > `error` > `done` > `in-progress` > `unknown` > `idle` > `none`, each with a text label (not color alone). | P1 | M2 | T |
 | SUBAK-FR-052 | State detection is local and never stores or transmits conversation content. | P0 | M2 | I |
 | SUBAK-FR-053 | Claude state is queryable through the CLI as JSON. | P1 | M2 | T |
+| SUBAK-FR-054 | Subak has its own icon — a watermelon with a near-black rind and red flesh — readable at 16–48 px on dark and light surfaces, with monochrome/High Contrast variants and reproducible assets. Each Terminal's Claude state has a tiny distinct motion on its tab and the floating icon (in-progress turns, need-input, error and done give a short cue, idle and unknown are still), drawn only while shown, static under reduced motion or `terminal.claude_animation = false`, never animated by the Host. | P1 | M2 | T |
 
 ### 4.6 Long-term parity and platforms
 

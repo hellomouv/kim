@@ -2768,3 +2768,207 @@ fn claude_states_mark_the_tabs_and_the_title_in_words() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// CPU time of a process in milliseconds (kernel + user).
+fn cpu_ms(pid: u32) -> f64 {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let p = Proc::open(pid);
+    let ft = |f: FILETIME| {
+        ((u64::from(f.dwHighDateTime) << 32) | u64::from(f.dwLowDateTime)) as f64 / 10_000.0
+    };
+    let (mut c, mut e, mut k, mut u) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    // SAFETY: a query on a process handle we own.
+    unsafe {
+        GetProcessTimes(
+            p.h.as_raw_handle(),
+            &raw mut c,
+            &raw mut e,
+            &raw mut k,
+            &raw mut u,
+        )
+    };
+    ft(k) + ft(u)
+}
+
+/// Step 44 (`SUBAK-FR-054`, ADR 0073): each Terminal's Claude mark moves by its own state —
+/// in-progress turns a quarter every 300 ms, need-input blinks then holds — through one timer
+/// that runs only while a shown mark moves: none while minimized, none in static mode (reduced
+/// motion), none once every mark has settled. A new window after the old one closed shows the
+/// same states. The CPU cost of the moving marks is measured.
+#[test]
+fn claude_marks_move_per_terminal_only_while_shown() {
+    let host = Host::start("gui-claude-motion", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "agent");
+    new_terminal(&ep, "other");
+    let appdata = sandbox("claude-motion");
+    let mut gui = Gui::start(&ep, Some("agent"), &appdata);
+    gui.state("attached");
+    let dir = std::env::temp_dir().join(format!("subak-gui-motion-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let hook = |target: &str, k: u32, input: &Value| {
+        let (file, out) = (dir.join(format!("{k}.json")), dir.join(format!("{k}.out")));
+        std::fs::write(&file, input.to_string()).unwrap();
+        let line = format!(
+            "type \"{}\" | \"{}\" --json claude report > \"{}\"",
+            file.display(),
+            Path::new(subak()).display(),
+            out.display()
+        );
+        for keys in [
+            format!("send-keys -l '{line}'"),
+            "send-keys Enter".to_string(),
+        ] {
+            let (code, doc) = sub(&ep, &["--json", "command", "--target", target, &keys]);
+            assert_eq!(code, 0, "{doc}");
+        }
+        wait_for("the reporter", || {
+            std::fs::read_to_string(&out).is_ok_and(|t| t.contains("\"delivered\":true"))
+        });
+    };
+    let tab = |d: &Value, name: &str| {
+        d["tabs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap()["claude"]
+            .clone()
+    };
+    let m = |d: &Value| d["claude_motion"].clone();
+    // Nothing moves: no timer at all.
+    let d = gui.dump();
+    assert_eq!(m(&d)["timer_ms"], Value::Null, "{}", m(&d));
+    assert_eq!(m(&d)["mode"], "animated");
+
+    hook(
+        "agent",
+        1,
+        &json!({"session_id": "m1", "hook_event_name": "UserPromptSubmit", "prompt": "p"}),
+    );
+    let d = gui.until("agent in progress", |d| tab(d, "agent") == "in-progress");
+    let timer = m(&d)["timer_ms"].as_u64().expect("armed while working");
+    assert!((10..=300).contains(&timer), "{timer}");
+    // It turns: frames are drawn and the bar shows the spin glyphs.
+    let f0 = m(&gui.dump())["frames"].as_u64().unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    let t0 = Instant::now();
+    while t0.elapsed() < Duration::from_secs(3) {
+        let d = gui.dump();
+        for g in ['◐', '◓', '◑', '◒'] {
+            if d["bar"]["text"].as_str().unwrap_or("").contains(g) {
+                seen.insert(g);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(70));
+    }
+    let f1 = m(&gui.dump())["frames"].as_u64().unwrap();
+    let frames = f1 - f0;
+    assert!(
+        (7..=12).contains(&frames),
+        "{frames} frames in 3 s (one each 300 ms)"
+    );
+    assert!(seen.len() >= 3, "the mark turns: {seen:?}");
+    // The cost of the moving mark, without test dumps.
+    let cpu0 = cpu_ms(gui.pid);
+    std::thread::sleep(Duration::from_secs(10));
+    let cpu_anim = cpu_ms(gui.pid) - cpu0;
+
+    // Another Terminal: its own state on its own tab.
+    hook(
+        "other",
+        2,
+        &json!({"session_id": "m2", "hook_event_name": "PermissionRequest", "tool_name": "Bash"}),
+    );
+    let d = gui.until("other needs input", |d| tab(d, "other") == "need-input");
+    assert_eq!(
+        tab(&d, "agent"),
+        "in-progress",
+        "each tab its own Terminal's state"
+    );
+
+    // Minimized: nothing shown, nothing drawn.
+    let d = gui.cmd(&json!({"cmd": "minimized", "on": true}));
+    assert_eq!(m(&d)["timer_ms"], Value::Null, "{}", m(&d));
+    let fm = m(&d)["frames"].as_u64().unwrap();
+    let cpu_min0 = cpu_ms(gui.pid);
+    std::thread::sleep(Duration::from_secs(2));
+    let cpu_min = cpu_ms(gui.pid) - cpu_min0;
+    assert_eq!(
+        m(&gui.dump())["frames"].as_u64().unwrap(),
+        fm,
+        "no frame while minimized"
+    );
+    let d = gui.cmd(&json!({"cmd": "minimized", "on": false}));
+    assert!(
+        m(&d)["timer_ms"].is_u64(),
+        "restored: moving again {}",
+        m(&d)
+    );
+
+    // Static mode (Windows' animations off): final frames, no timer.
+    let d = gui.cmd(&json!({"cmd": "system", "animations": false}));
+    let d = if m(&d)["timer_ms"].is_null() {
+        d
+    } else {
+        gui.dump()
+    };
+    assert_eq!(
+        (m(&d)["mode"].as_str(), m(&d)["timer_ms"].clone()),
+        (Some("static"), Value::Null)
+    );
+    assert!(
+        d["bar"]["text"].as_str().unwrap().contains('◔'),
+        "{}",
+        d["bar"]["text"]
+    );
+    let fs = m(&d)["frames"].as_u64().unwrap();
+    let cpu_s0 = cpu_ms(gui.pid);
+    std::thread::sleep(Duration::from_secs(2));
+    let cpu_static = cpu_ms(gui.pid) - cpu_s0;
+    assert_eq!(m(&gui.dump())["frames"].as_u64().unwrap(), fs);
+    gui.cmd(&json!({"cmd": "system", "animations": true}));
+
+    // Every mark settled (Claude stopped; the need-input cue is over): the timer goes.
+    hook(
+        "agent",
+        3,
+        &json!({"session_id": "m1", "hook_event_name": "Stop"}),
+    );
+    gui.until("agent done", |d| tab(d, "agent") == "done");
+    let d = gui.until("settled", |d| d["claude_motion"]["timer_ms"].is_null());
+    assert_eq!(tab(&d, "other"), "need-input");
+
+    // A new window (the old one closed) shows the same states from the Host.
+    assert_eq!(gui.close(), 0);
+    gui = Gui::start(&ep, Some("agent"), &appdata);
+    gui.state("attached");
+    let d = gui.until("states again", |d| {
+        tab(d, "agent") == "done" && tab(d, "other") == "need-input"
+    });
+    assert!(
+        d["bar"]["text"].as_str().unwrap().contains('✓'),
+        "{}",
+        d["bar"]["text"]
+    );
+    gui.until("settled again", |d| {
+        d["claude_motion"]["timer_ms"].is_null()
+    });
+    assert_eq!(gui.close(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+    println!(
+        "EVIDENCE claude motion (debug build, off-screen): {frames} tab-bar frames in 3 s while in-progress; CPU while turning {cpu_anim:.1} ms over 10 s (GetProcessTimes counts in 15.6 ms ticks); minimized 2 s: 0 frames, CPU {cpu_min:.1} ms; static 2 s: 0 frames, CPU {cpu_static:.1} ms; spin glyphs seen {seen:?}"
+    );
+    assert!(
+        cpu_anim < 500.0,
+        "turning marks cost {cpu_anim:.1} ms CPU in 10 s"
+    );
+}

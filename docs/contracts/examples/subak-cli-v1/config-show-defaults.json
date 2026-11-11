@@ -94,6 +94,13 @@
       },
       {
         "default": true,
+        "key": "terminal.claude_animation",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
+      },
+      {
+        "default": true,
         "key": "terminal.detect_shells",
         "source": "default",
         "takes": "true or false",

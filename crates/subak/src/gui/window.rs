@@ -32,6 +32,7 @@
 
 use super::Options;
 use super::ask::{Answer, Question, Topic};
+use super::claude_motion;
 use super::clip::{self, Clipboard, FakeClipboard, FakeOpener, FakeSavePicker, Opener};
 use super::compose;
 use super::export::{self, Export};
@@ -140,6 +141,8 @@ const TIMER_HOLD: usize = 4;
 /// Step 20: redraws while a transition runs (never while idle), and hides a toast after 4 s.
 const TIMER_MOTION: usize = 5;
 const TIMER_TOAST: usize = 6;
+/// Step 44: the next Claude mark frame (armed only while a shown mark moves).
+const TIMER_CLAUDE: usize = 7;
 /// `WM_MOUSELEAVE` (the pointer left the client area after `TrackMouseEvent`).
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
@@ -457,6 +460,12 @@ struct App {
     /// Windows shows animations ("Show animations in Windows").
     system_animations: bool,
     motion: Transitions,
+    /// Step 44: each Terminal's Claude state and when it began (the mark's motion clock).
+    claude_since: HashMap<String, (tabs::Claude, Instant)>,
+    /// Step 44: the frame timer's delay while armed (none: no mark moves, or not shown).
+    claude_timer: Option<u32>,
+    /// Step 44: Claude mark frames drawn (tests: frames per second, none while minimized).
+    claude_frames: u64,
     /// The active tab's id at the last bar layout (a change starts the tab transition).
     bar_active: Option<String>,
     /// The tab under the pointer, and whether `WM_MOUSELEAVE` is requested.
@@ -1573,6 +1582,26 @@ impl App {
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);
         let connected = self.model.connected();
+        // Step 44: each mark's motion clock restarts when its Terminal's state changes.
+        let now = Instant::now();
+        let mode = self.claude_mode();
+        let mut marks = Vec::new();
+        self.claude_since
+            .retain(|id, _| self.model.tabs().iter().any(|t| &t.id == id));
+        for t in self.model.tabs() {
+            let e = self
+                .claude_since
+                .entry(t.id.clone())
+                .or_insert((t.claude, now));
+            if e.0 != t.claude {
+                *e = (t.claude, now);
+            }
+        }
+        let since = |id: &str| {
+            self.claude_since
+                .get(id)
+                .map_or(std::time::Duration::ZERO, |(_, at)| now.duration_since(*at))
+        };
         let items: Vec<tabs::Item<'_>> = self
             .model
             .tabs()
@@ -1592,6 +1621,14 @@ impl App {
                 } else {
                     tabs::Claude::None
                 },
+                frame: None,
+            })
+            .zip(self.model.tabs())
+            .map(|(mut it, t)| {
+                let s = since(&t.id);
+                it.frame = claude_motion::frame(it.claude, s, mode);
+                marks.push((it.claude, s));
+                it
             })
             .collect();
         let active = self.model.active();
@@ -1608,6 +1645,7 @@ impl App {
             self.hover,
         );
         drop(items);
+        self.arm_claude_timer(claude_motion::earliest(marks, mode));
         // Step 20: another tab shown starts the tab transition (the marker fades in).
         let active_id = self.model.terminal().map(|t| t.id.clone());
         if active_id != self.bar_active {
@@ -1683,6 +1721,9 @@ impl App {
                 "status": tabs::Status::from_state(&t.state).word(),
                 "claude": t.claude.as_str(),
             })).collect::<Vec<_>>(),
+            // Step 44: the Claude mark timer and the frames drawn.
+            "claude_motion": {"timer_ms": self.claude_timer, "frames": self.claude_frames,
+                "mode": if self.claude_mode() == claude_motion::Mode::Animated { "animated" } else { "static" }},
             "active": active,
             "hidden": self.model.hidden().iter().map(|t| json!({"id": t.id, "name": t.name}))
                 .collect::<Vec<_>>(),
@@ -2114,6 +2155,8 @@ impl App {
         if kind == SIZE_MINIMIZED || !layout::client_is_usable(w, h) {
             // The pane keeps its size while the window is minimized.
             self.minimized = true;
+            // Step 44: nothing is shown, so no Claude mark moves.
+            self.arm_claude_timer(None);
             return;
         }
         self.minimized = false;
@@ -2338,6 +2381,44 @@ impl App {
             // SAFETY: our own window's timer, killed when no transition runs.
             unsafe { SetTimer(self.hwnd, TIMER_MOTION, motion::FRAME_MS, None) };
         }
+    }
+
+    /// Step 44: how the Claude marks move — static with `terminal.claude_animation = false`
+    /// or reduced motion (the setting, or Windows' animations off).
+    fn claude_mode(&self) -> claude_motion::Mode {
+        if self.settings.terminal.claude_animation && self.motion.enabled {
+            claude_motion::Mode::Animated
+        } else {
+            claude_motion::Mode::Static
+        }
+    }
+
+    /// Step 44: arms the one Claude frame timer at `next` (rounded up to whole milliseconds),
+    /// or kills it — when no shown mark moves, or the window is minimized.
+    fn arm_claude_timer(&mut self, next: Option<std::time::Duration>) {
+        let next = next
+            .filter(|_| !self.minimized)
+            .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX).max(10));
+        if next == self.claude_timer {
+            return;
+        }
+        self.claude_timer = next;
+        match next {
+            // SAFETY: our own window's timer; replaced or killed on the next layout.
+            Some(ms) => unsafe { SetTimer(self.hwnd, TIMER_CLAUDE, ms, None) },
+            // SAFETY: our own timer.
+            None => unsafe { KillTimer(self.hwnd, TIMER_CLAUDE) as usize },
+        };
+    }
+
+    /// Step 44: a Claude mark's frame is due: redraw the tab bar (which re-arms the timer).
+    fn claude_tick(&mut self) {
+        // SAFETY: our own timer; `rebuild_bar` arms it again if a mark still moves.
+        unsafe { KillTimer(self.hwnd, TIMER_CLAUDE) };
+        self.claude_timer = None;
+        self.claude_frames += 1;
+        self.rebuild_bar();
+        self.invalidate_bar();
     }
 
     /// One frame of the running transitions.
@@ -4982,6 +5063,8 @@ impl App {
             "confirm": self.confirm_json(),
             "banner_text": self.banner_text(),
         });
+        // Step 44: the Claude mark timer and frames.
+        dump["claude_motion"] = self.tabs_json()["claude_motion"].clone();
         // Step 22: the split window's places, its read-only views and the active pane.
         dump["layout"] = json!(self.model.layout().map(|l| json!({
             "window_id": l.window_id,
@@ -5328,6 +5411,13 @@ impl App {
                 self.after.push(After::Place(None, outer));
             }
             "focus" => self.on_focus(cmd["on"] == true),
+            // Step 44: what minimizing and restoring report (`WM_SIZE`), simulated.
+            "minimized" => {
+                let (w, h) = self.client;
+                let kind = if cmd["on"] == true { SIZE_MINIMIZED } else { 0 };
+                self.on_size(kind, w, h);
+                self.rebuild_bar();
+            }
             "ime" => {
                 let s = |k: &str| cmd[k].as_str().map(String::from);
                 self.on_composition(s("result"), s("composition"));
@@ -6036,6 +6126,7 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
                     }
                 }
                 TIMER_MOTION => app.motion_tick(),
+                TIMER_CLAUDE => app.claude_tick(),
                 TIMER_TOAST => {
                     // SAFETY: our own one-shot timer.
                     unsafe { KillTimer(hwnd, TIMER_TOAST) };
@@ -6342,6 +6433,9 @@ pub fn run(o: Options) -> ExitCode {
         light_mode: apps_use_light_theme(),
         system_animations: animations,
         motion: Transitions::new(motion_on),
+        claude_since: HashMap::new(),
+        claude_timer: None,
+        claude_frames: 0,
         bar_active: None,
         hover: None,
         leave_tracked: false,

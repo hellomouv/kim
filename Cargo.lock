@@ -2957,6 +2957,7 @@ name = "subak"
 version = "0.0.1"
 dependencies = [
  "kim-hotkeys",
+ "png",
  "regex",
  "serde_json",
  "subak-term",

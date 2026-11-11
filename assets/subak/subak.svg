@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="256" height="256">
+  <!-- Subak (수박): a watermelon slice, charcoal rind, red flesh, dark seeds, on the
+       bg.overlay tile. The 40-unit master of crates/subak/src/gui/float/art.rs (same geometry
+       and colours; docs/SUBAK_BRAND.md). License: MIT OR Apache-2.0, like the repository. -->
+  <title>Subak</title>
+  <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="#1C1B24" stroke="#26252F" stroke-width="1"/>
+  <!-- The slice: a half-disc, flat edge on top, centre (20, 14.5), radius 17. -->
+  <path d="M3 14.5 A17 17 0 0 0 37 14.5 Z" fill="#6E6B7C"/>
+  <path d="M3.9 14.5 A16.1 16.1 0 0 0 36.1 14.5 Z" fill="#232226"/>
+  <path d="M5.6 14.5 A14.4 14.4 0 0 0 34.4 14.5 Z" fill="#F1E7D0"/>
+  <path d="M6.6 14.5 A13.4 13.4 0 0 0 33.4 14.5 Z" fill="#E5383B"/>
+  <g fill="#161418">
+    <ellipse cx="13.93" cy="18.14" rx="1.09" ry="1.82"/>
+    <ellipse cx="20" cy="21.79" rx="1.09" ry="1.82"/>
+    <ellipse cx="26.07" cy="18.14" rx="1.09" ry="1.82"/>
+    <ellipse cx="16.96" cy="24.82" rx="1.09" ry="1.82"/>
+    <ellipse cx="23.04" cy="24.82" rx="1.09" ry="1.82"/>
+  </g>
+</svg>

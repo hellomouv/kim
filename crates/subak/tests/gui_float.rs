@@ -1162,3 +1162,159 @@ fn a_window_menu_starts_the_floating_ui_for_its_endpoint_once() {
         "the first keeps running"
     );
 }
+
+/// Step 44 (`SUBAK-FR-054`, `SUBAK-FR-051`, ADR 0073): the floating icon's badge says the most
+/// urgent Claude state of all Terminals and moves like the tab marks — in-progress turns,
+/// need-input blinks then holds — through one timer, only while the icon is shown. The tray
+/// keeps the resting badge (no tray update per frame); the rows keep each Terminal's own state.
+#[test]
+fn the_icon_badge_moves_with_the_most_urgent_claude_state_and_the_tray_rests() {
+    let ep = endpoint("float-claude");
+    let sb = sandbox("claude");
+    /// Stops the test's Host even when an assertion fails.
+    struct Stop(String);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            let _ = sub(&self.0, &["host", "stop", "--kill-terminals", "--yes"]);
+        }
+    }
+    let _stop = Stop(ep.clone());
+    new_terminal(&ep, "agent");
+    new_terminal(&ep, "other");
+    // Both the floating icon and the tray.
+    let pd = sb.join("mouv").join("subak");
+    std::fs::create_dir_all(&pd).unwrap();
+    std::fs::write(
+        pd.join("float.json"),
+        r#"{"schema":"subak.float","schema_version":1,"icon":true,"tray":true}"#,
+    )
+    .unwrap();
+    let f = Gui::start(&ep, &sb, &["--float"]);
+    let d = f.until("connected", |d| d["conn"] == "connected");
+    assert_eq!(
+        (d["tray"]["shown"].clone(), d["icon"]["visible"].clone()),
+        (json!(true), json!(true)),
+        "{d:#}"
+    );
+    let dir = std::env::temp_dir().join(format!("subak-float-claude-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let hook = |target: &str, k: u32, input: &Value| {
+        let (file, out) = (dir.join(format!("{k}.json")), dir.join(format!("{k}.out")));
+        std::fs::write(&file, input.to_string()).unwrap();
+        let line = format!(
+            "type \"{}\" | \"{}\" --json claude report > \"{}\"",
+            file.display(),
+            Path::new(subak()).display(),
+            out.display()
+        );
+        for keys in [
+            format!("send-keys -l '{line}'"),
+            "send-keys Enter".to_string(),
+        ] {
+            let (code, doc) = sub(&ep, &["--json", "command", "--target", target, &keys]);
+            assert_eq!(code, 0, "{doc}");
+        }
+        wait_for("the reporter", || {
+            std::fs::read_to_string(&out).is_ok_and(|t| t.contains("\"delivered\":true"))
+        });
+    };
+    let m = |d: &Value| d["icon"]["claude_motion"].clone();
+    let d = f.dump();
+    assert_eq!(m(&d)["timer_ms"], Value::Null, "{}", m(&d));
+    assert_eq!(m(&d)["animate"], true);
+
+    hook(
+        "agent",
+        1,
+        &json!({"session_id": "f1", "hook_event_name": "UserPromptSubmit", "prompt": "p"}),
+    );
+    let d = f.until("badge in-progress", |d| d["icon"]["badge"] == "in-progress");
+    assert!(
+        m(&d)["timer_ms"]
+            .as_u64()
+            .is_some_and(|t| (10..=300).contains(&t)),
+        "{}",
+        m(&d)
+    );
+    let tray_calls = |d: &Value| d["tray"]["calls"].as_array().map_or(0, Vec::len);
+    let (f0, t0) = (m(&d)["frames"].as_u64().unwrap(), tray_calls(&d));
+    let mut pictures = std::collections::BTreeSet::new();
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_millis(2_500) {
+        pictures.insert(
+            f.dump()["icon"]["picture"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        );
+        std::thread::sleep(Duration::from_millis(60));
+    }
+    let d = f.dump();
+    let frames = m(&d)["frames"].as_u64().unwrap() - f0;
+    assert!((5..=10).contains(&frames), "{frames} badge frames in 2.5 s");
+    assert!(
+        pictures.len() >= 3,
+        "the badge turns: {} pictures",
+        pictures.len()
+    );
+    assert_eq!(tray_calls(&d), t0, "no tray update per frame");
+    assert!(
+        t0 >= 2,
+        "the tray did get the in-progress state once: {}",
+        d["tray"]
+    );
+
+    // The most urgent state wins the badge; each row keeps its own.
+    hook(
+        "other",
+        2,
+        &json!({"session_id": "f2", "hook_event_name": "PermissionRequest", "tool_name": "Bash"}),
+    );
+    let d = f.until("badge need-input", |d| d["icon"]["badge"] == "need-input");
+    assert!(
+        d["icon"]["name"]
+            .as_str()
+            .unwrap()
+            .contains("Claude needs input"),
+        "{}",
+        d["icon"]["name"]
+    );
+    // The blink is over after 1.5 s: the timer goes, though a Terminal is still working.
+    let d = f.until("blink over", |d| {
+        d["icon"]["claude_motion"]["timer_ms"].is_null()
+    });
+    let still = m(&d)["frames"].as_u64().unwrap();
+    std::thread::sleep(Duration::from_millis(800));
+    assert_eq!(
+        m(&f.dump())["frames"].as_u64().unwrap(),
+        still,
+        "settled: no frames"
+    );
+    let (_, doc) = sub(&ep, &["--json", "ls"]);
+    let states: Vec<(String, String)> = doc["data"]["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| {
+            (
+                t["name"].as_str().unwrap().to_string(),
+                t["claude_state"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(
+        states.contains(&("agent".into(), "in-progress".into())),
+        "{states:?}"
+    );
+    assert!(
+        states.contains(&("other".into(), "need-input".into())),
+        "{states:?}"
+    );
+    drop(f);
+    let _ = std::fs::remove_dir_all(&dir);
+    println!(
+        "EVIDENCE float claude badge: {frames} frames in 2.5 s while in-progress, {} distinct pictures, 0 tray updates per frame; need-input blink then no timer",
+        pictures.len()
+    );
+}

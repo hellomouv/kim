@@ -358,6 +358,7 @@ window, and never change a running Terminal. The window's Settings menu changes 
 `appearance.padding` (0–16), `appearance.opacity` (50–100), `appearance.motion` (`system`,
 `reduced`, `full`), `appearance.bold_is_bright`, `terminal.default_profile`,
 `terminal.copy_on_select`, `terminal.smart_ctrl_c`, `terminal.claude_indicators` (Step 28),
+`terminal.claude_animation` (Step 44),
 `terminal.right_click` (`copy-paste`,
 `menu`, `paste`, `none`), `terminal.middle_click` (`none`, `paste`), `terminal.word_separators`.
 Booleans take `true`/`false` (or `on`/`off`). A value that starts with `-` is given as

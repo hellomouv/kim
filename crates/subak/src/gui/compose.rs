@@ -391,16 +391,19 @@ mod tests {
                 name: "빌드",
                 status: Status::Running,
                 claude: Claude::None,
+                frame: None,
             },
             Item {
                 name: "claude",
                 status: Status::Running,
                 claude: Claude::None,
+                frame: None,
             },
             Item {
                 name: "kept",
                 status: Status::Stopped,
                 claude: Claude::None,
+                frame: None,
             },
         ];
         for (scale, pct) in [(1.0f32, 100), (2.0, 200)] {

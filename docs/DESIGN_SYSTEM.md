@@ -142,6 +142,11 @@ disabled**. Focus ring is always drawn on keyboard focus, never on mouse click.
 | `unknown` | `claude.unknown` | hollow ring | none |
 | `none` | — | nothing | — |
 
+**Subak (Step 44):** the tab marks and the floating badge move as specified in
+[SUBAK_BRAND §4](SUBAK_BRAND.md#4-motion) (in-progress turns; need-input, error and done give a
+short cue, then hold; idle and unknown are still), static under reduced motion; the table's
+motion column above is the earlier plan, superseded there for Subak.
+
 Tool install status uses the same shapes with `status.*` colors: installed (filled), update
 available (ring + dot), incompatible (triangle), not installed (nothing).
 
@@ -172,6 +177,9 @@ available (ring + dot), incompatible (triangle), not installed (nothing).
   installed and working").
 
 ### 3.4 Subak floating icon and tray
+
+Subak's own identity — the black-rind, red-flesh watermelon, its colour tokens, sizes and
+assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
 
 - Floating icon: 40×40, radius 10, `bg.overlay`, 1 px `border.subtle`, Subak glyph centered;
   aggregate Claude indicator as a 10 px badge at the bottom-right. Draggable; snaps 8 px to

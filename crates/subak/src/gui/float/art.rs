@@ -294,10 +294,17 @@ fn rounded_box(x: f32, y: f32, h: f32, r: f32) -> f32 {
     (ox * ox + oy * oy).sqrt() + qx.max(qy).min(0.0) - r
 }
 
+/// The slice's centre height and radius in tile units (the flat edge on top).
+pub const SLICE: (f32, f32) = (-5.5, 17.0);
+
 /// What a sample point of the glyph is (in units of the 40 px tile, origin at the centre).
-fn glyph_layer(x: f32, y: f32, outline: bool) -> Option<u8> {
+///
+/// Step 44: at small sizes the charcoal rind keeps at least 1.6 device pixels (`unit` tile
+/// units per pixel) so the black-and-red identity reads at 16 px; the pale band stays a hairline.
+fn glyph_layer(x: f32, y: f32, outline: bool, unit: f32) -> Option<u8> {
     // The slice: a half-disc, flat edge on top, centred a little above the middle.
-    let (cx, cy, r) = (0.0, -4.0, 14.0);
+    // Step 44: large in the tile (34 of 40 units wide) so it reads at 16 px.
+    let (cx, cy, r) = (0.0, SLICE.0, SLICE.1);
     let (dx, dy) = (x - cx, y - cy);
     let d = (dx * dx + dy * dy).sqrt();
     if dy < 0.0 || d > r {
@@ -308,16 +315,25 @@ fn glyph_layer(x: f32, y: f32, outline: bool) -> Option<u8> {
         let edge = (r - d < 1.6) || dy < 1.6;
         return edge.then_some(1);
     }
-    if d > r - 2.6 {
+    let rind = 2.6f32.max(1.6 * unit);
+    let band = 1.0f32.max(0.5 * unit);
+    if d > r - rind {
         return Some(if d > r - 0.9 { 0 } else { 1 }); // rind edge, rind
     }
-    if d > r - 4.0 {
+    if d > r - rind - band {
         return Some(2); // pale band
     }
     // Seeds: small dark drops in the flesh.
-    for (sx, sy) in [(-5.0, 3.0), (0.0, 6.0), (5.0, 3.0), (-2.5, 8.5), (2.5, 8.5)] {
-        let (ex, ey) = (x - sx, y - cy - sy);
-        if (ex * ex) / (0.9 * 0.9) + (ey * ey) / (1.5 * 1.5) <= 1.0 {
+    let k = r / 14.0;
+    // Below 25 px the seeds would be sub-pixel specks muddying the red: left out.
+    let seeds: &[(f32, f32)] = if unit > 1.6 {
+        &[]
+    } else {
+        &[(-5.0, 3.0), (0.0, 6.0), (5.0, 3.0), (-2.5, 8.5), (2.5, 8.5)]
+    };
+    for &(sx, sy) in seeds {
+        let (ex, ey) = (x - sx * k, y - cy - sy * k);
+        if (ex * ex) / (0.9 * k * 0.9 * k) + (ey * ey) / (1.5 * k * 1.5 * k) <= 1.0 {
             return Some(4);
         }
     }
@@ -359,6 +375,16 @@ fn badge_hit(b: Badge, x: f32, y: f32) -> Option<bool> {
     }
 }
 
+/// `(dx, dy)` turned back by `turn` quarter turns (so the shape turns forward, clockwise).
+fn turned(dx: f32, dy: f32, turn: u8) -> (f32, f32) {
+    match turn % 4 {
+        0 => (dx, dy),
+        1 => (dy, -dx),
+        2 => (-dx, -dy),
+        _ => (-dy, dx),
+    }
+}
+
 fn badge_colour(b: Badge, p: &Palette) -> Rgb {
     match b {
         Badge::NoHost | Badge::Connecting | Badge::Claude(Claude::Unknown) => p.badge_warn,
@@ -368,8 +394,35 @@ fn badge_colour(b: Badge, p: &Palette) -> Rgb {
     }
 }
 
+/// Step 44: a frame of the Claude badge's motion (`claude_motion`): the in-progress half-disc
+/// turned by quarter turns, or the badge drawn faint (a blink or flash).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BadgeMotion {
+    /// Quarter turns (0–3) of the in-progress half-disc.
+    pub turn: u8,
+    pub faint: bool,
+}
+
+impl BadgeMotion {
+    pub fn of(f: crate::gui::claude_motion::Frame) -> Self {
+        let turn = crate::gui::claude_motion::SPIN
+            .iter()
+            .position(|g| *g == f.glyph)
+            .unwrap_or(0) as u8;
+        Self {
+            turn,
+            faint: f.faint,
+        }
+    }
+}
+
 /// The icon at `size × size` device pixels (40 logical pixels at the DPI; 16–48 for the tray).
 pub fn render(state: &IconState, size: u32, palette: &Palette) -> Picture {
+    render_frame(state, size, palette, BadgeMotion::default())
+}
+
+/// [`render`] with the Claude badge at a motion frame (Step 44).
+pub fn render_frame(state: &IconState, size: u32, palette: &Palette, m: BadgeMotion) -> Picture {
     let size = size.clamp(8, 512);
     let b = badge(state);
     let unit = 40.0 / size as f32;
@@ -397,7 +450,7 @@ pub fn render(state: &IconState, size: u32, palette: &Palette) -> Picture {
                         },
                         1.0,
                     );
-                    if let Some(layer) = glyph_layer(x, y, palette.outline_only) {
+                    if let Some(layer) = glyph_layer(x, y, palette.outline_only, unit) {
                         let c = match layer {
                             0 => palette.rind_edge,
                             1 => palette.rind,
@@ -407,8 +460,11 @@ pub fn render(state: &IconState, size: u32, palette: &Palette) -> Picture {
                         };
                         acc.over(c, 1.0);
                     }
-                    if badge_hit(b, x, y).is_some() {
-                        acc.over(badge_colour(b, palette), 1.0);
+                    // The in-progress half-disc turns: sample the badge in turned coordinates.
+                    let (bx, by) = turned(x - BADGE.0, y - BADGE.1, m.turn);
+                    if badge_hit(b, bx + BADGE.0, by + BADGE.1).is_some() {
+                        let k = if m.faint { 0.4 } else { 1.0 };
+                        acc.over(badge_colour(b, palette), k);
                     } else if b != Badge::None {
                         // A tile-coloured halo keeps the badge apart from the glyph.
                         let (dx, dy) = (x - BADGE.0, y - BADGE.1);
@@ -506,7 +562,7 @@ mod tests {
         assert_eq!(p.rgba(39, 39).3, 0);
         assert_eq!(p.rgba(20, 0), (0x26, 0x25, 0x2F, 255));
         // Tile colour away from the glyph.
-        assert_eq!(p.rgba(4, 20), (0x1C, 0x1B, 0x24, 255));
+        assert_eq!(p.rgba(20, 36), (0x1C, 0x1B, 0x24, 255));
         // Red flesh in the slice, the charcoal rind at its bottom, a pale band in between.
         let (r, g, b, a) = p.rgba(20, 19);
         assert!(
@@ -514,9 +570,9 @@ mod tests {
             "flesh {:?}",
             (r, g, b)
         );
-        let rind = p.rgba(20, 28);
+        let rind = p.rgba(20, 30);
         assert!(rind.0 < 0x70 && rind.1 < 0x70, "rind {rind:?}");
-        let band = p.rgba(20, 26);
+        let band = p.rgba(20, 28);
         assert!(band.0 > 0xC0 && band.1 > 0xC0, "band {band:?}");
         // No badge when all is well; a badge for no Host, at the bottom right.
         assert_eq!(p.rgba(33, 33), (0x1C, 0x1B, 0x24, 255));
@@ -556,5 +612,49 @@ mod tests {
             .map(|s| render(s, 40, &Palette::subak()).hash())
             .collect();
         assert_eq!(hashes.len(), states.len(), "each badge is its own picture");
+    }
+
+    /// Step 44: the badge's frames — the in-progress half-disc turns, a blink draws it faint —
+    /// and the resting frame is the plain picture.
+    #[test]
+    fn badge_frames_turn_and_fade_and_rest_is_the_plain_picture() {
+        let mut s = st(HostState::Connected, 1, 1, 0);
+        s.claude = Claude::InProgress;
+        let pal = Palette::subak();
+        assert_eq!(
+            render(&s, 40, &pal),
+            render_frame(&s, 40, &pal, BadgeMotion::default())
+        );
+        let turns: std::collections::HashSet<u64> = (0..4)
+            .map(|turn| render_frame(&s, 40, &pal, BadgeMotion { turn, faint: false }).hash())
+            .collect();
+        assert_eq!(turns.len(), 4, "four distinct quarter turns");
+        s.claude = Claude::NeedInput;
+        let full = render_frame(&s, 40, &pal, BadgeMotion::default());
+        let faint = render_frame(
+            &s,
+            40,
+            &pal,
+            BadgeMotion {
+                turn: 0,
+                faint: true,
+            },
+        );
+        let (x, y) = (31, 31);
+        assert!(
+            faint.rgba(x, y).0 < full.rgba(x, y).0,
+            "the faint badge is dimmer"
+        );
+        let spin = crate::gui::claude_motion::Frame {
+            glyph: '◑',
+            faint: true,
+        };
+        assert_eq!(
+            BadgeMotion::of(spin),
+            BadgeMotion {
+                turn: 2,
+                faint: true
+            }
+        );
     }
 }

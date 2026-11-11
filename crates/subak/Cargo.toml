@@ -107,6 +107,8 @@ windows-sys = { version = "0.61.2", features = [
 [dev-dependencies]
 # tests/cli.rs validates `subak --json` output with xtask/src/jsonschema.rs (test-only).
 regex = "1.13.1"
+# tests/icon_assets.rs encodes the generated icon PNGs (Step 44; already used by Noeul).
+png = { version = "0.18.1", default-features = false }
 
 [target."cfg(windows)".dev-dependencies]
 # tests/conpty_host.rs drives the real Host: hidden consoles, job objects, window-close messages.

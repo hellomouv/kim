@@ -31,6 +31,8 @@
 #[cfg_attr(not(windows), allow(dead_code))]
 mod ask;
 #[cfg_attr(not(windows), allow(dead_code))]
+pub mod claude_motion;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod clip;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod compose;

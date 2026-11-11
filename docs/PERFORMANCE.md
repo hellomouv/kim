@@ -64,6 +64,14 @@ creates thousands of panes without ever exiting holds thousands of exited proces
 (kernel memory, small each). Not mitigated in code (closing an OS-owned handle would be
 guesswork); tracked in [RELEASE_READINESS §3](RELEASE_READINESS.md#3-blockers-and-known-limitations).
 
+## 3a. Claude status motion (Step 44)
+
+The moving Claude marks cost one window timer while a shown mark moves and nothing otherwise.
+Measured in `crates/subak/tests/gui_window.rs` (debug build, off-screen window): 10–11 tab-bar
+frames in 3 s while a Terminal is in progress, **0.0 ms CPU over 10 s** (below one 15.6 ms
+`GetProcessTimes` tick); minimized and static mode: 0 frames, 0.0 ms. The floating badge: 8
+frames in 2.5 s, no tray update per frame. Details: [SUBAK_BRAND §5](SUBAK_BRAND.md#5-lifecycle-and-cost).
+
 ## 4. Not measured by the bench
 
 - **Attach latency** of an interactive client (`subak attach` needs a console); the attach

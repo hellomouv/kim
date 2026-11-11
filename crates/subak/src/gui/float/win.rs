@@ -122,6 +122,8 @@ const WM_MENU: u32 = WM_APP + 4;
 const WM_CLOSE_MANAGER: u32 = WM_APP + 5;
 const TIMER_RECONNECT: usize = 1;
 const TIMER_TEST_EXIT: usize = 2;
+/// Step 44: the next frame of the Claude badge (armed only while the icon shows a moving one).
+const TIMER_CLAUDE: usize = 3;
 /// `dwData` of a test command (`WM_COPYDATA`): "SUBK", as the window's.
 const COPYDATA_TEST: usize = 0x5355_424B;
 /// The terminal windows' class (`gui::window`).
@@ -747,6 +749,13 @@ struct Float {
     ui: Option<Ui>,
     hc: bool,
     shown_state: Option<(IconState, u32, bool)>,
+    /// Step 44: the aggregate Claude state and when it began; the badge frame shown; whether
+    /// badges move (`terminal.claude_animation` and reduced motion); the frame timer.
+    claude_since: Option<(art::Claude, Instant)>,
+    shown_motion: Option<art::BadgeMotion>,
+    claude_animate: bool,
+    claude_timer: Option<u32>,
+    claude_frames: u64,
     picture: Option<Picture>,
     renders: u64,
     taskbar_created: u32,
@@ -830,14 +839,55 @@ impl Float {
     fn refresh_icon(&mut self, force: bool) {
         let state = self.model.icon_state();
         let key = (state, self.dpi, self.hc);
-        if !force && self.shown_state == Some(key) {
+        // Step 44: the Claude badge's motion clock restarts when the aggregate state changes;
+        // it moves only on the shown floating icon (the tray keeps the resting badge, so
+        // Explorer is never asked to redraw a notification icon several times a second).
+        let now = Instant::now();
+        let since = match self.claude_since {
+            Some((c, at)) if c == state.claude => now.duration_since(at),
+            _ => {
+                self.claude_since = Some((state.claude, now));
+                Duration::ZERO
+            }
+        };
+        let mode = if self.claude_animate {
+            crate::gui::claude_motion::Mode::Animated
+        } else {
+            crate::gui::claude_motion::Mode::Static
+        };
+        let moving = matches!(art::badge(&state), art::Badge::Claude(_))
+            && self.prefs.icon
+            && self.allowed(&self.icon_rect());
+        let motion = moving
+            .then(|| crate::gui::claude_motion::frame(state.claude, since, mode))
+            .flatten()
+            .map(art::BadgeMotion::of);
+        let next = moving
+            .then(|| crate::gui::claude_motion::next_change(state.claude, since, mode))
+            .flatten();
+        self.arm_claude_timer(next);
+        let changed = force || self.shown_state != Some(key);
+        if !changed {
+            if motion != self.shown_motion {
+                self.shown_motion = motion;
+                let pic = art::render_frame(
+                    &state,
+                    self.size() as u32,
+                    &self.palette(),
+                    motion.unwrap_or_default(),
+                );
+                self.claude_frames += 1;
+                self.after.push(After::Present(pic.clone(), self.pos));
+                self.picture = Some(pic);
+            }
             return;
         }
         self.shown_state = Some(key);
+        self.shown_motion = motion;
         let pal = self.palette();
         let tip = art::tooltip(&state);
         set_text(self.icon, &tip);
-        let pic = art::render(&state, self.size() as u32, &pal);
+        let pic = art::render_frame(&state, self.size() as u32, &pal, motion.unwrap_or_default());
         self.renders += 1;
         if self.prefs.icon && self.allowed(&self.icon_rect()) {
             self.after.push(After::Present(pic.clone(), self.pos));
@@ -862,6 +912,21 @@ impl Float {
             &json!({"event": "icon", "badge": art::badge(&state).name(), "tip": tip,
             "conn": self.model.conn.name()}),
         );
+    }
+
+    /// Step 44: arms the Claude badge's frame timer at `next`, or kills it.
+    fn arm_claude_timer(&mut self, next: Option<Duration>) {
+        let next = next.map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX).max(10));
+        if next == self.claude_timer {
+            return;
+        }
+        self.claude_timer = next;
+        match next {
+            // SAFETY: the icon window's own timer.
+            Some(ms) => unsafe { SetTimer(self.icon, TIMER_CLAUDE, ms, None) },
+            // SAFETY: our own timer.
+            None => unsafe { KillTimer(self.icon, TIMER_CLAUDE) as usize },
+        };
     }
 
     /// Shows or hides the floating icon and the tray as the settings say; quits when neither.
@@ -2437,6 +2502,8 @@ impl Float {
                 "noactivate": ex & WS_EX_NOACTIVATE != 0, "toolwindow": ex & WS_EX_TOOLWINDOW != 0,
                 "layered": ex & WS_EX_LAYERED != 0, "name": text_of(self.icon),
                 "badge": art::badge(&state).name(), "renders": self.renders,
+                "claude_motion": {"timer_ms": self.claude_timer, "frames": self.claude_frames,
+                    "animate": self.claude_animate},
                 "picture": self.picture.as_ref().map(|p| format!("{:016x}", p.hash())),
             },
             "tray": {
@@ -3070,6 +3137,12 @@ fn handle(f: &mut Float, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
                     }
                 }
                 TIMER_TEST_EXIT => f.after.push(After::Quit),
+                TIMER_CLAUDE => {
+                    // SAFETY: our own timer; `refresh_icon` arms it again while the badge moves.
+                    unsafe { KillTimer(hwnd, TIMER_CLAUDE) };
+                    f.claude_timer = None;
+                    f.refresh_icon(false);
+                }
                 _ => {}
             }
             Some(0)
@@ -3408,6 +3481,17 @@ pub fn run(o: Options) -> ExitCode {
             icon: null_mut(),
         })
     };
+    let claude_animate = {
+        let s = prefs_dir
+            .as_deref()
+            .map(crate::config::load)
+            .map(|c| c.settings().clone());
+        let (on, motion) = s.map_or((true, crate::config::Motion::System), |s| {
+            (s.terminal.claude_animation, s.appearance.motion)
+        });
+        // The test mode never reads the machine's animation setting.
+        on && motion.animates(test || crate::gui::window::system_animations())
+    };
     let tc = wide("TaskbarCreated");
     let f = Float {
         matcher: Matcher::load_for(
@@ -3449,6 +3533,11 @@ pub fn run(o: Options) -> ExitCode {
         ui: None,
         hc: high_contrast_on(),
         shown_state: None,
+        claude_since: None,
+        shown_motion: None,
+        claude_animate,
+        claude_timer: None,
+        claude_frames: 0,
         picture: None,
         renders: 0,
         // SAFETY: registers (or looks up) the shell's broadcast message.

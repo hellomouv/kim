@@ -913,6 +913,7 @@ default_profile = ""     # the profile Ctrl+T, + and `subak new` start ("" = the
 copy_on_select = false   # copy a mouse selection when the button is released
 smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the program
 claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
+claude_animation = true  # Step 44: the marks move (false: static; reduced motion is static too)
 right_click = "copy-paste"   # copy-paste | menu | paste | none
 middle_click = "none"    # none | paste
 word_separators = " ()[]{}'\",;:|<>"   # default: Windows Terminal's set (shown by `config show`)
@@ -1398,6 +1399,14 @@ tab marks and the title words.
 `gui/float/list.rs::tests::claude_changes_reach_the_row_and_the_icon_without_a_list`,
 `crates/subak/tests/gui_window.rs::claude_states_mark_the_tabs_and_the_title_in_words` (off-screen
 window), `crates/subak/tests/claude_status.rs` (Host states, stale and lost signals).
+
+**Motion (Step 44, [SUBAK_BRAND §4–5](SUBAK_BRAND.md#4-motion), ADR 0073).** The marks move: in-progress
+turns `◐ ◓ ◑ ◒` every 300 ms; need-input blinks three times, error flashes twice, done arrives
+faint then full — then they hold; idle and unknown are still. One timer for the whole bar, armed
+only while a shown mark moves, none while minimized; `terminal.claude_animation = false` or
+reduced motion shows the resting marks without a timer. The floating icon's badge moves the same
+way; the tray keeps the resting badge. Tests: `gui_window.rs::claude_marks_move_per_terminal_only_while_shown`,
+`gui_float.rs::the_icon_badge_moves_with_the_most_urgent_claude_state_and_the_tray_rests`.
 
 **Manual check (maintainer, not tested by the agent):** install the hooks, run `claude` in a tab,
 ask something that needs a permission: the tab shows `!` and the title "(Claude needs input)";

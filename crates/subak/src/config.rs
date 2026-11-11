@@ -241,6 +241,9 @@ pub struct TerminalPrefs {
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
+    /// Step 44: the Claude marks move (in-progress turns, need-input blinks…); false: every
+    /// mark is static. Reduced motion (`appearance.motion`, Windows) also makes them static.
+    pub claude_animation: bool,
     /// Step 33: the shells found on this PC are offered as profiles (on by default).
     pub detect_shells: bool,
     pub right_click: RightClick,
@@ -324,6 +327,7 @@ impl Default for Settings {
                 copy_on_select: false,
                 smart_ctrl_c: false,
                 claude_indicators: true,
+                claude_animation: true,
                 detect_shells: true,
                 right_click: RightClick::CopyPaste,
                 middle_click: MiddleClick::None,
@@ -430,6 +434,7 @@ impl Settings {
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
             ("terminal", "claude_indicators") => json!(t.claude_indicators),
+            ("terminal", "claude_animation") => json!(t.claude_animation),
             ("terminal", "detect_shells") => json!(t.detect_shells),
             ("terminal", "right_click") => json!(t.right_click.as_str()),
             ("terminal", "middle_click") => json!(t.middle_click.as_str()),
@@ -646,6 +651,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "claude_animation",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "terminal",
         name: "detect_shells",
         takes: "true or false",
         kind: Kind::Bool,
@@ -734,6 +745,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("terminal", "copy_on_select") => t.copy_on_select = flag()?,
         ("terminal", "smart_ctrl_c") => t.smart_ctrl_c = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
+        ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
         ("terminal", "right_click") => t.right_click = RightClick::parse(text()?).ok_or(())?,
         ("terminal", "middle_click") => {

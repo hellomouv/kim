@@ -88,6 +88,8 @@ pub struct Item<'a> {
     pub status: Status,
     /// Step 28: the Terminal's Claude Code state (`None`: no mark).
     pub claude: Claude,
+    /// Step 44: the mark's current motion frame (`None`: the state's resting glyph).
+    pub frame: Option<crate::gui::claude_motion::Frame>,
 }
 
 pub use crate::gui::float::art::Claude;
@@ -330,7 +332,15 @@ pub fn layout_hover(
             &format!("{fill}{}{} ", fg(it.status.color()), it.status.glyph()),
         );
         if let Some((g, c, _)) = claude_mark(it.claude) {
-            put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
+            // Step 44: the frame's glyph (same width as the resting one), faint as SGR 2 so
+            // every theme's colour mapping still applies.
+            let (g, faint) = it.frame.map_or((g, false), |f| (f.glyph, f.faint));
+            let (on, off) = if faint {
+                ("\x1b[2m", "\x1b[22m")
+            } else {
+                ("", "")
+            };
+            put(&mut vt, &mut col, &format!("{fill}{}{on}{g}{off} ", fg(c)));
         }
         match edit.filter(|_| is_active) {
             Some(e) => {
@@ -452,6 +462,7 @@ mod tests {
                 name: n,
                 status: Status::Running,
                 claude: Claude::None,
+                frame: None,
             })
             .collect()
     }
@@ -471,6 +482,31 @@ mod tests {
 
     /// Step 28: a tab's Claude mark has its own shape per state, sits after the status, and
     /// keeps the name and the spans in place.
+    #[test]
+    fn a_motion_frame_replaces_the_glyph_at_the_same_width_and_fades_with_sgr_2() {
+        use crate::gui::claude_motion::{Frame, SPIN};
+        let mut list = items(&["agent"]);
+        list[0].claude = Claude::InProgress;
+        let rest = layout(&list, Some(0), None, 80, 0);
+        for g in SPIN {
+            list[0].frame = Some(Frame {
+                glyph: g,
+                faint: false,
+            });
+            let b = layout(&list, Some(0), None, 80, 0);
+            assert!(text(&b, 80).contains(g), "{}", text(&b, 80));
+            assert_eq!(b.spans, rest.spans, "a frame never moves the tabs");
+        }
+        list[0].claude = Claude::NeedInput;
+        list[0].frame = Some(Frame {
+            glyph: '!',
+            faint: true,
+        });
+        assert!(
+            String::from_utf8_lossy(&layout(&list, Some(0), None, 80, 0).vt).contains("[2m![22m")
+        );
+    }
+
     #[test]
     fn claude_marks_are_distinct_shapes_beside_the_status() {
         let states = [
