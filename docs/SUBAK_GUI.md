@@ -1412,3 +1412,10 @@ distributions; [ADR 0066](adr/0066-detected-shell-profiles-and-shell-integration
 **Manual check (maintainer, not tested by the agent):** `Ctrl+B N`, pick "Git Bash": a bash
 prompt in a new tab.
 
+## 20. SSH profiles in the window (Step 34)
+
+SSH profiles (`ssh = "user@host:port"`, [ADR 0067](adr/0067-ssh-through-windows-openssh-and-credential-manager.md))
+appear in the New Terminal menu with the others. ssh's own questions (a new host's fingerprint, a
+password when none is saved) are answered in the pane. **Manual check (maintainer, not tested by
+the agent):** add an SSH profile, open it from `Ctrl+B N`, answer the fingerprint question.
+

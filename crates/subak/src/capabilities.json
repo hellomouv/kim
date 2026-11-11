@@ -747,6 +747,46 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "ssh.connect",
+      "usage": "subak ssh connect <[user@]host[:port]> [<name>] [--identity <key>] [--option Key=Value]... [--cwd <dir>] [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]",
+      "summary": "A Terminal whose pane runs Windows' OpenSSH client: strict host-key checking (the user answers a new host), no agent forwarding, a saved secret only for a verified host",
+      "effect": "write",
+      "network": true,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "ssh.credential.status",
+      "usage": "subak ssh credential status <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--json]",
+      "summary": "Whether a password or passphrase is saved in Windows Credential Manager and whether the host is in known_hosts (never the secret)",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "ssh.credential.save",
+      "usage": "subak ssh credential save <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--dry-run] [--json]",
+      "summary": "Save a password or key passphrase in Windows Credential Manager, for a host already in known_hosts; read without echo or from one stdin line, never printed",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "ssh.credential.forget",
+      "usage": "subak ssh credential forget <[user@]host[:port]> [--dry-run] [--json]",
+      "summary": "Remove the saved secret of a destination from Windows Credential Manager",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

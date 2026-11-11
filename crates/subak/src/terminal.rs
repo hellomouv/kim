@@ -217,13 +217,31 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
     }
     let profile_name = profile.as_ref().map(|p| p.name.clone());
     let title = profile.as_ref().and_then(|p| p.title.clone());
-    let eff = with_profile(a, profile.as_ref());
+    // Step 34: an SSH profile runs Windows' OpenSSH client (ADR 0067).
+    let mut ssh_info = None;
+    let eff = match profile
+        .as_ref()
+        .and_then(|p| p.ssh.as_ref().map(|s| (p, s)))
+    {
+        Some((p, s)) if a.command.is_empty() && a.command_line.is_none() => {
+            let t = crate::ssh::Target::parse(s).map_err(CliError::usage)?;
+            let mut base = with_profile(a, Some(p));
+            base.command.clear();
+            let (eff, info) = crate::ssh::apply(&base, &t, p.identity.as_deref())?;
+            ssh_info = Some(info);
+            eff
+        }
+        _ => with_profile(a, profile.as_ref()),
+    };
     let a = &eff;
     // `profile` is added only when a profile was used, so the result of a plain `new` stays the
     // `terminal.create` result it always was (additive, CLI_CONTRACT §8).
     let with_name = |mut v: Value| {
         if let (Some(o), Some(p)) = (v.as_object_mut(), &profile_name) {
             o.insert("profile".into(), json!(p));
+        }
+        if let (Some(o), Some(i)) = (v.as_object_mut(), &ssh_info) {
+            o.insert("ssh".into(), i.clone());
         }
         v
     };

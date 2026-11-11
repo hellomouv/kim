@@ -389,6 +389,28 @@ pub fn key_char(ch: u16, vk: u16, state: u32) -> u16 {
     }
 }
 
+/// Step 34: one line typed at the console without echo (a password or passphrase); `None` when
+/// stdin is not a console. The console mode is put back before returning.
+pub fn read_secret_line(prompt: &str) -> Option<String> {
+    let h = std_handle(STD_INPUT_HANDLE);
+    let old = mode(h)?;
+    eprint!("{prompt}");
+    // SAFETY: a console input handle (checked by `mode`).
+    unsafe {
+        SetConsoleMode(
+            h,
+            (old | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT) & !ENABLE_ECHO_INPUT,
+        )
+    };
+    let mut line = String::new();
+    let got = io::stdin().read_line(&mut line);
+    // SAFETY: restores the mode read above.
+    unsafe { SetConsoleMode(h, old) };
+    eprintln!();
+    got.ok()?;
+    Some(line.trim_end_matches(['\r', '\n']).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

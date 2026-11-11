@@ -64,6 +64,8 @@
         "env": { "description": "Variables set in the pane (names as env_name). Values that look secret are shown as ***; Subak never writes them.", "type": "object", "additionalProperties": { "type": "string" } },
         "unset_env": { "type": "array", "items": { "$ref": "#/$defs/env_name" } },
         "title": { "description": "Step 33: the name a new Terminal of this profile gets when none is given and it is free.", "type": ["string", "null"] },
+        "ssh": { "description": "Step 34 (ADR 0067): an SSH profile's destination `[user@]host[:port]` instead of `program`/`args`; the pane runs Windows' OpenSSH client. Never a secret.", "type": ["string", "null"] },
+        "identity": { "description": "Step 34: an SSH profile's private key file (absolute; `ssh -i`).", "type": ["string", "null"] },
         "source": { "description": "Step 33, shown by Subak: `config` (config.toml) or `detected` (found on this PC; never written).", "enum": ["config", "detected"] },
         "secret_env": { "description": "Shown by Subak (not in the file): the variables whose name or value looks secret.", "type": "array", "items": { "type": "string" } },
         "default": { "description": "Shown by Subak (not in the file): whether terminal.default_profile names it.", "type": "boolean" }

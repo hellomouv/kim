@@ -507,6 +507,23 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.22 SSH sessions and saved secrets (Step 34)
+
+[ADR 0067](adr/0067-ssh-through-windows-openssh-and-credential-manager.md): an SSH pane runs
+Windows' OpenSSH client, so it is a Terminal like any other.
+
+| Command | Effect |
+| --- | --- |
+| `subak ssh connect <[user@]host[:port]> [<name>] [--identity <key>] [--option Key=Value]… [--attach] [--dry-run]` | a Terminal running `ssh` with `StrictHostKeyChecking=ask` and `ForwardAgent=no`; `data.ssh` says whether the host is in known_hosts and whether a saved secret is used |
+| `subak ssh credential status <dest> [--option UserKnownHostsFile=<f>]` | saved or not, verified or not (never the secret) |
+| `subak ssh credential save <dest> [--dry-run]` | asks for the password or passphrase without echo (or reads one stdin line) and keeps it in Windows Credential Manager; refused for a host not in known_hosts |
+| `subak ssh credential forget <dest> [--dry-run]` | removes it |
+
+An SSH profile in `config.toml` has `ssh = "user@host:port"` and optionally `identity = '<key>'`
+instead of `program`/`args`; `subak new --profile <name>` and the window menu start it. A new host
+shows ssh's fingerprint question in the pane: answer it yourself. A changed key is refused. When ssh
+ends, the pane keeps its last screen.
+
 ### 3.21 Detected shells and the shell integration (Step 33)
 
 [ADR 0066](adr/0066-detected-shell-profiles-and-shell-integration.md).

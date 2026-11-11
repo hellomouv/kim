@@ -68,13 +68,16 @@ toml = { version = "1.1.8", default-features = false, features = ["parse", "serd
 # clipboard's HTML Format is registered (DataExchange), and "Save output…" asks for a path in
 # the common save dialog (UI_Controls_Dialogs, `GetSaveFileNameW`). Step 20 (ADR 0051): Windows'
 # light or dark app mode for `theme = "system"` is one registry value (Registry, `RegGetValueW`,
-# read only).
+# read only). Step 34 (ADR 0067): SSH passwords and key passphrases live in Windows Credential
+# Manager (Security_Credentials: CredWriteW, CredReadW, CredDeleteW; DPAPI, bound to the user).
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Security_Authorization",
+    "Win32_Security_Credentials",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_Storage_FileSystem",
     "Win32_Storage_Xps",
     "Win32_System_Console",

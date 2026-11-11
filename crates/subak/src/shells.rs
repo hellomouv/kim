@@ -15,6 +15,8 @@ fn profile(name: &str, program: &Path, args: &[&str]) -> Profile {
         unset_env: Vec::new(),
         title: None,
         detected: true,
+        ssh: None,
+        identity: None,
         line: None,
     }
 }

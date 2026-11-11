@@ -24,6 +24,8 @@
 mod claude;
 // Step 33: the local shells found on this PC (profiles that need no configuration).
 mod shells;
+/// Step 34: SSH sessions in panes, saved secrets in Credential Manager (ADR 0067).
+mod ssh;
 // Step 33: the optional shell integration (the shell reports its folder).
 mod cli;
 /// `config.toml`: the window's settings and the basic shell profiles (Step 20, ADR 0051).
@@ -350,6 +352,11 @@ const CAPABILITIES: &str = include_str!("capabilities.json");
 /// The `subak` command line (the `subak` binary's `main`).
 pub fn cli_main() -> ExitCode {
     let raw: Vec<String> = std::env::args().skip(1).collect();
+    // Step 34: ssh asks `subak.exe <prompt>` for a saved password or passphrase (SSH_ASKPASS);
+    // only inside an SSH pane Subak started (ADR 0067).
+    if std::env::var_os("SUBAK_ASKPASS").is_some_and(|v| v == "1") && raw.len() == 1 {
+        return ssh::askpass_main(&raw[0]);
+    }
     let json_flag = raw
         .iter()
         .take_while(|a| a.as_str() != "--")
@@ -416,9 +423,15 @@ pub fn cli_main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        _ if cmd.is_claude_hooks() || cmd.is_state() || cmd.is_integration() => {
+        _ if cmd.is_claude_hooks()
+            || cmd.is_state()
+            || cmd.is_integration()
+            || cmd.is_ssh_credential() =>
+        {
             drop(out);
-            let ran = if cmd.is_integration() {
+            let ran = if cmd.is_ssh_credential() {
+                ssh::credential(cmd, &args)
+            } else if cmd.is_integration() {
                 integration::run(cmd, &args)
             } else if cmd.is_state() {
                 state::run(cmd, &args)
@@ -542,6 +555,7 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::HostStop => client::stop(a, &endpoint),
         Cmd::HostAttach => client::attach(a, &endpoint, None),
         Cmd::New => terminal::new(a, &endpoint),
+        Cmd::SshConnect => ssh::connect(a, &endpoint),
         Cmd::Ls => terminal::list(&endpoint),
         Cmd::Status => terminal::status(&endpoint),
         Cmd::Info => terminal::info(a, &endpoint),
@@ -1020,7 +1034,7 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
             }
             Ok(())
         }
-        Cmd::New => {
+        Cmd::New | Cmd::SshConnect => {
             let t = &d["terminal"];
             let pane = &t["windows"][0]["panes"][0];
             writeln!(

@@ -30,6 +30,9 @@ jobs:
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+      - name: Test SSH server for the SSH scenarios (pinned, SHA-256 checked; ADR 0067)
+        shell: pwsh
+        run: ./scripts/fetch-test-sshd.ps1
       - name: e2e suite (once a day, AGENTS.md §4)
         run: cargo xtask e2e --scheduled
 

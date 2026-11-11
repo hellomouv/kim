@@ -125,9 +125,14 @@
     {"$ref": "#/$defs/ok_state_rollback"},
     {"$ref": "#/$defs/ok_recover_list"},
     {"$ref": "#/$defs/ok_recover"},
-    {"$ref": "#/$defs/ok_shell_integration"}
+    {"$ref": "#/$defs/ok_shell_integration"},
+    {"$ref": "#/$defs/ok_ssh_connect"},
+    {"$ref": "#/$defs/ok_ssh_credential"}
   ],
   "$defs": {
+    "ssh_plan": {"description": "Step 34 (ADR 0067): how the SSH pane connects — Windows' OpenSSH client with strict host keys and no agent forwarding; whether the destination is in known_hosts and a saved secret answers the password or passphrase prompt (never the secret itself; `env` lists names only).", "type": "object", "required": ["target", "program", "args", "saved_secret_used", "host_verified"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "saved_secret_used": {"type": "boolean"}, "host_verified": {"type": "boolean"}, "why": {"type": "string"}, "env": {"type": "array", "items": {"type": "string"}}}},
+    "ok_ssh_connect": {"description": "Step 34: `subak ssh connect <[user@]host[:port]> [<name>]` — the `new` result of a Terminal whose pane runs ssh, with `ssh`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "ssh.connect"}, "data": {"$ref": "#/$defs/data_new"}}}]},
+    "ok_ssh_credential": {"description": "Step 34: `subak ssh credential status|save|forget <[user@]host[:port]>` — the Credential Manager entry, whether a secret is saved and whether the host is in known_hosts. Never the secret.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["ssh.credential.status", "ssh.credential.save", "ssh.credential.forget"]}, "data": {"type": "object", "required": ["target", "credential", "host_verified", "saved"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "credential": {"type": "string", "pattern": "^mouv-subak:ssh:"}, "host_verified": {"type": "boolean"}, "saved": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "removed": {"type": "boolean"}}}}}]},
     "ok_shell_integration": {"description": "Step 33: `subak shell-integration status|install|uninstall [powershell|pwsh|cmd]` — the PowerShell profile file and whether Subak's block is in it (install and uninstall: what changed and the backup written first); cmd: the per-profile opt-in, nothing installed.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["shell-integration.status", "shell-integration.install", "shell-integration.uninstall"]}, "data": {"type": "object", "required": ["shell", "installed"], "additionalProperties": false, "properties": {"shell": {"enum": ["powershell", "pwsh", "cmd"]}, "file": {"type": ["string", "null"]}, "exists": {"type": "boolean"}, "installed": {"type": "boolean"}, "changed": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "backup": {"type": ["string", "null"]}, "opt_in": {"type": "object"}, "note": {"type": "string"}}}}}]},
     "restore_plan": {"description": "Step 30 (ADR 0064): what restoring a saved Terminal does pane by pane, and what cannot come back.", "type": "object", "required": ["terminal_id", "name", "state", "restore", "panes", "not_restored"], "additionalProperties": false, "properties": {"terminal_id": {"type": "string", "pattern": "^t-[0-9a-f]{12}$"}, "name": {"type": "string"}, "state": {"enum": ["restorable", "restoring"]}, "restore": {"enum": ["ask", "auto", "never"]}, "panes": {"type": "array", "items": {"type": "object", "required": ["window_index", "saved_pane", "cwd", "launch", "command", "command_line", "claude", "notes"], "additionalProperties": false, "properties": {"window_index": {"type": "integer", "minimum": 0}, "saved_pane": {"type": "string"}, "cwd": {"type": ["string", "null"]}, "launch": {"enum": ["shell", "claude", "command"]}, "command": {"type": ["object", "null"]}, "command_line": {"type": ["string", "null"]}, "claude": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["session_id", "found", "running_in"], "additionalProperties": false, "properties": {"session_id": {"type": "string"}, "found": {"type": ["boolean", "null"]}, "running_in": {"type": ["string", "null"]}}}]}, "notes": {"type": "array", "items": {"type": "string"}}}}}, "not_restored": {"type": "array", "items": {"type": "string"}}}},
     "ok_recover_list": {"description": "Step 30: `subak recover list` — ipc-v1 result_terminal_recoverable.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "recover.list"}, "data": {"type": "object", "required": ["terminals", "enabled"], "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}, "terminals": {"type": "array", "items": {"$ref": "#/$defs/restore_plan"}}}}}}]},
@@ -2773,6 +2778,7 @@
                 }
               }
             },
+            "ssh": {"$ref": "#/$defs/ssh_plan"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -2800,6 +2806,7 @@
             "would_start_host": {
               "type": "boolean"
             },
+            "ssh": {"$ref": "#/$defs/ssh_plan"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -3886,6 +3893,8 @@
           }
         },
         "title": {"type": ["string", "null"]},
+        "ssh": {"type": ["string", "null"]},
+        "identity": {"type": ["string", "null"]},
         "source": {"enum": ["config", "detected"]},
         "secret_env": {
           "type": "array",

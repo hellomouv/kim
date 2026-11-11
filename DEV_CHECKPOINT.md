@@ -8,16 +8,19 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 34** (#34) — SSH and secure credential management
+- Current Step: **Step 35** (#35) — advanced SSH and file transfers
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #34; first decide the SSH transport by ADR 0065 §4 criteria (an ADR before code); Tabby rows for 34 in the checklist
+- Next action: read #35 (SFTP, jump hosts, forwarding; Tabby rows for 35); the SSH transport is Windows' OpenSSH (ADR 0067), the test sshd comes from scripts/fetch-test-sshd.ps1
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 34 — ssh unit tests 6/6, ssh_sessions 1/1 against a real local sshd (first
+  trust, saved passphrase, wrong secret, changed key, offline, SSH profiles, leak scan), e2e
+  step34 1/1 (focused local run, LEDGER); not tested: password login, 2FA, the ssh-agent.
 - 2026-11-11: Step 33 — shells/integration/term unit tests, profiles_integration 2/2 (detected
   profiles, title, missing shell, PowerShell and cmd folder reports, state keeps it), e2e step33
   1/1 (focused local run, LEDGER); `cargo xtask ci` before push.

@@ -268,6 +268,11 @@ pub struct Profile {
     pub title: Option<String>,
     /// Step 33: found on this PC (`detect_shells`), not written in `config.toml`.
     pub detected: bool,
+    /// Step 34 (ADR 0067): an SSH profile's `[user@]host[:port]`; the pane runs Windows'
+    /// OpenSSH client. Never a secret (those live in Credential Manager).
+    pub ssh: Option<String>,
+    /// Step 34: the SSH private key file (`ssh -i`), absolute.
+    pub identity: Option<String>,
     /// The 1-based line of its `[[profiles]]` header (messages).
     pub line: Option<usize>,
 }
@@ -480,6 +485,8 @@ impl Profile {
             "env": env,
             "unset_env": self.unset_env,
             "title": self.title,
+            "ssh": self.ssh,
+            "identity": self.identity,
             "source": if self.detected { "detected" } else { "config" },
             "secret_env": self.secret_env(),
             "default": default,
@@ -1153,7 +1160,37 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             "`name` must be 1 to 64 characters without control characters".into(),
         ));
     }
-    let program = text("program", true)?.unwrap_or_default();
+    // Step 34: an SSH profile names a destination instead of a program.
+    let ssh = text("ssh", false)?;
+    if let Some(s) = &ssh {
+        crate::ssh::Target::parse(s).map_err(|m| (Some("ssh"), m))?;
+        if t.contains_key("program") || t.contains_key("args") {
+            return Err((
+                Some("ssh"),
+                "an SSH profile has `ssh` instead of `program` and `args`".into(),
+            ));
+        }
+    }
+    let identity = text("identity", false)?;
+    if let Some(i) = &identity {
+        if ssh.is_none() {
+            return Err((
+                Some("identity"),
+                "`identity` belongs to an SSH profile (`ssh`)".into(),
+            ));
+        }
+        if !Path::new(i).is_absolute() {
+            return Err((
+                Some("identity"),
+                format!("`identity` must be an absolute path (`{i}` is not)"),
+            ));
+        }
+    }
+    let program = if ssh.is_some() {
+        "ssh.exe".to_string()
+    } else {
+        text("program", true)?.unwrap_or_default()
+    };
     if program.trim().is_empty() {
         return Err((Some("program"), "`program` must not be empty".into()));
     }
@@ -1239,13 +1276,15 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             "env",
             "unset_env",
             "title",
+            "ssh",
+            "identity",
         ]
         .contains(&k.as_str())
     }) {
         return Err((
             None,
             format!(
-                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title; SSH profiles come in Step 34)"
+                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity)"
             ),
         ));
     }
@@ -1267,6 +1306,8 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         unset_env,
         title,
         detected: false,
+        ssh,
+        identity,
         line: None,
     })
 }
@@ -2182,7 +2223,7 @@ env = { SUBAK_PANE_ID = "x" }
             "{msgs:?}"
         );
         assert!(msgs[2].contains("already named `OK`"), "{msgs:?}");
-        assert!(msgs[3].contains("Step 34"), "{msgs:?}");
+        assert!(msgs[3].contains("ssh, identity"), "{msgs:?}");
         assert!(msgs[4].contains("both set"), "{msgs:?}");
         assert!(msgs[5].contains("SUBAK_PANE_ID"), "{msgs:?}");
     }
@@ -2457,6 +2498,8 @@ args = ["/k", "--password", "hunter2"]
             unset_env: vec![],
             title: None,
             detected: false,
+            ssh: None,
+            identity: None,
             line: None,
         });
         let d: Vec<String> = differences(&a, &b).iter().map(|c| c.key.clone()).collect();

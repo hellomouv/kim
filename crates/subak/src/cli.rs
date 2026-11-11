@@ -110,6 +110,11 @@ pub enum Cmd {
     ShellIntegrationStatus,
     ShellIntegrationInstall,
     ShellIntegrationUninstall,
+    /// Step 34 (ADR 0067).
+    SshConnect,
+    SshCredentialStatus,
+    SshCredentialSave,
+    SshCredentialForget,
 }
 
 impl Cmd {
@@ -191,6 +196,10 @@ impl Cmd {
             Self::ShellIntegrationStatus => "shell-integration.status",
             Self::ShellIntegrationInstall => "shell-integration.install",
             Self::ShellIntegrationUninstall => "shell-integration.uninstall",
+            Self::SshConnect => "ssh.connect",
+            Self::SshCredentialStatus => "ssh.credential.status",
+            Self::SshCredentialSave => "ssh.credential.save",
+            Self::SshCredentialForget => "ssh.credential.forget",
         }
     }
 
@@ -232,6 +241,14 @@ impl Cmd {
         )
     }
 
+    /// Step 34: `ssh credential` uses Credential Manager and known_hosts only (no Host).
+    pub fn is_ssh_credential(&self) -> bool {
+        matches!(
+            self,
+            Self::SshCredentialStatus | Self::SshCredentialSave | Self::SshCredentialForget
+        )
+    }
+
     /// Step 33: `shell-integration` edits a shell profile file (no Host).
     pub fn is_integration(&self) -> bool {
         matches!(
@@ -267,7 +284,7 @@ impl Cmd {
     pub fn streams(&self, a: &Args) -> bool {
         match self {
             Self::HostAttach | Self::Attach => !a.dry_run,
-            Self::New => a.attach && !a.dry_run,
+            Self::New | Self::SshConnect => a.attach && !a.dry_run,
             _ => false,
         }
     }
@@ -312,6 +329,10 @@ impl Cmd {
             Self::ShellIntegrationStatus
             | Self::ShellIntegrationInstall
             | Self::ShellIntegrationUninstall => (&["powershell, pwsh or cmd"], 0),
+            Self::SshConnect => (&["[user@]host[:port]", "name"], 1),
+            Self::SshCredentialStatus | Self::SshCredentialSave | Self::SshCredentialForget => {
+                (&["[user@]host[:port]"], 1)
+            }
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -461,6 +482,17 @@ impl Cmd {
             Self::StateRollback => &["--state-dir", "--endpoint", "--dry-run"],
             Self::RecoverList => &["--endpoint"],
             Self::ShellIntegrationStatus => &["--profile-file"],
+            Self::SshConnect => &[
+                "--endpoint",
+                "--identity",
+                "--option",
+                "--cwd",
+                "--attach",
+                "--no-start",
+                "--dry-run",
+            ],
+            Self::SshCredentialStatus => &["--option"],
+            Self::SshCredentialSave | Self::SshCredentialForget => &["--option", "--dry-run"],
             Self::ShellIntegrationInstall | Self::ShellIntegrationUninstall => {
                 &["--profile-file", "--dry-run"]
             }
@@ -505,6 +537,10 @@ pub struct Args {
     pub cwd: Option<String>,
     /// `new --env` / `--unset-env`, in the order given.
     pub env: Vec<EnvArg>,
+    /// Step 34: `ssh connect --identity <file>`.
+    pub identity: Option<String>,
+    /// Step 34: `ssh … --option Key=Value`, in the order given.
+    pub ssh_options: Vec<String>,
     pub remain_on_exit: bool,
     pub keep_on_failure: bool,
     /// `new --command-line <line>`: a verbatim Windows command line (ADR 0027 §4).
@@ -1102,6 +1138,26 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                     }
                 }
             }
+            "--identity" => {
+                // Step 34: the SSH private key file (`ssh -i`).
+                opts.push("--identity");
+                if let Some(v) = value("--identity") {
+                    a.identity = Some(v);
+                }
+            }
+            "--option" => {
+                // Step 34: an OpenSSH option `Key=Value`, passed on as `-o Key=Value`.
+                opts.push("--option");
+                if let Some(v) = value("--option") {
+                    if crate::ssh::option_ok(&v) {
+                        a.ssh_options.push(v);
+                    } else {
+                        bad.get_or_insert(CliError::usage(format!(
+                            "--option `{v}` is not an OpenSSH Key=Value option Subak passes on"
+                        )));
+                    }
+                }
+            }
             "--profile-file" => {
                 // Step 33: `shell-integration … --profile-file <ps1>` (kept in `settings`).
                 opts.push("--profile-file");
@@ -1315,6 +1371,10 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
         ["shell-integration", "status", ..] => (Cmd::ShellIntegrationStatus, 2),
+        ["ssh", "connect", ..] => (Cmd::SshConnect, 2),
+        ["ssh", "credential", "status", ..] => (Cmd::SshCredentialStatus, 3),
+        ["ssh", "credential", "save", ..] => (Cmd::SshCredentialSave, 3),
+        ["ssh", "credential", "forget", ..] => (Cmd::SshCredentialForget, 3),
         ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
         ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),

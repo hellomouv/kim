@@ -231,7 +231,11 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "recover",
             "shell-integration.status",
             "shell-integration.install",
-            "shell-integration.uninstall"
+            "shell-integration.uninstall",
+            "ssh.connect",
+            "ssh.credential.status",
+            "ssh.credential.save",
+            "ssh.credential.forget"
         ],
         "only commands that really exist"
     );
@@ -261,7 +265,8 @@ fn capabilities_are_honest_and_follow_the_contract() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|c| c["opens_window"] == false && c["network"] == false)
+            // Step 34: only `ssh connect` reaches the network — the connection the user asked for.
+            .all(|c| c["opens_window"] == false && c["network"] == (c["name"] == "ssh.connect"))
     );
 
     let example: Value = serde_json::from_slice(

@@ -136,6 +136,121 @@ pub fn exit_code(process: HANDLE) -> Option<u32> {
     (unsafe { GetExitCodeProcess(process, &raw mut code) } != 0).then_some(code)
 }
 
+/// Step 34: the parent of this process and when it started (FILETIME ticks), so the askpass
+/// helper answers once per ssh process (a reused process id has another start time).
+pub fn parent_process() -> Option<(u32, u64)> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let me = std::process::id();
+    // SAFETY: a snapshot handle, closed below.
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snap == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    // SAFETY: a plain C struct; all-zero is a valid value.
+    let mut e: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    e.dwSize = u32::try_from(size_of::<PROCESSENTRY32W>()).unwrap_or(0);
+    let mut parent = None;
+    // SAFETY: `e` is a sized PROCESSENTRY32W.
+    let mut ok = unsafe { Process32FirstW(snap, &raw mut e) } != 0;
+    while ok {
+        if e.th32ProcessID == me {
+            parent = Some(e.th32ParentProcessID);
+            break;
+        }
+        // SAFETY: as above.
+        ok = unsafe { Process32NextW(snap, &raw mut e) } != 0;
+    }
+    // SAFETY: opened above.
+    unsafe { CloseHandle(snap) };
+    let pid = parent?;
+    // SAFETY: a query-only handle, closed below.
+    let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if h.is_null() {
+        return None;
+    }
+    let z = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut c, mut x, mut k, mut u) = (z, z, z, z);
+    // SAFETY: four writable FILETIMEs.
+    let got = unsafe { GetProcessTimes(h, &raw mut c, &raw mut x, &raw mut k, &raw mut u) } != 0;
+    // SAFETY: opened above.
+    unsafe { CloseHandle(h) };
+    got.then(|| {
+        (
+            pid,
+            (u64::from(c.dwHighDateTime) << 32) | u64::from(c.dwLowDateTime),
+        )
+    })
+}
+
+/// Step 34 (ADR 0067): a generic credential of Windows Credential Manager (DPAPI, the user's
+/// own vault) — the only place Subak keeps an SSH password or key passphrase. The secret is
+/// never logged, printed or put in JSON.
+pub mod creds {
+    use super::wide;
+    use windows_sys::Win32::Security::Credentials::{
+        CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree,
+        CredReadW, CredWriteW,
+    };
+
+    /// Stores `secret` under `target` (replacing an older one). `user` is shown in the
+    /// Credential Manager UI.
+    pub fn write(target: &str, user: &str, secret: &str) -> std::io::Result<()> {
+        let t = wide(target);
+        let u = wide(user);
+        let blob: Vec<u16> = secret.encode_utf16().collect();
+        // SAFETY: a plain C struct; all-zero is a valid value.
+        let mut c: CREDENTIALW = unsafe { std::mem::zeroed() };
+        c.Type = CRED_TYPE_GENERIC;
+        c.TargetName = t.as_ptr().cast_mut();
+        c.UserName = u.as_ptr().cast_mut();
+        c.CredentialBlobSize = u32::try_from(blob.len() * 2).unwrap_or(0);
+        c.CredentialBlob = blob.as_ptr().cast::<u8>().cast_mut();
+        c.Persist = CRED_PERSIST_LOCAL_MACHINE;
+        // SAFETY: every pointer in `c` refers to buffers that live across the call.
+        if unsafe { CredWriteW(&raw const c, 0) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// The secret stored under `target`, if any.
+    pub fn read(target: &str) -> Option<String> {
+        let t = wide(target);
+        let mut p: *mut CREDENTIALW = std::ptr::null_mut();
+        // SAFETY: `p` receives a buffer the API allocates; it is freed below.
+        if unsafe { CredReadW(t.as_ptr(), CRED_TYPE_GENERIC, 0, &raw mut p) } == 0 || p.is_null() {
+            return None;
+        }
+        // SAFETY: `p` points to a CREDENTIALW from CredReadW; its blob holds `size` bytes.
+        let out = unsafe {
+            let c = &*p;
+            let n = c.CredentialBlobSize as usize / 2;
+            let words = std::slice::from_raw_parts(c.CredentialBlob.cast::<u16>(), n);
+            String::from_utf16(words).ok()
+        };
+        // SAFETY: allocated by CredReadW.
+        unsafe { CredFree(p.cast()) };
+        out
+    }
+
+    /// Removes `target`; `false` when there was none.
+    pub fn delete(target: &str) -> bool {
+        let t = wide(target);
+        // SAFETY: a NUL-terminated name.
+        unsafe { CredDeleteW(t.as_ptr(), CRED_TYPE_GENERIC, 0) != 0 }
+    }
+}
+
 /// Step 33: the user's Documents folder (it may be redirected, e.g. to OneDrive): the
 /// `Personal` value of `HKCU\...\Explorer\User Shell Folders`, expanded; read only.
 pub fn documents_dir() -> Option<std::path::PathBuf> {

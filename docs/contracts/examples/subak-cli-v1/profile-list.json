@@ -14,10 +14,12 @@
         "env": {
           "RUST_BACKTRACE": "1"
         },
+        "identity": null,
         "name": "PowerShell",
         "program": "powershell.exe",
         "secret_env": [],
         "source": "config",
+        "ssh": null,
         "title": null,
         "unset_env": []
       },
@@ -31,12 +33,14 @@
           "GITHUB_TOKEN": "***",
           "MODE": "fast"
         },
+        "identity": null,
         "name": "dev",
         "program": "cmd.exe",
         "secret_env": [
           "GITHUB_TOKEN"
         ],
         "source": "config",
+        "ssh": null,
         "title": null,
         "unset_env": []
       }
