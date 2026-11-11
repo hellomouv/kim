@@ -75,8 +75,13 @@ pub enum ModeRequest {
     /// The safe reset to the default mode (`mode reset`, the tray's "back to" item).
     Reset { origin: ModeOrigin },
     /// Run the mode step of binding `binding` of the table `generation` (a rule whose `on: hold`
-    /// trigger the worker timed); ignored for an older table.
-    Rule { binding: u16, generation: u32 },
+    /// trigger the worker timed), or its macro's stage `step` (Step 78); ignored for an older
+    /// table.
+    Rule {
+        binding: u16,
+        generation: u32,
+        step: Option<u16>,
+    },
 }
 
 /// The hook thread's answer: the state afterwards and whether the active mode changed.
@@ -309,9 +314,15 @@ impl Ctx {
             ModeRequest::Rule {
                 binding,
                 generation,
+                step,
             } => {
                 let action = (generation == self.generation)
-                    .then(|| self.core.table().mode_action(usize::from(binding)).cloned())
+                    .then(|| {
+                        self.core
+                            .table()
+                            .mode_action_at(usize::from(binding), step)
+                            .cloned()
+                    })
                     .flatten();
                 match action {
                     Some(a) => self.core.request_mode(&a, ModeOrigin::Rule(binding), now),

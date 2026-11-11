@@ -398,12 +398,13 @@ fn editing_keeps_fields_the_form_does_not_show_and_detects_changes() {
     assert_eq!(r.trigger.repeat, Some(true));
     assert!(r.when.as_ref().unwrap().window_title.is_some());
     assert_eq!(r.extra["future_field"]["kept"], true);
-    // Several steps are not edited in the form (Step 78); the reason says so.
+    // Step 78: several steps open as a macro and save back unchanged.
     let mut two = rule;
     two.steps.push(two.steps[0].clone());
     let f2 = RuleForm::edit("default", &two);
-    assert!(f2.unsupported.as_deref().unwrap().contains("2 steps"));
-    assert!(f2.build("x", None).is_err());
+    assert!(f2.unsupported.is_none() && f2.is_macro());
+    assert_eq!(f2.fields.macro_steps.len(), 2);
+    assert_eq!(f2.build("x", None).unwrap().steps, two.steps);
 }
 
 #[test]

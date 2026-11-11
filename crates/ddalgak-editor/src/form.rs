@@ -263,6 +263,14 @@ pub struct Fields {
     pub window_title: String,
     pub title_exact: bool,
     pub priority: i64,
+    /// Step 78 (ADR 0079): a macro's steps in order (empty: the rule is the one effect above).
+    pub macro_steps: Vec<Value>,
+    /// Where *Add to macro* puts the step being edited (after *Edit* took it out).
+    pub macro_at: Option<usize>,
+    /// The steps run this many times (1–100).
+    pub times: u32,
+    /// `on_error: continue`.
+    pub continue_on_error: bool,
 }
 
 impl Default for Fields {
@@ -293,6 +301,10 @@ impl Default for Fields {
             window_title: String::new(),
             title_exact: false,
             priority: 0,
+            macro_steps: Vec::new(),
+            macro_at: None,
+            times: 1,
+            continue_on_error: false,
         }
     }
 }
@@ -610,7 +622,22 @@ impl RuleForm {
             f.trigger.pass_through = t.pass_through == Some(true);
         }
         let mut unsupported = None;
+        f.times = rule.times.unwrap_or(1);
+        f.continue_on_error = rule.on_error == Some(ddalgak::model::OnError::Continue);
+        let is_macro = rule.steps.len() > 1
+            || f.times > 1
+            || rule.steps.iter().any(|s| matches!(s, Action::Delay(_)));
         match rule.steps.as_slice() {
+            _ if is_macro => {
+                if let Some(s) = rule
+                    .steps
+                    .iter()
+                    .find(|s| matches!(s, Action::Future { .. }))
+                {
+                    unsupported = Some(format!("its step `{}` has no form yet", s.kind()));
+                }
+                f.macro_steps = rule.steps.iter().map(Action::to_value).collect();
+            }
             [step] => {
                 f.effect = Effect::of(step);
                 let v = step.to_value();
@@ -667,19 +694,12 @@ impl RuleForm {
                     Action::Engine(e) => f.engine = e.op,
                     Action::Block(_) => {}
                     Action::Delay(_) | Action::Future { .. } => {
-                        unsupported = Some(format!(
-                            "its step `{}` has no form yet (ordered steps arrive in Step 78)",
-                            step.kind()
-                        ));
+                        unsupported = Some(format!("its step `{}` has no form yet", step.kind()));
                     }
                 }
             }
-            steps => {
-                unsupported = Some(format!(
-                    "it has {} steps; several steps get their editor in Step 78 (use `ddalgak rule edit {} --patch …` meanwhile)",
-                    steps.len(),
-                    rule.id
-                ));
+            _ => {
+                unsupported = Some("it has no steps".into());
             }
         }
         if let Some(e) = &rule.when
@@ -929,7 +949,21 @@ impl RuleForm {
                 out.push(problem("trigger.hold_ms", "200–5000 ms"));
             }
         }
-        if let Err(p) = self.step(profile) {
+        if self.is_macro() {
+            // Step 78: the engine's own check of the macro (every step as it would run).
+            let set = profile
+                .map(ModeSet::from_profile)
+                .unwrap_or_else(ModeSet::single);
+            if let Err(e) = ddalgak::rules::check_macro(&f.macro_steps, u64::from(f.times), &set) {
+                out.push(problem("steps", e));
+            }
+            if t.hotstring {
+                out.push(problem(
+                    "trigger.hotstring.abbreviation",
+                    "an abbreviation runs one step, not a macro",
+                ));
+            }
+        } else if let Err(p) = self.step(profile) {
             out.extend(p);
         }
         if let Some(p) = profile {
@@ -967,13 +1001,21 @@ impl RuleForm {
             return Err(problems);
         }
         let f = &self.fields;
-        let step_value = self.step(profile)?;
-        let action: Action = serde_json::from_value(step_value).map_err(|e| {
-            vec![problem(
-                "",
-                format!("the step does not fit the rule format: {e}"),
-            )]
-        })?;
+        let values = if self.is_macro() {
+            f.macro_steps.clone()
+        } else {
+            vec![self.step(profile)?]
+        };
+        let actions = values
+            .into_iter()
+            .map(serde_json::from_value::<Action>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                vec![problem(
+                    "",
+                    format!("the step does not fit the rule format: {e}"),
+                )]
+            })?;
         let mut rule = self.base.clone().unwrap_or_else(|| {
             Rule::new(String::new(), String::new(), Trigger::keys(""), Vec::new())
         });
@@ -1011,7 +1053,11 @@ impl RuleForm {
             }
             t
         };
-        rule.steps = vec![action];
+        rule.steps = actions;
+        rule.times = (self.is_macro() && f.times > 1).then_some(f.times);
+        rule.on_error = (self.is_macro() && f.continue_on_error)
+            .then_some(ddalgak::model::OnError::Continue)
+            .or(rule.on_error.filter(|_| !self.is_macro()));
         rule.modes = (!f.modes.is_empty()).then(|| f.modes.clone());
         let mut when = rule.when.clone().unwrap_or_default();
         when.apps = matchers(&f.apps);
@@ -1053,6 +1099,18 @@ impl RuleForm {
     pub fn summary(&self, profile: Option<&Profile>) -> String {
         let f = &self.fields;
         let trigger = self.trigger_text();
+        if self.is_macro() {
+            let n = f.macro_steps.len();
+            let times = if f.times > 1 {
+                format!(", {} times", f.times)
+            } else {
+                String::new()
+            };
+            return format!(
+                "Runs {n} step{} in order{times}",
+                if n == 1 { "" } else { "s" }
+            );
+        }
         match f.effect {
             None => String::new(),
             Some(Effect::Remap) => {
@@ -1085,6 +1143,117 @@ impl RuleForm {
         }
     }
 
+    /// Step 78: the rule is a macro (its steps are [`Fields::macro_steps`]).
+    pub fn is_macro(&self) -> bool {
+        !self.fields.macro_steps.is_empty()
+    }
+
+    /// *Add to macro*: the effect being edited becomes the next step (or goes back where *Edit*
+    /// took it from); the effect fields are free for the next step.
+    pub fn add_to_macro(&mut self, profile: Option<&Profile>) -> Result<(), Vec<FieldProblem>> {
+        let step = self.step(profile)?;
+        let at = self
+            .fields
+            .macro_at
+            .take()
+            .map_or(self.fields.macro_steps.len(), |i| {
+                i.min(self.fields.macro_steps.len())
+            });
+        self.fields.macro_steps.insert(at, step);
+        self.fields.effect = None;
+        Ok(())
+    }
+
+    /// Adds a wait step.
+    pub fn add_delay(&mut self, ms: u32) {
+        self.fields
+            .macro_steps
+            .push(serde_json::json!({ "type": "delay", "ms": ms.clamp(1, 10_000) }));
+    }
+
+    /// Moves step `i` one place up or down.
+    pub fn move_step(&mut self, i: usize, up: bool) {
+        let n = self.fields.macro_steps.len();
+        let j = if up {
+            i.checked_sub(1)
+        } else {
+            Some(i + 1).filter(|j| *j < n)
+        };
+        if let Some(j) = j.filter(|_| i < n) {
+            self.fields.macro_steps.swap(i, j);
+        }
+    }
+
+    pub fn remove_step(&mut self, i: usize) {
+        if i < self.fields.macro_steps.len() {
+            self.fields.macro_steps.remove(i);
+        }
+    }
+
+    /// *Edit* step `i`: it goes into the effect form; *Add to macro* puts it back at `i`.
+    /// A delay is edited in place in the list and is not taken out.
+    pub fn edit_step(&mut self, i: usize) {
+        let Some(v) = self.fields.macro_steps.get(i).cloned() else {
+            return;
+        };
+        let Ok(action) = serde_json::from_value::<Action>(v) else {
+            return;
+        };
+        if matches!(action, Action::Delay(_) | Action::Future { .. }) {
+            return;
+        }
+        let tmp = Rule::new(
+            "step".into(),
+            "step".into(),
+            Trigger::keys("F13"),
+            vec![action],
+        );
+        let one = RuleForm::edit(&self.profile, &tmp);
+        if one.unsupported.is_some() {
+            return;
+        }
+        let o = one.fields;
+        let f = &mut self.fields;
+        f.effect = o.effect;
+        f.remap = o.remap;
+        f.keys = o.keys;
+        f.text = o.text;
+        f.program = o.program;
+        f.url = o.url;
+        f.mouse = o.mouse;
+        f.mode = o.mode;
+        f.engine = o.engine;
+        f.macro_steps.remove(i);
+        f.macro_at = Some(i);
+    }
+
+    /// One sentence per macro step (DDALGAK-SEC-011: text as counts, URLs as hosts).
+    pub fn step_summaries(&self, profile: Option<&Profile>) -> Vec<String> {
+        self.fields
+            .macro_steps
+            .iter()
+            .map(|v| {
+                if v["type"] == "delay" {
+                    return format!("Waits {} ms", v["ms"]);
+                }
+                let Ok(action) = serde_json::from_value::<Action>(v.clone()) else {
+                    return format!("`{}` step", v["type"].as_str().unwrap_or("?"));
+                };
+                let tmp = Rule::new(
+                    "step".into(),
+                    "step".into(),
+                    Trigger::keys("F13"),
+                    vec![action],
+                );
+                let one = RuleForm::edit(&self.profile, &tmp);
+                if one.unsupported.is_some() {
+                    return format!("`{}` step", v["type"].as_str().unwrap_or("?"));
+                }
+                one.summary(profile)
+            })
+            .collect()
+    }
+
     /// The permissions the effect needs (§6.1).
     pub fn permissions(&self, profile: Option<&Profile>) -> Vec<Permission> {
         self.build("draft", profile)
@@ -1108,6 +1277,18 @@ impl RuleForm {
             };
         }
         let trigger = self.trigger_text();
+        if self.is_macro() {
+            // Step 78: the steps in order, as they would run (nothing is sent).
+            let mut lines = vec![format!("✓ {trigger} would fire: {}", self.summary(profile))];
+            for (i, s) in self.step_summaries(profile).iter().enumerate() {
+                lines.push(format!("{}. {s}", i + 1));
+            }
+            return Simulation {
+                fires: true,
+                lines,
+                ..Simulation::default()
+            };
+        }
         let mut sim = Simulation {
             fires: true,
             lines: vec![format!("✓ {trigger} would fire: {}", self.summary(profile))],

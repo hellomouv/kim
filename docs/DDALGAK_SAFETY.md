@@ -184,7 +184,7 @@ CLI follows the identity checks of [ADR 0005](adr/0005-local-ipc.md)/[ADR 0019](
 - **Password fields.** Before acting, the engine asks whether the focused element is a password
   field (`ES_PASSWORD` edit style, or UI Automation `IsPassword`; best effort, *documented*). If
   it is, every rule is skipped and keys pass unchanged, except the emergency chord. Text is never
-  typed into a password field. The recorder (Step 78) and hotstrings (Step 69) never record or
+  typed into a password field. The recorder (Step 78: only keys typed into the editor's own window, after an explicit start, behind a banner) and hotstrings (Step 69) never record or
   buffer keys there. Detection is best effort: applications that draw their own password fields
   without exposing them may not be recognized, and the documentation says so; rules in such
   applications can be excluded with `except_apps`.

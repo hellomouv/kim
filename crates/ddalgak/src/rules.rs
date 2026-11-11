@@ -34,7 +34,7 @@ use crate::modes::{ModeAction, ModeSet};
 use crate::remap::Output;
 use crate::run::{KeysSpec, TextSpec};
 use crate::store::{self, MIGRATIONS};
-use crate::table::{Action, Binding, EngineOp, Injected, On, RemapSpec};
+use crate::table::{Action, Binding, EngineOp, Injected, On, RemapSpec, SeqPlan, Stage};
 use crate::trigger::{TKey, Trigger};
 use crate::validate::Context;
 use serde_json::{Map, Value, json};
@@ -111,12 +111,11 @@ impl Loaded {
 
 /// The step types this version runs (Step 66: `engine`; Step 68: `remap`, `block`; Step 69:
 /// `send_keys`, `type_text`; Step 70: `open_program`, `open_url`; Step 71: `mouse_move`,
-/// `mouse_scroll`, `mouse_click`). A rule made of `engine` and `block` steps is an engine-control
-/// rule (a `block` step adds nothing to a rule that consumes its key anyway); a `remap`, a held
-/// button and a move while held are always the rule's only step (schema `holds_trigger`); a
-/// typing step runs alone until ordered multi-step runs (Step 78); launch steps run together, in
-/// order, without other steps, and so do mouse steps; a `mode` step (Step 72) runs alone.
-pub const RUNNABLE_STEPS: [&str; 11] = [
+/// `mouse_scroll`, `mouse_click`; Step 72: `mode`; Step 78: `delay`). A rule made of `engine` and
+/// `block` steps is an engine-control rule; a `remap`, a `block` among other steps, a held button,
+/// a mode hold and a move while held are always the rule's only step (schema `holds_trigger`);
+/// any other mix, a delay or `times` above 1 is a macro (Step 78, ADR 0079).
+pub const RUNNABLE_STEPS: [&str; 12] = [
     "engine",
     "remap",
     "block",
@@ -128,20 +127,16 @@ pub const RUNNABLE_STEPS: [&str; 11] = [
     "mouse_scroll",
     "mouse_click",
     "mode",
+    "delay",
 ];
 
-const MODE_ALONE: &str = "a `mode` step runs alone in this version; with other steps (keys, launches, a second mode step) it waits for ordered multi-step runs (Step 78)";
-
-const TYPING_ALONE: &str = "a `type_text` or `send_keys` step runs alone in this version; ordered multi-step runs arrive in Step 78";
-const HOTSTRING_STEPS: &str = "a hotstring runs one `type_text` or `send_keys` step in this version; other steps after a hotstring arrive with ordered multi-step runs (Step 78)";
-const LAUNCHES_ALONE: &str = "`open_program` and `open_url` steps run together, in order, in this version; mixed with other steps (delays, keys, modes) they wait for ordered multi-step runs (Step 78)";
+const HOTSTRING_STEPS: &str =
+    "a hotstring runs one `type_text` or `send_keys` step; a macro needs a key trigger";
 
 /// Step 73: why a rule of a disabled profile does not run.
 pub const PROFILE_DISABLED: &str = "the profile is disabled; `ddalgak enable --profile <id>` turns it on again (the rule keeps its own setting)";
 /// Step 73: why a rule limited to disabled modes does not run.
 pub const MODE_DISABLED: &str = "every mode the rule is limited to is disabled; `ddalgak enable --mode <id>` turns one on again";
-
-const MOUSE_ALONE: &str = "`mouse_move`, `mouse_scroll` and `mouse_click` steps run together, in order, in this version; mixed with other steps (delays, keys, launches, modes) they wait for ordered multi-step runs (Step 78)";
 
 fn is_launch(kind: &str) -> bool {
     matches!(kind, "open_program" | "open_url")
@@ -164,26 +159,7 @@ pub fn later_step(rule: &Rule) -> Option<(usize, String)> {
             return Some((1, HOTSTRING_STEPS.into()));
         }
     }
-    if rule.steps.len() > 1
-        && let Some(i) = rule.steps.iter().position(typing)
-    {
-        return Some((i, TYPING_ALONE.into()));
-    }
-    if rule.steps.iter().any(|s| is_launch(s.kind()))
-        && let Some(i) = rule.steps.iter().position(|s| !is_launch(s.kind()))
-    {
-        return Some((i, LAUNCHES_ALONE.into()));
-    }
-    if rule.steps.iter().any(|s| is_mouse(s.kind()))
-        && let Some(i) = rule.steps.iter().position(|s| !is_mouse(s.kind()))
-    {
-        return Some((i, MOUSE_ALONE.into()));
-    }
-    if rule.steps.len() > 1
-        && let Some(i) = rule.steps.iter().position(|s| s.kind() == "mode")
-    {
-        return Some((if i == 0 { 1 } else { i }, MODE_ALONE.into()));
-    }
+    // Step 78: every other mix of steps runs as a macro (ADR 0079).
     None
 }
 
@@ -214,6 +190,7 @@ const RULE_FIELDS: &[&str] = &[
     "priority",
     "steps",
     "on_error",
+    "times",
     "consent",
     "created_at",
     "updated_at",
@@ -295,6 +272,106 @@ fn compile_hotstring(h: &Value) -> Result<hotstring::Spec, (&'static str, String
 }
 
 /// Compiles a typing step (`type_text`, `send_keys`).
+/// Step 78: whether these steps, run `times` times, form a macro the engine accepts (the
+/// editor's check before saving); `Ok` is the number of stages.
+pub fn check_macro(steps: &[Value], times: u64, modes: &ModeSet) -> Result<usize, String> {
+    if steps.is_empty() || steps.len() > 32 {
+        return Err("a macro has 1–32 steps".into());
+    }
+    if !(1..=100).contains(&times) {
+        return Err("repeat 1–100 times".into());
+    }
+    let n = compile_stages(steps, modes).map_err(|(_, e)| e)?.len()
+        * usize::try_from(times).unwrap_or(1);
+    if n > crate::table::MAX_STAGES {
+        return Err(format!(
+            "{n} steps in all; at most {}",
+            crate::table::MAX_STAGES
+        ));
+    }
+    Ok(n)
+}
+
+/// Step 78: a macro's steps as stages, each compiled exactly as when it runs alone.
+fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'static str, String)> {
+    let mut out = Vec::new();
+    for (i, s) in steps.iter().enumerate() {
+        let ty = s.get("type").and_then(Value::as_str).unwrap_or_default();
+        let bad = |e: String| ("step_invalid", format!("step {i}: {e}"));
+        out.push(match ty {
+            "type_text" | "send_keys" => match compile_run(s, ty)? {
+                Action::Type(t) => Stage::Text(t),
+                Action::Keys(k) => Stage::Keys(k),
+                _ => return Err(bad("not a typing step".into())),
+            },
+            "delay" => {
+                let ms = s
+                    .get("ms")
+                    .and_then(Value::as_u64)
+                    .filter(|m| (1..=10_000).contains(m));
+                Stage::Wait(
+                    u32::try_from(ms.ok_or_else(|| bad("`ms` is 1–10000".into()))?).unwrap_or(1),
+                )
+            }
+            "mouse_move" | "mouse_scroll" | "mouse_click" => {
+                match crate::mouse::compile_step(s).map_err(bad)? {
+                    crate::mouse::Compiled::Run(m) => {
+                        Stage::Mouse(Arc::new(crate::mouse::MousePlan {
+                            steps: vec![m],
+                            stop_on_error: true,
+                        }))
+                    }
+                    _ => {
+                        return Err(bad(
+                            "a held button or a move while held is the rule's only step".into(),
+                        ));
+                    }
+                }
+            }
+            "open_program" | "open_url" => Stage::Launch(Arc::new(crate::launch::Plan {
+                targets: vec![crate::launch::compile_step(s).map_err(bad)?],
+                stop_on_error: true,
+            })),
+            "engine" => Stage::Engine(
+                s.get("op")
+                    .and_then(Value::as_str)
+                    .and_then(EngineOp::parse)
+                    .ok_or_else(|| bad("unknown engine `op`".into()))?,
+            ),
+            "mode" => {
+                let a = ModeAction::compile(s, modes).map_err(|e| {
+                    let code = if e.starts_with("no mode") {
+                        "unknown_mode"
+                    } else {
+                        "step_invalid"
+                    };
+                    (code, format!("step {i}: {e}"))
+                })?;
+                if a.holds() {
+                    return Err(bad("a mode hold is the rule's only step".into()));
+                }
+                if a.targets_disabled(modes) {
+                    return Err((
+                        "mode_disabled",
+                        format!("step {i}: the mode it switches to is disabled"),
+                    ));
+                }
+                Stage::Mode(a)
+            }
+            "remap" | "block" => {
+                return Err(bad(format!("a `{ty}` is the rule's only step")));
+            }
+            _ => {
+                return Err((
+                    "step_unsupported",
+                    format!("`{ty}` steps are not implemented in this version yet"),
+                ));
+            }
+        });
+    }
+    Ok(out)
+}
+
 fn compile_run(s: &Value, ty: &str) -> Result<Action, (&'static str, String)> {
     if ty == "type_text" {
         let text = s.get("text").and_then(Value::as_str).ok_or((
@@ -550,17 +627,21 @@ fn compile(
     if hotstring.is_some() && (kinds.len() != 1 || !kinds.iter().all(typing)) {
         return Err(("step_unsupported", HOTSTRING_STEPS.into()));
     }
-    if kinds.len() > 1 && kinds.iter().any(typing) {
-        return Err(("step_unsupported", TYPING_ALONE.into()));
+    // Step 78 (ADR 0079): mixed steps, a delay or `times` above 1 make the rule a macro. Steps
+    // of one kind keep their own run (launches together, mouse steps together, engine steps).
+    let times = r.get("times").and_then(Value::as_u64).unwrap_or(1);
+    if !(1..=100).contains(&times) {
+        return Err(("step_invalid", "`times` is 1–100".into()));
     }
-    if kinds.iter().any(|k| is_launch(k)) && !kinds.iter().all(|k| is_launch(k)) {
-        return Err(("step_unsupported", LAUNCHES_ALONE.into()));
-    }
-    if kinds.iter().any(|k| is_mouse(k)) && !kinds.iter().all(|k| is_mouse(k)) {
-        return Err(("step_unsupported", MOUSE_ALONE.into()));
-    }
-    if kinds.len() > 1 && kinds.contains(&"mode") {
-        return Err(("step_unsupported", MODE_ALONE.into()));
+    let same = |f: fn(&str) -> bool| kinds.iter().all(|k| f(k));
+    let macro_run = times > 1
+        || kinds.contains(&"delay")
+        || (kinds.len() > 1
+            && !same(is_launch)
+            && !same(is_mouse)
+            && !kinds.iter().all(|k| *k == "engine" || *k == "block"));
+    if macro_run && hotstring.is_some() {
+        return Err(("step_unsupported", HOTSTRING_STEPS.into()));
     }
     if let Some(c) = trigger.single()
         && matches!(c.key, TKey::Modifier(_))
@@ -570,6 +651,46 @@ fn compile(
         return Err((
             "trigger_invalid",
             "a bare modifier fires a non-remap rule only with `on: release`".into(),
+        ));
+    }
+    if macro_run {
+        let continue_on_error = r.get("on_error").and_then(Value::as_str) == Some("continue");
+        let once = compile_stages(steps, modes)?;
+        let total = once
+            .len()
+            .saturating_mul(usize::try_from(times).unwrap_or(1));
+        if total > crate::table::MAX_STAGES {
+            return Err((
+                "step_invalid",
+                format!(
+                    "the steps × `times` make {total} steps; at most {}",
+                    crate::table::MAX_STAGES
+                ),
+            ));
+        }
+        let stages: Vec<Stage> = std::iter::repeat_n(once, usize::try_from(times).unwrap_or(1))
+            .flatten()
+            .collect();
+        let injects = stages.iter().any(Stage::injects);
+        return Ok((
+            Binding {
+                rule: r["id"].as_str().unwrap_or_default().to_string(),
+                trigger,
+                on,
+                repeat,
+                pass_through,
+                injected,
+                widen: false,
+                injects,
+                action: Action::Sequence(Arc::new(SeqPlan {
+                    stages,
+                    continue_on_error,
+                })),
+                hotstring: None,
+                modes: 0,
+                when,
+            },
+            priority,
         ));
     }
     let mut ops = Vec::new();
@@ -1060,7 +1181,9 @@ mod tests {
             env_changed,
         ])));
         let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
-        assert_eq!(active, ["notepad", "two"]);
+        // Step 78: a launch with a delay is a macro.
+        assert_eq!(active, ["notepad", "two", "mixed"]);
+        assert!(matches!(l.bindings[2].action, Action::Sequence(_)));
         let Action::Launch(p) = &l.bindings[0].action else {
             panic!("{:?}", l.bindings[0].action)
         };
@@ -1087,7 +1210,6 @@ mod tests {
             codes,
             [
                 ("stale", "consent_stale"),
-                ("mixed", "step_unsupported"),
                 ("colon", "step_invalid"),
                 ("dup-env", "step_invalid"),
                 ("env-changed", "consent_stale"),
@@ -1263,7 +1385,9 @@ mod tests {
             repeat_hold,
         ])));
         let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
-        assert_eq!(active, ["plan", "drag", "glide", "cells", "wheel"]);
+        // Step 78: a mouse step with an engine step is a macro.
+        assert_eq!(active, ["plan", "drag", "glide", "cells", "wheel", "mixed"]);
+        assert!(matches!(l.bindings[5].action, Action::Sequence(_)));
         assert!(l.bindings.iter().all(|b| b.injects && !b.widen));
         let Action::Mouse(p) = &l.bindings[0].action else {
             panic!("{:?}", l.bindings[0].action)
@@ -1301,15 +1425,9 @@ mod tests {
         assert_eq!(
             codes,
             [
-                ("mixed", "step_unsupported"),
                 ("grid-glide", "step_invalid"),
                 ("repeat-hold", "step_invalid"),
             ]
-        );
-        assert!(
-            l.inactive[0].reason.contains("Step 78"),
-            "{:?}",
-            l.inactive[0]
         );
     }
 
@@ -1410,7 +1528,7 @@ mod tests {
             None,
             "an exclusive mode keeps no other mode's rules"
         );
-        // A mode step with other steps waits for ordered runs; an unknown target is inactive.
+        // Step 78: a mode step with other steps is a macro; an unknown target is inactive.
         let l = parse(&doc(json!([
             { "id": "two", "title": "two", "enabled": true, "trigger": { "keys": "F13" },
               "steps": [ { "type": "mode", "op": "set", "mode": "nav" },
@@ -1425,11 +1543,10 @@ mod tests {
             .iter()
             .map(|i| (i.rule.as_str(), i.code))
             .collect();
-        assert_eq!(
-            codes,
-            [("two", "step_unsupported"), ("ghost", "unknown_mode")]
-        );
-        assert_eq!(l.bindings.len(), 1);
+        assert_eq!(codes, [("ghost", "unknown_mode")]);
+        assert_eq!(l.bindings.len(), 2);
+        let two = l.bindings.iter().find(|b| b.rule == "two").unwrap();
+        assert!(two.action.mode_at(Some(0)).is_some() && two.action.mode_at(Some(1)).is_none());
     }
 
     #[test]
@@ -1490,6 +1607,7 @@ mod tests {
                             | Action::Mouse(_)
                             | Action::MouseHold { .. }
                             | Action::Motion(_)
+                            | Action::Sequence(_)
                     ),
                     "{}: {}",
                     p.display(),
@@ -1569,7 +1687,8 @@ mod tests {
             )
         ])));
         let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
-        assert_eq!(active, ["sign", "btw", "ac"]);
+        // Step 78: two typing steps are a macro.
+        assert_eq!(active, ["sign", "btw", "ac", "two"]);
         let Action::Type(t) = &l.bindings[0].action else {
             panic!("{:?}", l.bindings[0].action)
         };
@@ -1594,13 +1713,12 @@ mod tests {
         assert_eq!(
             codes,
             [
-                ("two", "step_unsupported"),
                 ("hs-engine", "step_unsupported"),
                 ("future-hs", "rule_unsupported")
             ]
         );
         assert!(
-            l.inactive[0].reason.contains("Step 78"),
+            l.inactive[0].reason.contains("macro needs a key trigger"),
             "{:?}",
             l.inactive[0]
         );

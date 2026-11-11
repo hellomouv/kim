@@ -1238,3 +1238,90 @@ fn the_active_profile_is_never_deleted_and_the_page_speaks_korean() {
     assert!(h.query_by_label("● 사용 중").is_some());
     assert!(h.query_by_label("프로필 가져오기…").is_some());
 }
+
+/// Step 78 (DDALGAK-FR-018, DDALGAK-FR-074, J4 *Several steps*): a macro built in the form — one step from the
+/// effect form, a wait, and keys recorded in this window only — reordered and trimmed by
+/// keyboard-reachable buttons, tested, and saved with its repeat count. Recording takes the keys
+/// away from the editor's fields and shortcuts and stops with Esc.
+#[test]
+fn a_macro_is_built_recorded_reordered_and_saved() {
+    let sb = Sandbox::new("macro");
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake));
+    settle(&mut h);
+    click(&mut h, "+ New rule");
+    h.key_press_modifiers(Modifiers::CTRL | Modifiers::SHIFT, Key::F2);
+    h.run();
+    h.key_press(Key::Escape);
+    h.run();
+    click(&mut h, "Next ▸");
+    click(&mut h, "Type text");
+    h.get_by_label("Text").set_text_value_accesskit("안녕");
+    h.run();
+    click(&mut h, "Add to macro");
+    click(&mut h, "Add a wait");
+    click(&mut h, "● Record keys");
+    assert!(h.state().recording());
+    assert!(h.query_by_label_contains("● Recording").is_some());
+    h.event(egui::Event::Text("hi".into()));
+    h.run();
+    h.key_press(Key::Enter);
+    h.run();
+    h.key_press(Key::Escape); // stops; not recorded
+    h.run();
+    assert!(!h.state().recording());
+    // Pauses between recorded keys are kept as waits (the harness clock moves between frames):
+    // remove every wait, from the last, through the rows' buttons.
+    let steps = h.state().form().unwrap().fields.macro_steps.clone();
+    let kept: Vec<&Value> = steps.iter().filter(|s| s["type"] != "delay").collect();
+    assert_eq!(
+        kept,
+        [
+            &json!({ "type": "type_text", "text": "안녕" }),
+            &json!({ "type": "type_text", "text": "hi" }),
+            &json!({ "type": "send_keys", "keys": "Enter" })
+        ],
+        "{steps:?}"
+    );
+    for i in (0..steps.len()).rev() {
+        if steps[i]["type"] == "delay" {
+            click(&mut h, &format!("Remove step {}", i + 1));
+        }
+    }
+    // Reorder: Enter before "hi".
+    click(&mut h, "Move up step 3");
+    let steps = h.state().form().unwrap().fields.macro_steps.clone();
+    let types: Vec<&str> = steps.iter().map(|s| s["type"].as_str().unwrap()).collect();
+    assert_eq!(types, ["type_text", "send_keys", "type_text"]);
+    // The repeat count's spin box (a DragValue does not take accessibility text input).
+    assert!(
+        h.query_by_role_and_label(Role::SpinButton, "Repeat the steps (times)")
+            .is_some()
+    );
+    h.state_mut().form_mut().unwrap().fields.times = 2;
+    h.run();
+    assert!(
+        h.query_by_label_contains("Runs 3 steps in order, 2 times")
+            .is_some()
+    );
+    click(&mut h, "4 Try");
+    click(&mut h, "▶ Simulate");
+    assert!(h.state().simulation().expect("simulated").fires);
+    assert!(!sb.paths.rules().exists(), "nothing written before saving");
+    click(&mut h, "Save and enable");
+    click_last_button(&mut h, "Allow");
+    let saved = sb.rules();
+    let r = &saved["profiles"][0]["rules"][0];
+    assert_eq!(
+        r["steps"],
+        json!([
+            { "type": "type_text", "text": "안녕" },
+            { "type": "send_keys", "keys": "Enter" },
+            { "type": "type_text", "text": "hi" }
+        ])
+    );
+    assert_eq!(r["times"], 2);
+    // The engine accepts what the editor saved.
+    let l = ddalgak::rules::load(&sb.paths.rules());
+    assert!(l.inactive.is_empty(), "{:?}", l.inactive);
+}

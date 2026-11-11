@@ -90,7 +90,7 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | DDALGAK-FR-015 | **Mouse**: move relative, absolute or continuously while held (speed, acceleration), scroll by notches in four directions, click, double-click or hold any of five buttons, across monitors with negative coordinates, clamped to the visible desktop. Step 71: implemented with per-monitor DPI scaling, normalized absolute moves, grid units and stepped holds (ADR 0040); real-pointer checks manual. | P0 | D3 | T, M |
 | DDALGAK-FR-016 | **Modes**: users create, rename, duplicate and delete modes per profile; rules can be limited to modes; actions set, toggle, cycle, hold (while the trigger is held), return to the previous and to the default mode. The active mode is shown (optional compact indicator) and readable headlessly. Step 72: implemented with layers over a parent, one-shot and timed exits, `ddalgak mode …` and the tray indicator; the active mode is never restored (ADR 0043); real-typing and tray checks manual. | P0 | D3 | T, M |
 | DDALGAK-FR-017 | **Engine control** actions pause, resume, toggle pause and turn the engine off. Rules made only of engine-control steps keep working while paused. | P0 | D2 | T |
-| DDALGAK-FR-018 | **Ordered steps**: a rule runs up to 32 steps in order with delays (total at most 60 s) and a stop-or-continue error policy. One run per rule at a time; a trigger during a run is reported as `busy`. | P1 | D3 | T |
+| DDALGAK-FR-018 | **Ordered steps**: a rule runs up to 32 steps in order with delays (total at most 60 s) and a stop-or-continue error policy. One run per rule at a time; a trigger during a run is reported as `busy`. Step 78: implemented as macros with a bounded `times` (ADR 0079; one typing run or macro at a time). | P1 | D3 | T |
 
 ### 2.3 Selection, modes and conditions
 
@@ -143,7 +143,7 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | DDALGAK-FR-071 | Mouse buttons as triggers (needs a low-level mouse hook, disclosed in the catalog before it ships). Step 68: the middle and X buttons, through a mouse hook that exists only while such a rule is active; the primary and secondary buttons are never triggers (ADR 0031). | P1 | D3 | T, M |
 | DDALGAK-FR-072 | Window actions (activate, minimize, maximize, move, resize) under the `window-control` permission. | P2 | D5 | T, M |
 | DDALGAK-FR-073 | Clipboard actions (set, paste, transform) under the `clipboard` permission, never logging contents. | P2 | D5 | T, M |
-| DDALGAK-FR-074 | Macro recorder: explicit start and stop with a visible banner, password fields and secure contexts excluded, every recorded event reviewable and removable before saving. | P2 | D5 | T, M |
+| DDALGAK-FR-074 | Macro recorder: explicit start and stop with a visible banner, password fields and secure contexts excluded, every recorded event reviewable and removable before saving. Step 78: implemented in the editor, recording only keys typed into its own window (ADR 0079); mouse recording: #101. | P2 | D5 | T, M |
 | DDALGAK-FR-075 | Richer macro control: bounded repeat, conditions and variables, with timeouts and cancellation. | P2 | D5 | T |
 | DDALGAK-FR-076 | Scheduled and time-based triggers in a running app, with an idle budget and no hidden timers. | P2 | D5 | T, M |
 

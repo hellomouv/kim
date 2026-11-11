@@ -228,7 +228,7 @@ A hotstring trigger has `hotstring` instead of `keys` (and none of `on`, `hold_m
 - **Stepping aside.** Never in a password field or on the secure desktop; not during an IME
   composition or while the IME is in a native mode such as Hangul (`skipped_ime_composition`).
 - **Limits.** A hotstring runs exactly one `type_text` or `send_keys` step in v1 (other steps:
-  `step_unsupported` until Step 78); input from other programs (an on-screen keyboard) never
+  `step_unsupported`; a macro needs a key trigger, Step 78); input from other programs (an on-screen keyboard) never
   feeds the buffer (`injected: accept` rules cannot inject, §7.4); a mouse click inside the same
   field does not clear the buffer (no mouse hook for hotstrings). Two enabled hotstrings with the
   same abbreviation (in any case, unless `sensitive`), modes, conditions and priority are a
@@ -530,7 +530,7 @@ pressed (no click-lock toggle; Windows' own ClickLock is the accessible alternat
 - Mode IDs must exist in the rule's profile (`unknown_mode`; `rule add` names it,
   `mode_not_found`). Mode changes never inject input and need no consent; they work over
   elevated windows and step aside like every rule on the secure desktop, in a password field and
-  during an IME composition. A `mode` step is the rule's only step until Step 78.
+  during an IME composition. Since Step 78 a `mode` step (not a hold) may be one step of a macro.
 - **Behavior** (runs since Step 72, [ADR 0043](adr/0043-ddalgak-modes-layers-and-runtime-mode-state.md)).
   A mode rule fired on press, on release, by auto-repeat or as a sequence changes the mode inside
   the hook callback, so the very next key is decided in the new mode; on an `on: hold` trigger
@@ -588,8 +588,8 @@ the rule is inactive (`step_unsupported`, §9).
 | `clipboard` (set, paste, transform) | Step 79 | `clipboard` |
 | `run_command` (an allowed local command with an explicit argument list) | Step 79 | its own consent per command |
 | `notify` (a local notification) | Step 79 | — |
-| `repeat`, `if`, variables | Step 78 | — |
-| Recorded macros (steps produced by the recorder) | Step 78 | as their steps |
+| `repeat` (nested), `if`, user variables | not in v1 (#101); a bounded repeat of the whole rule is `times` (Step 78) | — |
+| Recorded macros (steps produced by the recorder) | Step 78: ordinary steps (`type_text`, `send_keys`, `delay`) | as their steps |
 
 Trigger kinds planned additively: mouse wheel notches (without an owner Step since Step 71,
 [ADR 0040](adr/0040-ddalgak-mouse-actions.md) §13). Mouse buttons arrived in Step 68
@@ -597,7 +597,10 @@ Trigger kinds planned additively: mouse wheel notches (without an owner Step sin
 `type_text` run from Step 69, each as the rule's only step; `open_program` and `open_url` from
 Step 70, together and in order but not mixed with other step types; `mouse_move`,
 `mouse_scroll` and `mouse_click` from Step 71 likewise (a held button or a move while held as
-the rule's only step); and `delay`, with ordered multi-step runs, from Step 78
+the rule's only step); and since Step 78 `delay` and **macros** — any other mix of step types,
+in order, with `times` (1–100) and `on_error`
+([ADR 0079](adr/0079-ddalgak-macros-and-recorder.md)); a remap, a block, a held button, a mode
+hold and a move while held stay a rule's only step
 ([ADR 0031](adr/0031-ddalgak-remap-execution-and-mouse-hook.md),
 [ADR 0034](adr/0034-ddalgak-typing-runs-hotstrings-and-clipboard.md),
 [ADR 0037](adr/0037-ddalgak-program-and-website-launches.md), ADR 0040); until then they are

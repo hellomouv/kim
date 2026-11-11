@@ -188,8 +188,7 @@ fn live_types_into_the_field_and_opens_only_when_confirmed() {
 #[test]
 fn the_playground_shows_the_winner_per_app() {
     let mut doc = rules();
-    let thanks = doc["profiles"][0]["rules"][0].clone();
-    let mut code = thanks.clone();
+    let mut code = doc["profiles"][0]["rules"][0].clone();
     code["id"] = json!("in-code");
     code["when"] = json!({ "apps": [ { "exe": "Code.exe" } ] });
     doc["profiles"][0]["rules"]

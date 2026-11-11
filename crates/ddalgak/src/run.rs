@@ -557,6 +557,18 @@ impl Run {
         }
     }
 
+    /// Step 78: a macro's later typing stage types into the window its earlier one checked.
+    #[must_use]
+    pub fn with_focus(mut self, focus: Option<u128>) -> Run {
+        self.focus = focus;
+        self
+    }
+
+    /// The window this run typed into (`None` before its first check).
+    pub fn focus(&self) -> Option<u128> {
+        self.focus
+    }
+
     /// The pieces still to do (tests).
     pub fn pieces(&self) -> &VecDeque<Piece> {
         &self.pieces

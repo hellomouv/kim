@@ -107,12 +107,59 @@ pub enum Action {
     },
     /// A `mouse_move` with `while_held` (Step 71): the pointer moves while the trigger is held.
     Motion(crate::mouse::MotionSpec),
+    /// Step 78 (ADR 0079): different step types in order — a macro. One run on the worker, stage
+    /// by stage, with the rule's error policy; `repeat` is unrolled when the rules load.
+    Sequence(Arc<SeqPlan>),
+}
+
+/// One stage of a [`SeqPlan`].
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Stage {
+    Text(Arc<TextSpec>),
+    Keys(Arc<KeysSpec>),
+    /// Wait this many milliseconds (`delay`).
+    Wait(u32),
+    Mouse(Arc<crate::mouse::MousePlan>),
+    Launch(Arc<crate::launch::Plan>),
+    /// A mode step: the hook thread runs it (the mode state stays in one place).
+    Mode(crate::modes::ModeAction),
+    Engine(EngineOp),
+}
+
+impl Stage {
+    /// The stage sends input (stepping aside applies to the rule).
+    pub fn injects(&self) -> bool {
+        matches!(self, Stage::Text(_) | Stage::Keys(_) | Stage::Mouse(_))
+    }
+}
+
+/// Most stages a macro has after `repeat` is unrolled.
+pub const MAX_STAGES: usize = 1000;
+
+/// A macro: stages in order and what a failing stage does.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SeqPlan {
+    pub stages: Vec<Stage>,
+    /// `on_error: continue` (default `stop`).
+    pub continue_on_error: bool,
 }
 
 impl Action {
     /// A typing run (`type_text`, `send_keys`).
     pub fn is_run(&self) -> bool {
         matches!(self, Action::Type(_) | Action::Keys(_))
+    }
+
+    /// Step 78: the mode step a mode rule or a macro's stage `step` runs.
+    pub fn mode_at(&self, step: Option<u16>) -> Option<&crate::modes::ModeAction> {
+        match (self, step) {
+            (Action::Mode(a), None) => Some(a),
+            (Action::Sequence(p), Some(i)) => match p.stages.get(usize::from(i)) {
+                Some(Stage::Mode(a)) => Some(a),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// The outputs the core holds while the trigger is down (a remap, a held mouse button).
@@ -370,10 +417,16 @@ impl Table {
 
     /// The mode step of binding `index`, if it is a mode rule.
     pub fn mode_action(&self, index: usize) -> Option<&crate::modes::ModeAction> {
-        match self.bindings.get(index).map(|b| &b.action) {
-            Some(Action::Mode(a)) => Some(a),
-            _ => None,
-        }
+        self.mode_action_at(index, None)
+    }
+
+    /// Step 78: the mode step of binding `index`, or of its macro's stage `step`.
+    pub fn mode_action_at(
+        &self,
+        index: usize,
+        step: Option<u16>,
+    ) -> Option<&crate::modes::ModeAction> {
+        self.bindings.get(index)?.action.mode_at(step)
     }
 
     /// The compiled outputs of binding `index`, if it is a remap.

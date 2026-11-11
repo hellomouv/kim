@@ -837,11 +837,13 @@ impl Host {
             Control::ModeRequest {
                 binding,
                 generation,
+                step,
             } => {
                 if let Some(h) = &self.hook {
                     let _ = h.mode(ModeRequest::Rule {
                         binding,
                         generation,
+                        step,
                     });
                 }
                 return;

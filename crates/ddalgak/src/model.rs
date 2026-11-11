@@ -244,6 +244,9 @@ pub struct Rule {
     pub steps: Vec<Action>,
     #[serde(default, skip_serializing_if = "none")]
     pub on_error: Option<OnError>,
+    /// Step 78: the steps run this many times in order (1–100, default 1; a bounded repeat).
+    #[serde(default, skip_serializing_if = "none")]
+    pub times: Option<u32>,
     #[serde(default, skip_serializing_if = "none")]
     pub consent: Option<Consent>,
     #[serde(default, skip_serializing_if = "none")]
@@ -268,6 +271,7 @@ impl Rule {
             priority: None,
             steps,
             on_error: None,
+            times: None,
             consent: None,
             created_at: None,
             updated_at: None,

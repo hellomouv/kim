@@ -444,7 +444,9 @@ fn profile_index(at: &str) -> Option<usize> {
 /// to Step 78, with ordered multi-step runs; `send_keys` and `type_text` run since Step 69,
 /// `open_program` and `open_url` since Step 70, the mouse steps since Step 71, `mode` since
 /// Step 72).
-pub const LATER_STEPS: &[(&str, &str)] = &[("delay", "Step 78")];
+/// Step types of rules document v1 that this version does not run yet, with the Step that adds them
+/// (none since Step 78).
+pub const LATER_STEPS: &[(&str, &str)] = &[];
 
 fn message(code: &str) -> &'static str {
     match code {

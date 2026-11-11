@@ -50,7 +50,7 @@ use crate::modes::{ModeSet, ModeStatus};
 use crate::mouse::{self, HeldMotion};
 use crate::run::{self, Env, HotstringFire, Next, Run, RunShared};
 use crate::stats::Stats;
-use crate::table::{Action, Binding, EngineOp};
+use crate::table::{Action, Binding, EngineOp, Stage};
 use crate::vk::ModKey;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -124,9 +124,14 @@ pub enum Control {
     Engine { op: EngineOp, rule: String },
     /// The emergency chord fired.
     Emergency,
-    /// A mode rule whose trigger the worker timed (`on: hold`) fired (Step 72): the controller
-    /// asks the hook thread to run its step, so the mode state stays in one place.
-    ModeRequest { binding: u16, generation: u32 },
+    /// A mode rule whose trigger the worker timed (`on: hold`) fired (Step 72), or a macro's mode
+    /// stage `step` is due (Step 78): the controller asks the hook thread to run that step, so
+    /// the mode state stays in one place.
+    ModeRequest {
+        binding: u16,
+        generation: u32,
+        step: Option<u16>,
+    },
     /// The mode changed (Step 72): for `status` and the tray indicator.
     Mode {
         generation: u32,
@@ -222,6 +227,9 @@ impl Worker {
                 let mut inj = Injector::new(backend);
                 let mut env = env;
                 let mut ctx = Ctx {
+                    control: &control,
+                    mac: None,
+                    mode_pending: Vec::new(),
                     inj: &mut inj,
                     env: &mut env,
                     shared: &shared,
@@ -268,7 +276,31 @@ type Inj = Injector<Box<dyn Backend>>;
 struct Active {
     run: Run,
     due: Instant,
+    /// The run is a stage of the macro in progress (its outcome goes to the macro).
+    in_macro: bool,
 }
+
+/// Step 78 (ADR 0079): the macro in progress, one stage at a time.
+struct Macro {
+    rule: String,
+    profile: String,
+    mode: String,
+    generation: u32,
+    binding: u16,
+    stages: VecDeque<(u16, Stage)>,
+    continue_on_error: bool,
+    first_error: Option<&'static str>,
+    started: Instant,
+    due: Instant,
+    /// The window the macro types into: kept between typing stages, sampled again after a
+    /// launch (the program it opened may take the focus).
+    focus: Option<u128>,
+    /// A launch stage running on its thread: its outcome when done.
+    launch: Option<Arc<Mutex<Option<&'static str>>>>,
+}
+
+/// How often a macro looks whether its launch stage finished.
+const LAUNCH_POLL_MS: u64 = 20;
 
 /// A move while held (Step 71) and the rule it belongs to.
 struct Moving {
@@ -282,6 +314,12 @@ struct Moving {
 
 /// What the loop's typing runs and launches work with.
 struct Ctx<'a> {
+    control: &'a Sink,
+    /// The macro in progress (Step 78).
+    mac: Option<Macro>,
+    /// Mode stages a macro asked the hook thread to run whose answer has not come back yet
+    /// (their [`Signal::Mode`] is part of the macro's one entry, even after the macro ended).
+    mode_pending: Vec<(u32, u16)>,
     inj: &'a mut Inj,
     env: &'a mut Env,
     shared: &'a RunShared,
@@ -526,7 +564,7 @@ impl Ctx<'_> {
             self.mouse_run(r, b, plan);
             return;
         }
-        if self.active.is_some() {
+        if self.active.is_some() || self.mac.is_some() {
             if let Ok(mut a) = self.activity.lock() {
                 a.push(Entry {
                     at: crate::time::now_rfc3339(),
@@ -539,6 +577,36 @@ impl Ctx<'_> {
             if let Some(h) = &hs {
                 run::give_back(self.inj, h);
             }
+            return;
+        }
+        if let Action::Sequence(plan) = &b.action {
+            let binding = r
+                .bindings
+                .iter()
+                .position(|x| std::ptr::eq(x, b))
+                .and_then(|i| u16::try_from(i).ok())
+                .unwrap_or(u16::MAX);
+            let now = Instant::now();
+            self.mac = Some(Macro {
+                rule: b.rule.clone(),
+                profile: r.profile.clone(),
+                mode: r.mode.clone(),
+                generation: r.generation,
+                binding,
+                stages: plan
+                    .stages
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (u16::try_from(i).unwrap_or(u16::MAX), s.clone()))
+                    .collect(),
+                continue_on_error: plan.continue_on_error,
+                first_error: None,
+                started: now,
+                due: now,
+                focus: None,
+                launch: None,
+            });
+            self.step();
             return;
         }
         let local = (self.env.clock)();
@@ -556,27 +624,223 @@ impl Ctx<'_> {
             hs,
             now,
         );
-        self.active = Some(Active { run, due: now });
+        self.active = Some(Active {
+            run,
+            due: now,
+            in_macro: false,
+        });
         self.step();
     }
 
     /// Carries out the run's next pieces when they are due.
     fn step(&mut self) {
+        if let Some(a) = self.active.as_mut() {
+            let now = Instant::now();
+            if a.due > now {
+                return;
+            }
+            match a.run.step(now, self.inj, self.env, self.shared) {
+                Next::At(t) => {
+                    a.due = t;
+                    return;
+                }
+                Next::Done(code) => {
+                    if let Some(a) = self.active.take() {
+                        if a.in_macro {
+                            if let Some(m) = self.mac.as_mut() {
+                                m.focus = a.run.focus();
+                            }
+                            self.stage_done(code);
+                        } else {
+                            self.push(&a.run, code);
+                        }
+                    }
+                }
+            }
+        }
+        self.macro_step();
+    }
+
+    /// A macro stage ended with `code`: the run goes on, or ends with the first error.
+    fn stage_done(&mut self, code: &'static str) {
+        let Some(m) = self.mac.as_mut() else {
+            return;
+        };
+        if code != "ok" {
+            m.first_error.get_or_insert(code);
+            if !m.continue_on_error {
+                self.end_macro(code);
+            }
+        }
+    }
+
+    fn end_macro(&mut self, code: &str) {
+        if let Some(m) = self.mac.take()
+            && let Ok(mut a) = self.activity.lock()
+        {
+            a.push(Entry {
+                at: crate::time::now_rfc3339(),
+                rule: m.rule,
+                profile: m.profile,
+                mode: m.mode,
+                outcome: code.to_string(),
+            });
+        }
+    }
+
+    /// Carries out the macro's stages that are due: until one types (a run), waits, launches or
+    /// the macro ends. Its whole run is bounded by [`run::MAX_RUN_MS`] (`timeout`).
+    fn macro_step(&mut self) {
+        loop {
+            if self.active.is_some() {
+                return;
+            }
+            let now = Instant::now();
+            let Some(m) = self.mac.as_mut() else {
+                return;
+            };
+            if now.duration_since(m.started) > Duration::from_millis(run::MAX_RUN_MS) {
+                self.epoch.fetch_add(1, Ordering::SeqCst);
+                self.end_macro("timeout");
+                return;
+            }
+            if let Some(slot) = &m.launch {
+                let done = slot.lock().ok().and_then(|g| *g);
+                match done {
+                    Some(code) => {
+                        m.launch = None;
+                        // The program it opened may have taken the focus: sample it again.
+                        m.focus = None;
+                        self.stage_done(code);
+                        continue;
+                    }
+                    None => {
+                        m.due = now + Duration::from_millis(LAUNCH_POLL_MS);
+                        return;
+                    }
+                }
+            }
+            if m.due > now {
+                return;
+            }
+            let Some((index, stage)) = m.stages.pop_front() else {
+                let code = m.first_error.unwrap_or("ok");
+                self.end_macro(code);
+                return;
+            };
+            match stage {
+                Stage::Wait(ms) => m.due = now + Duration::from_millis(u64::from(ms)),
+                Stage::Text(_) | Stage::Keys(_) => {
+                    let local = (self.env.clock)();
+                    let pieces = match &stage {
+                        Stage::Text(t) => run::plan_text(t, None, &local),
+                        Stage::Keys(k) => run::plan_keys(k, None),
+                        _ => Vec::new(),
+                    };
+                    let run = Run::new(
+                        m.rule.clone(),
+                        m.profile.clone(),
+                        m.mode.clone(),
+                        pieces,
+                        None,
+                        now,
+                    )
+                    .with_focus(m.focus);
+                    self.active = Some(Active {
+                        run,
+                        due: now,
+                        in_macro: true,
+                    });
+                    self.step_active_only();
+                }
+                Stage::Mouse(plan) => {
+                    let code = mouse::run_plan(&plan, &mut *self.env.screen, self.inj);
+                    self.stage_done(code);
+                }
+                Stage::Launch(plan) => {
+                    let slot = Arc::new(Mutex::new(None));
+                    m.launch = Some(Arc::clone(&slot));
+                    m.due = now;
+                    let launcher = Arc::clone(&self.env.launcher);
+                    let epoch = Arc::clone(&self.epoch);
+                    let fired = epoch.load(Ordering::SeqCst);
+                    let spawned = std::thread::Builder::new()
+                        .name("ddalgak-launch".into())
+                        .spawn(move || {
+                            let cancelled = || epoch.load(Ordering::SeqCst) != fired;
+                            let code = launch::execute(
+                                &plan,
+                                &launch::Exec {
+                                    launcher: &*launcher,
+                                    var: &launch::process_var,
+                                    cancelled: &cancelled,
+                                },
+                            );
+                            if let Ok(mut g) = slot.lock() {
+                                *g = Some(code);
+                            }
+                        });
+                    if spawned.is_err() {
+                        m.launch = None;
+                        self.stage_done("launch_failed");
+                    }
+                }
+                Stage::Mode(_) => {
+                    self.mode_pending.push((m.generation, m.binding));
+                    (self.control)(Control::ModeRequest {
+                        binding: m.binding,
+                        generation: m.generation,
+                        step: Some(index),
+                    });
+                }
+                Stage::Engine(op) => {
+                    let rule = m.rule.clone();
+                    (self.control)(Control::Engine { op, rule });
+                }
+            }
+        }
+    }
+
+    /// Steps only the typing run (a macro stage just started it).
+    fn step_active_only(&mut self) {
         let Some(a) = self.active.as_mut() else {
             return;
         };
         let now = Instant::now();
-        if a.due > now {
-            return;
-        }
         match a.run.step(now, self.inj, self.env, self.shared) {
             Next::At(t) => a.due = t,
             Next::Done(code) => {
                 if let Some(a) = self.active.take() {
-                    self.push(&a.run, code);
+                    if let Some(m) = self.mac.as_mut() {
+                        m.focus = a.run.focus();
+                    }
+                    self.stage_done(code);
                 }
             }
         }
+    }
+
+    /// A mode answer for a macro's mode stage (not recorded on its own); takes it off the list.
+    fn macro_mode_answer(&mut self, generation: u32, binding: u16) -> bool {
+        match self
+            .mode_pending
+            .iter()
+            .position(|p| *p == (generation, binding))
+        {
+            Some(i) => {
+                self.mode_pending.remove(i);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// When the macro's next stage is due.
+    fn macro_due(&self) -> Option<Instant> {
+        self.mac
+            .as_ref()
+            .filter(|_| self.active.is_none())
+            .map(|m| m.due)
     }
 
     /// Ends the run in progress (pause, stop, emergency, reload); a launch still running stops
@@ -585,7 +849,13 @@ impl Ctx<'_> {
         self.epoch.fetch_add(1, Ordering::SeqCst);
         if let Some(mut a) = self.active.take() {
             let code = a.run.cancel(self.inj, self.env, self.shared);
-            self.push(&a.run, code);
+            if !a.in_macro {
+                self.push(&a.run, code);
+            }
+        }
+        // A macro ends where it is; nothing it already did is undone, nothing more runs.
+        if self.mac.is_some() {
+            self.end_macro("cancelled");
         }
     }
 }
@@ -673,6 +943,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             .iter()
             .map(|h| h.due)
             .chain(ctx.active.as_ref().map(|a| a.due))
+            .chain(ctx.macro_due())
             .chain(ctx.motion_due())
             .min();
         let msg = match next {
@@ -705,6 +976,8 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             }
             Ok(Msg::Rules(r)) => {
                 holds.clear();
+                // Requests for the old table are ignored by the hook thread: no answer comes.
+                ctx.mode_pending.clear();
                 ctx.cancel();
                 ctx.stop_motions("cancelled");
                 rules = Some(r);
@@ -796,7 +1069,10 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                         }
                     }
                     // The rule ran in the mode it was decided in; later entries name the new one.
-                    record(rules.as_ref(), generation, binding, "ok", activity);
+                    // A macro's mode stage is part of the macro's one entry.
+                    if !ctx.macro_mode_answer(generation, binding) {
+                        record(rules.as_ref(), generation, binding, "ok", activity);
+                    }
                     if let Some(r) = rules.as_mut().filter(|r| r.generation == generation) {
                         let names = |b: u16| r.bindings.get(usize::from(b)).map(|b| b.rule.clone());
                         let status = r.modes.status(&view, &names);
@@ -895,6 +1171,7 @@ fn fire(
             control(Control::ModeRequest {
                 binding,
                 generation,
+                step: None,
             });
             return false;
         }
@@ -915,7 +1192,8 @@ fn fire(
         | Action::Keys(_)
         | Action::Launch(_)
         | Action::Mouse(_)
-        | Action::Motion(_) => return true,
+        | Action::Motion(_)
+        | Action::Sequence(_) => return true,
     }
     record(rules, generation, binding, "ok", activity);
     false
@@ -2232,7 +2510,8 @@ mod tests {
             c,
             Control::ModeRequest {
                 binding: 1,
-                generation: 3
+                generation: 3,
+                step: None
             }
         );
         // A switch while another hold trigger is armed ends that hold: it never fires.
@@ -2259,5 +2538,244 @@ mod tests {
             "only the mode notice: {next:?}"
         );
         assert!(rx.recv_timeout(Duration::from_millis(400)).is_err());
+    }
+    // ---- Step 78: macros (ADR 0079). A recorder backend, a fake launcher, a control channel:
+    // nothing reaches the real keyboard, no program or website opens.
+
+    use crate::table::{SeqPlan, Stage};
+
+    fn macro_rules(stages: Vec<Stage>, continue_on_error: bool) -> Rules {
+        Rules {
+            generation: 1,
+            bindings: Arc::new(vec![Binding {
+                rule: "macro".into(),
+                trigger: Trigger::parse("F13").unwrap(),
+                on: On::Press,
+                repeat: false,
+                pass_through: false,
+                injected: Injected::Ignore,
+                widen: false,
+                injects: true,
+                action: Action::Sequence(Arc::new(SeqPlan {
+                    stages,
+                    continue_on_error,
+                })),
+                hotstring: None,
+                modes: 0,
+                when: None,
+            }]),
+            profile: "default".into(),
+            mode: "base".into(),
+            modes: ModeSet::single(),
+        }
+    }
+
+    type MacroRig = (
+        Worker,
+        Arc<Mutex<Vec<OutEvent>>>,
+        Arc<FakeLauncher>,
+        Receiver<Control>,
+    );
+
+    fn macro_worker() -> MacroRig {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let f = Arc::new(FakeLauncher::default());
+        let (tx, rx) = channel();
+        let tx = Mutex::new(tx);
+        let w = Worker::start(
+            Arc::new(Stats::default()),
+            Box::new(move |c| {
+                let _ = tx.lock().unwrap().send(c);
+            }),
+            Arc::new(Mutex::new(Activity::default())),
+            Box::new(SharedRecorder(Arc::clone(&log))),
+            Env {
+                launcher: Arc::clone(&f) as Arc<dyn launch_mod::Launcher>,
+                ..Env::inert()
+            },
+        );
+        (w, log, f, rx)
+    }
+
+    fn keys(k: &str) -> Stage {
+        Stage::Keys(Arc::new(KeysSpec {
+            chords: vec![crate::remap::Output::parse(k).unwrap()],
+            step_delay_ms: 0,
+        }))
+    }
+
+    fn typed(t: &str) -> Stage {
+        Stage::Text(Arc::new(TextSpec {
+            text: t.into(),
+            paste: false,
+            key_delay_ms: 0,
+            variables: false,
+        }))
+    }
+
+    fn url(u: &str) -> Stage {
+        Stage::Launch(Arc::new(launch_mod::Plan {
+            targets: vec![Target::Url(u.into())],
+            stop_on_error: true,
+        }))
+    }
+
+    /// DDALGAK-FR-018: the stages run in order — keys, a wait, text, a website, a mode step and
+    /// an engine step — and the macro records one entry; every key pressed is released.
+    #[test]
+    fn a_macro_runs_its_stages_in_order_and_records_one_entry() {
+        let (w, log, f, rx) = macro_worker();
+        let q = w.queue();
+        let mode = ModeAction::Set(0);
+        q.send(Msg::Rules(macro_rules(
+            vec![
+                keys("F20"),
+                Stage::Wait(40),
+                typed("ab"),
+                url("https://example.com/"),
+                Stage::Mode(mode),
+                Stage::Engine(EngineOp::Pause),
+            ],
+            false,
+        )));
+        let t = Instant::now();
+        q.signal(1, fire(0));
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "ok".to_string())]
+        );
+        assert!(
+            t.elapsed() >= Duration::from_millis(40),
+            "the delay was waited"
+        );
+        let mut want = run::chord_events(&crate::remap::Output::parse("F20").unwrap());
+        want.extend(text::events("ab"));
+        assert_eq!(
+            *log.lock().unwrap(),
+            want,
+            "keys, then the text, all balanced"
+        );
+        assert!(matches!(&f.calls()[..], [Call::Shell(r)] if r.target == "https://example.com/"));
+        let controls: Vec<Control> = rx.try_iter().collect();
+        assert_eq!(
+            controls,
+            [
+                Control::ModeRequest {
+                    binding: 0,
+                    generation: 1,
+                    step: Some(4)
+                },
+                Control::Engine {
+                    op: EngineOp::Pause,
+                    rule: "macro".into()
+                },
+            ]
+        );
+    }
+
+    /// `on_error: stop` ends the macro at the first failing stage; `continue` runs the rest and
+    /// reports the first failure.
+    #[test]
+    fn a_failing_stage_stops_or_continues_by_the_rule() {
+        for (go_on, typed_after) in [(false, false), (true, true)] {
+            let (w, log, f, _rx) = macro_worker();
+            *f.shell_error.lock().unwrap() = Some(launch_mod::LaunchError::NoAssociation);
+            let q = w.queue();
+            q.send(Msg::Rules(macro_rules(
+                vec![url("https://example.com/"), typed("x")],
+                go_on,
+            )));
+            q.signal(1, fire(0));
+            let out = wait_outcomes(&w, 1);
+            assert_eq!(out.len(), 1);
+            assert_ne!(out[0].1, "ok", "{out:?}");
+            assert_eq!(
+                !log.lock().unwrap().is_empty(),
+                typed_after,
+                "continue: {go_on}"
+            );
+        }
+    }
+
+    /// A pause, a stop, the emergency chord or a reload ends a macro where it is: nothing more
+    /// runs, nothing stays pressed, one `cancelled` entry.
+    #[test]
+    fn a_cancel_ends_a_macro_mid_wait_without_stuck_keys() {
+        let (w, log, _f, _rx) = macro_worker();
+        let q = w.queue();
+        q.send(Msg::Rules(macro_rules(
+            vec![keys("F20"), Stage::Wait(2000), typed("late")],
+            false,
+        )));
+        q.signal(1, fire(0));
+        wait_for(&log, 2);
+        q.send(Msg::Cancel);
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "cancelled".to_string())]
+        );
+        std::thread::sleep(Duration::from_millis(100));
+        let ev = log.lock().unwrap().clone();
+        assert_eq!(
+            ev,
+            run::chord_events(&crate::remap::Output::parse("F20").unwrap())
+        );
+        let downs = ev.iter().filter(|e| !e.up).count();
+        assert_eq!(downs * 2, ev.len(), "every down has its up");
+    }
+
+    /// One macro at a time: a second trigger while one runs is `busy`; the first finishes.
+    #[test]
+    fn a_trigger_while_a_macro_runs_is_busy() {
+        let (w, _log, _f, _rx) = macro_worker();
+        let q = w.queue();
+        q.send(Msg::Rules(macro_rules(
+            vec![Stage::Wait(150), typed("a")],
+            false,
+        )));
+        q.signal(1, fire(0));
+        q.signal(1, fire(0));
+        let out = wait_outcomes(&w, 2);
+        assert_eq!(
+            out,
+            [
+                ("macro".to_string(), "busy".to_string()),
+                ("macro".to_string(), "ok".to_string())
+            ]
+        );
+    }
+
+    /// A macro whose last stage is a mode step ends before the hook thread's answer arrives;
+    /// that answer is still part of the macro's one entry (found by the Step 78 e2e).
+    #[test]
+    fn a_mode_answer_after_the_macro_ended_adds_no_entry() {
+        let (w, _log, _f, rx) = macro_worker();
+        let q = w.queue();
+        q.send(Msg::Rules(macro_rules(
+            vec![Stage::Wait(10), Stage::Mode(ModeAction::Set(0))],
+            false,
+        )));
+        q.signal(1, fire(0));
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "ok".to_string())]
+        );
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Control::ModeRequest { step: Some(1), .. }
+        ));
+        let s = ModeSet::single();
+        let st = ModeState::new(&s);
+        q.signal(
+            1,
+            Signal::Mode {
+                binding: 0,
+                view: st.view(),
+                switched: false,
+                restore: 0,
+            },
+        );
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(outcomes(&w).len(), 1, "{:?}", outcomes(&w));
     }
 }

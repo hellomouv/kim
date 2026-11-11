@@ -60,6 +60,8 @@ impl EditorApp {
             }
         }
         self.poll();
+        // Step 78: while recording, keys go to the recorder only (before any shortcut).
+        self.record_events(&ctx);
         if ctx.input(|i| i.viewport().close_requested()) && !self.close_now && !self.request_close()
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -1037,6 +1039,9 @@ impl EditorApp {
         self.capture = capture;
         self.capture_target = target;
         self.acts.extend(acts);
+        if stage == Stage::Details {
+            self.macro_section(ui, profile.as_ref());
+        }
         if stage == Stage::Try {
             self.try_stage(ui, profile.as_ref(), &problems);
         }

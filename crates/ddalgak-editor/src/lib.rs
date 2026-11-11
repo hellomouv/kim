@@ -20,6 +20,7 @@ pub mod capture;
 pub mod form;
 pub mod i18n;
 pub mod listing;
+pub mod recorder;
 pub mod repo;
 pub mod shortcuts;
 pub mod sync;

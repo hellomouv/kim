@@ -120,6 +120,7 @@ const RULE_FIELDS: &[(&str, Kind)] = &[
     ("--mode", Multi),
     ("--priority", Value),
     ("--on-error", Value),
+    ("--times", Value),
     ("--allow", Multi),
     ("--action", Value),
     ("--step", Multi),

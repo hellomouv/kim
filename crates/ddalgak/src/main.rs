@@ -158,10 +158,11 @@ RULES (rules.json; these commands work without the app):
                   --step '<json>'.
                   Rule options: --title, --description, --on press|release|hold, --hold-ms,
                   --repeat, --pass-through, --accept-injected, --mode <m>..., --priority,
-                  --on-error stop|continue. Engine, remap, block, send_keys, type_text,
-                  open_program, open_url, mouse and mode rules run (a typing or mode step
-                  alone; launches together, in order; mouse steps together, in order); the
-                  others stay inactive (step_unsupported) until their Step.
+                  --on-error stop|continue, --times <1-100>. Every step type runs; several
+                  --step values of different types, a delay or --times above 1 make a macro
+                  (Step 78): the steps run in order, one macro at a time, cancelled by pause,
+                  stop, reload or the emergency chord, at most a minute (remaps, blocks,
+                  holds and moves while held stay a rule's only step).
     mouse         mouse_move moves the pointer by --dx/--dy logical pixels (scaled by the
                   monitor's display scale; with --grid, cells of a virtual grid, landing on
                   cell centres) or to --x/--y (desktop pixels, or relative to the primary

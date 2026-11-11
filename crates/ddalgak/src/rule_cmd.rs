@@ -893,7 +893,18 @@ fn apply_fields(a: &Args, rule: &mut Rule) -> Result<(), CliError> {
     if let Some(e) = enum_flag(a, "--on-error", ON_ERROR)? {
         rule.on_error = Some(e);
     }
+    if let Some(t) = times(a)? {
+        rule.times = (t > 1).then_some(t);
+    }
     Ok(())
+}
+
+/// Step 78: `--times <1–100>`, how often the steps run in order.
+fn times(a: &Args) -> Result<Option<u32>, CliError> {
+    match num::<u32>(a, "--times")? {
+        Some(t) if !(1..=100).contains(&t) => Err(CliError::usage("--times takes 1–100")),
+        t => Ok(t),
+    }
 }
 
 /// The merge patch of `rule edit` from its flags and `--patch`.
@@ -962,6 +973,9 @@ fn edit_patch(a: &Args) -> Result<Value, CliError> {
     if let Some(e) = a.get("--on-error") {
         enum_flag(a, "--on-error", ON_ERROR)?;
         patch.insert("on_error".into(), json!(e));
+    }
+    if let Some(t) = times(a)? {
+        patch.insert("times".into(), if t > 1 { json!(t) } else { Value::Null });
     }
     if let Some(s) = steps(a)? {
         patch.insert("steps".into(), serde_json::to_value(&s).unwrap_or_default());

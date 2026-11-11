@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+mod macros;
 mod playground;
 mod profiles;
 mod view;
@@ -298,6 +299,8 @@ pub struct EditorApp {
     // Step 76: the test playground.
     play: playground::Playground,
     launcher: Arc<dyn ddalgak::launch::Launcher>,
+    // Step 78: the macro recorder (this window's keys only).
+    recorder: crate::recorder::Recorder,
 }
 
 /// The document checks of the form's rule for one state of the form and the file.
@@ -371,6 +374,7 @@ impl EditorApp {
                 ..playground::Playground::default()
             },
             launcher: Arc::clone(&opts.launcher),
+            recorder: crate::recorder::Recorder::default(),
         };
         app.start_watch();
         app.link.send(Job::Status);
@@ -418,6 +422,11 @@ impl EditorApp {
 
     pub fn banner(&self) -> Option<&Banner> {
         self.banner.as_ref()
+    }
+
+    /// The recorder is on (Step 78).
+    pub fn recording(&self) -> bool {
+        self.recorder.is_on()
     }
 
     /// The playground's test field and its last trace (Step 76).

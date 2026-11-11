@@ -8,17 +8,20 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 78** (#83) — the earliest unfinished Ddalgak Step (check its dependencies)
+- Current Step: **Step 79** (#84) — the earliest unfinished Ddalgak Step (check its dependencies)
 - Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #83 (Step 78). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81) and 77 (#82) stay OPEN
+- Next action: re-query open issues; read #84 (Step 79). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81) and 77 (#82) stay OPEN
   for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-12: Step 78 — worker macro tests 5/5, loader tests updated (mixes are macros), editor
+  recorder 2/2 and macro flow test, CLI tests 31/31; e2e step78 A 1/1, B passed its ordered-run
+  part before the desktop locked (cancel part then skipped); `cargo xtask ci` EXIT 0.
 - 2026-11-12: Step 77 — `context::tests` 5/5, core condition tests 4/4 (per-app precedence,
   200 rapid focus switches, unknown fails safe, one probe per event, hotstrings), loader
   precedence test, Windows reader test (own window unknown, explorer by path), editor form

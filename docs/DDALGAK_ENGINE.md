@@ -535,7 +535,7 @@ Decision: [ADR 0037](adr/0037-ddalgak-program-and-website-launches.md). Format:
 [DDALGAK_RULE_MODEL §5.5, §5.6](DDALGAK_RULE_MODEL.md).
 
 **What runs.** A rule made only of `open_program` and `open_url` steps (a keys trigger; launches
-mixed with other step types and hotstring launches wait for Step 78) opens its targets in order:
+mixed with other step types run as a macro since Step 78, §19; hotstring launches are not offered) opens its targets in order:
 a program by path, with its arguments, working folder, window state, `if_running` and explicit
 `env` overrides; a packaged app by AppUserModelID; an `http`/`https` website in the default
 browser.
@@ -1061,3 +1061,30 @@ focus VS Code and press the chord: `C`; Notepad: `N`; the editor's search box or
 and the global typing rule steps aside for elevated windows). Switch quickly between Notepad and
 VS Code with `Alt+Tab` and press the chord after each switch: always the right letter.
 `ddalgak status` and the activity list name rule IDs only — no program path or title.
+
+## 19. Macros (Step 78)
+
+[ADR 0079](adr/0079-ddalgak-macros-and-recorder.md). A rule whose steps mix kinds, contain a
+`delay` or have `times` above 1 compiles into `Action::Sequence` (`rules::compile_stages`, the same
+per-step compilers as alone; `times` unrolled; at most 1000 stages). The worker runs it stage by
+stage (`worker::Ctx::macro_step`): typing stages as Step 69 runs with every guard and the focus
+kept between them (sampled again after a launch), waits as timers, mouse stages at once, launches
+on their thread (polled every 20 ms), mode stages on the hook thread (`ModeRequest::Rule { step }`),
+engine stages through the controller. One typing run or macro at a time (`busy`); `on_error`;
+60 s at most (`timeout`); pause, stop, reload, profile switch and the emergency chord cancel it
+at the next stage (`cancelled`). One activity entry per run.
+
+| Evidence | What it shows |
+| --- | --- |
+| `worker::tests::a_macro_runs_its_stages_in_order_…` | keys, a wait, text, a website, a mode and an engine stage in order; balanced keys; one entry |
+| `…a_failing_stage_stops_or_continues_by_the_rule`, `…a_cancel_ends_a_macro_mid_wait_without_stuck_keys`, `…a_trigger_while_a_macro_runs_is_busy`, `…a_mode_answer_after_the_macro_ended_adds_no_entry` | error policy, cancellation, busy, one entry |
+| `rules::tests` (launch, mouse, mode, typing) | mixes load as macros; holds and remaps stay alone |
+| editor `recorder::tests`, `flows::a_macro_is_built_recorded_reordered_and_saved` | the recorder and the builder |
+| `e2e/tests/step78_ddalgak_macros.rs` | headless macros; the running engine runs one in order (four hand-offs, both waits, the mode switch, one entry) and a pause cancels one |
+
+**Manual check (maintainer, real desktop).** Make a macro on `Ctrl+Alt+Shift+F21`: open Notepad,
+wait 1000 ms, type `hello`, press `Enter`, type `world`. Press the chord: Notepad opens and gets
+both lines. Press it again and press the emergency chord during the wait: nothing more is typed
+and no key stays down. In the editor, record a few keys (the banner shows; another program does
+not receive them), review, remove one, save.
+
