@@ -134,6 +134,8 @@ pub enum Cmd {
     McpTools,
     /// Step 38 (ADR 0071): a Kim interop request on stdin.
     InteropInvoke,
+    /// Step 39: the Host's resource counters (host.stats).
+    HostStats,
 }
 
 impl Cmd {
@@ -234,6 +236,7 @@ impl Cmd {
             Self::McpServe => "mcp.serve",
             Self::McpTools => "mcp.tools",
             Self::InteropInvoke => "interop.invoke",
+            Self::HostStats => "host.stats",
         }
     }
 
@@ -605,6 +608,7 @@ impl Cmd {
             Self::McpServe => &["--endpoint", "--allow", "--dry-run"],
             Self::McpTools => &["--allow"],
             Self::InteropInvoke => &["--endpoint"],
+            Self::HostStats => &["--endpoint"],
             Self::TelnetConnect => &[
                 "--endpoint",
                 "--allow-insecure",
@@ -1656,6 +1660,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "start", ..] => (Cmd::HostStart, 2),
         ["host", "status", ..] => (Cmd::HostStatus, 2),
         ["host", "health", ..] => (Cmd::HostHealth, 2),
+        ["host", "stats", ..] => (Cmd::HostStats, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
         ["shell-integration", "status", ..] => (Cmd::ShellIntegrationStatus, 2),

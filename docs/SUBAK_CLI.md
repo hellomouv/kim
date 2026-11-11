@@ -507,6 +507,13 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.27 Host costs (Step 39)
+
+`subak host stats [--endpoint <name>]`: the running Host's working set and private memory,
+handle count, CPU time (kernel and user), Terminals, panes, clients, scrollback, sessions and IPC
+counters (IPC `host.stats`); starts nothing (`host_not_running` without a Host).
+[PERFORMANCE](PERFORMANCE.md) lists what they cost and the budgets `cargo xtask bench` checks.
+
 ### 3.26 Kim interop provider (Step 38)
 
 [ADR 0071](adr/0071-capability-interop.md), [INTEROP](INTEROP.md). `subak interop invoke --json

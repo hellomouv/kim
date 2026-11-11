@@ -54,6 +54,9 @@ did.
 | [TABBY_PARITY_REPORT.md](TABBY_PARITY_REPORT.md) | current | Step 36 Tabby parity review: totals, every implemented row with its evidence, deviations, validation across terminal kinds, resource use, safety; the backlog is follow-up #98 |
 | [MCP_GUIDE.md](MCP_GUIDE.md) | current | Step 37: `subak mcp serve` for Claude Code and other agents — setup and removal, grants, tools, threat model, tested workflows |
 | [INTEROP.md](INTEROP.md) | current | Step 38: capability-based interoperability between Kim tools — discovery, invocation, consent per effect, errors, capabilities today, workflows, compatibility policy |
+| [SECURITY.md](SECURITY.md) | current | Step 39 threat model: local IPC, MCP, command input, SSH credentials, interop, packages and updates, capture and restoration, network — mitigations, evidence and residual risks |
+| [PERFORMANCE.md](PERFORMANCE.md) | current | Step 39 measured baseline and budgets (`cargo xtask bench`), the Windows 10 ConPTY handle limitation, what the bench does not measure |
+| [RELEASE_READINESS.md](RELEASE_READINESS.md) | current | Step 39 release checklist with evidence, rollback, blockers and known limitations |
 
 Design tokens and mock-ups live in [`design/`](../design/README.md) (`cargo xtask design-check`
 enforces declared contrast pairs). GUI toolkit evidence: [`research/gui-eval/`](../research/gui-eval/README.md);

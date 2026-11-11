@@ -415,6 +415,30 @@ pub fn current_pid() -> u32 {
 }
 
 /// Open handles of this process (a local metric, ADR 0012).
+/// Step 39: CPU time this process has used, kernel and user, in milliseconds.
+pub fn cpu_ms() -> (u64, u64) {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let z = || FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut c, mut e, mut k, mut u) = (z(), z(), z(), z());
+    // SAFETY: the pseudo handle of this process; four writable FILETIMEs.
+    let ok = unsafe {
+        GetProcessTimes(
+            GetCurrentProcess(),
+            &raw mut c,
+            &raw mut e,
+            &raw mut k,
+            &raw mut u,
+        )
+    } != 0;
+    let ms =
+        |f: &FILETIME| ((u64::from(f.dwHighDateTime) << 32) | u64::from(f.dwLowDateTime)) / 10_000;
+    if ok { (ms(&k), ms(&u)) } else { (0, 0) }
+}
+
 pub fn handle_count() -> u32 {
     let mut n = 0u32;
     // SAFETY: pseudo handle of this process; `n` is writable.

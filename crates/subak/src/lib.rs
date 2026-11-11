@@ -327,6 +327,7 @@ HOST (Windows only; docs/contracts/IPC_PROTOCOL.md, docs/CONPTY_PROOF.md):
                   Closing this window or any client never ends it. `subak new` starts one on
                   demand, so this is rarely needed.
     host status   Host process id, protocol, job breakaway, environment, Terminals, clients.
+    host stats    Memory, handles, CPU time and counters of the running Host (no Host: exit 3).
     host health   Heartbeat: check that the endpoint is served by subak.exe of this user, do
                   the handshake and report the answer time. Exit 0 only when healthy.
     host attach   Same as `subak attach` without a target.
@@ -644,6 +645,7 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::HostStart => client::start(a, &endpoint),
         Cmd::HostStatus => client::status(&endpoint),
         Cmd::HostHealth => client::health(&endpoint),
+        Cmd::HostStats => terminal::host_stats(&endpoint),
         Cmd::HostStop => client::stop(a, &endpoint),
         Cmd::HostAttach => client::attach(a, &endpoint, None),
         Cmd::New => terminal::new(a, &endpoint),
@@ -1596,6 +1598,23 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
                 },
             )
         }
+        Cmd::HostStats => writeln!(
+            out,
+            "Host pid {}: up {} s, {} Terminal(s), {} pane(s), {} client(s); working set {:.1} MiB, private {:.1} MiB, {} handles, CPU {} ms",
+            d["pid"],
+            d["host"]["uptime_s"],
+            d["terminals"],
+            d["panes"],
+            d["clients"],
+            d["host"]["memory"]["working_set_bytes"]
+                .as_f64()
+                .unwrap_or(0.0)
+                / 1_048_576.0,
+            d["host"]["memory"]["private_bytes"].as_f64().unwrap_or(0.0) / 1_048_576.0,
+            d["host"]["handle_count"],
+            d["host"]["cpu"]["kernel_ms"].as_u64().unwrap_or(0)
+                + d["host"]["cpu"]["user_ms"].as_u64().unwrap_or(0),
+        ),
         _ => Ok(()),
     };
 }

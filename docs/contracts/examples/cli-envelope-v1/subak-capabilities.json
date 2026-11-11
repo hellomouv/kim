@@ -932,6 +932,16 @@
         "requires_yes": false,
         "summary": "Run one Kim interop capability (terminal.list, terminal.open, terminal.paste-path) from a request on stdin; dry runs change nothing",
         "usage": "subak interop invoke --json --no-input [--endpoint <name>] < kim.interop.request"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "host.stats",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The running Host's memory, handles, CPU time and counters (sessions, IPC, scrollback); starts nothing",
+        "usage": "subak host stats [--endpoint <name>] [--json]"
       }
     ],
     "implementation": "implemented",

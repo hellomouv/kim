@@ -2628,6 +2628,8 @@ impl Host {
             "host": {
                 "uptime_s": self.uptime_s(),
                 "handle_count": win::handle_count(),
+                // Step 39: what idle and busy cost (docs/PERFORMANCE.md).
+                "cpu": {"kernel_ms": win::cpu_ms().0, "user_ms": win::cpu_ms().1},
                 "memory": {
                     "working_set_bytes": mem.working_set,
                     "private_bytes": mem.private,

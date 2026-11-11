@@ -4,6 +4,7 @@
 //! `sha2` (Ddalgak consent fingerprints in the rule examples; already used by `kim`). Never
 //! shipped to users.
 
+mod bench;
 mod catalog_tools;
 mod ddalgak;
 mod deps;
@@ -43,6 +44,10 @@ COMMANDS:
                       Actions.
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
+    bench [--check] [--record]
+                      Measure the release subak and kim (latency, memory, idle cost, output
+                      rate, soak, malformed MCP input) on a private endpoint; --check fails over
+                      the budgets of docs/perf/baseline.json, --record rewrites it (Windows)
 ";
 
 fn main() -> ExitCode {
@@ -69,6 +74,7 @@ fn main() -> ExitCode {
         Some("design-check") => run_design_check(&root, args.iter().any(|a| a == "--verbose")),
         Some("schema-check") => run_schema_check(&root, args.iter().any(|a| a == "--verbose")),
         Some("ci") => run_ci(&root),
+        Some("bench") => bench::run(&root, &args[1..]),
         Some("e2e") => run_e2e(
             &root,
             args.iter().any(|a| a == "--force"),

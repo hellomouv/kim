@@ -937,6 +937,16 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "host.stats",
+      "usage": "subak host stats [--endpoint <name>] [--json]",
+      "summary": "The running Host's memory, handles, CPU time and counters (sessions, IPC, scrollback); starts nothing",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
     }
   ],
   "provides": [

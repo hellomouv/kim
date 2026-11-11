@@ -359,6 +359,15 @@ pub fn list(endpoint: &str) -> Result<Value, CliError> {
     Ok(r)
 }
 
+/// Step 39: `host stats` — the Host's own counters (memory, handles, CPU time, sessions, IPC,
+/// scrollback). Starts nothing.
+pub fn host_stats(endpoint: &str) -> Result<Value, CliError> {
+    let mut s = require(endpoint)?;
+    let mut r = s.request("host.stats", &json!({}))?;
+    r["pid"] = json!(s.host_pid);
+    Ok(r)
+}
+
 /// `status`: the Host (or that none runs), every Terminal, and every client, in one answer.
 /// Starts nothing; exits 0 also without a Host.
 pub fn status(endpoint: &str) -> Result<Value, CliError> {

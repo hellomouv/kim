@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 39** (#39) — security, performance and reliability hardening
+- Current Step: **Step 40** (#40) — Windows release and documentation
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #39 (hardening). Interop: `kim tools find|invoke`, `subak interop invoke`
-  (ADR 0071, docs/INTEROP.md); MCP: ADR 0070; Tabby leftovers: #98
+- Next action: read #40 (Windows release). Release blockers: docs/RELEASE_READINESS.md §3;
+  perf baseline docs/perf/baseline.json (`cargo xtask bench --check`); Tabby leftovers #98
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 39 — `cargo xtask bench --record`/`--check` (22 measurements, budgets in
+  docs/perf/baseline.json), found and pinned the Windows 10 inbox ConPTY handle per pane
+  (existing conpty tests: Subak adds none), `subak host stats`, e2e step39 1/1; SECURITY,
+  PERFORMANCE, RELEASE_READINESS docs.
 
 - 2026-11-11: Step 38 — kim interop/redact unit tests, kim interop 1/1 (fixture: consent per
   effect, dry run, versions, missing/old/hung/garbage/failing provider, nothing installed),
