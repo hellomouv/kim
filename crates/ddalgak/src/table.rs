@@ -147,6 +147,8 @@ pub struct Binding {
     /// The modes the rule is limited to, as bits of the profile's mode indexes (Step 72); `0`:
     /// every mode.
     pub modes: u32,
+    /// Step 77: the rule's `when`, evaluated when its trigger matches (`None`: always).
+    pub when: Option<Arc<crate::context::Cond>>,
 }
 
 impl Binding {
@@ -194,6 +196,8 @@ pub struct Compiled {
     pub motion: bool,
     /// A mode step (Step 72): the core runs it itself ([`Table::mode_action`]).
     pub mode: bool,
+    /// Step 77: the binding has a condition ([`Binding::when`]), checked after its chord matched.
+    pub cond: bool,
 }
 
 /// Most bindings a table holds (one profile's rule limit, DDALGAK_RULE_MODEL §2).
@@ -309,6 +313,7 @@ impl Table {
                     is_remap: b.action.remap_spec().is_some(),
                     motion: matches!(b.action, Action::Motion(_)),
                     mode: matches!(b.action, Action::Mode(_)),
+                    cond: b.when.is_some(),
                 }
             })
             .collect();

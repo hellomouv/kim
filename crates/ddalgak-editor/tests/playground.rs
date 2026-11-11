@@ -182,3 +182,37 @@ fn live_types_into_the_field_and_opens_only_when_confirmed() {
     click(&mut h, "Reset");
     assert_eq!(h.state().playground(), ("", None));
 }
+
+/// Step 77: the playground shows what fires in a chosen app before anything is activated: the
+/// app's rule in that app, the global one elsewhere (the same matcher as the engine).
+#[test]
+fn the_playground_shows_the_winner_per_app() {
+    let mut doc = rules();
+    let thanks = doc["profiles"][0]["rules"][0].clone();
+    let mut code = thanks.clone();
+    code["id"] = json!("in-code");
+    code["when"] = json!({ "apps": [ { "exe": "Code.exe" } ] });
+    doc["profiles"][0]["rules"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, code);
+    let sb = sandbox("apps", &doc);
+    let mut h = harness(&sb, Arc::new(FakeLauncher::default()));
+    h.run();
+    click(&mut h, "Playground");
+    keys(&mut h, "Ctrl+Shift+F2");
+    h.get_by_role_and_label(Role::TextInput, "Program (exe)")
+        .set_text_value_accesskit("Code.exe");
+    h.run();
+    click(&mut h, "Run test");
+    let t = h.state().playground().1.unwrap().clone();
+    assert_eq!(t["decision"]["rule"], "in-code", "{t:#}");
+    assert_eq!(t["decision"]["candidates"][1]["result"], "lower_precedence");
+    h.get_by_role_and_label(Role::TextInput, "Program (exe)")
+        .set_text_value_accesskit("notepad.exe");
+    h.run();
+    click(&mut h, "Run test");
+    let t = h.state().playground().1.unwrap().clone();
+    assert_eq!(t["decision"]["rule"], "thanks");
+    assert_eq!(t["decision"]["candidates"][0]["result"], "condition_false");
+}

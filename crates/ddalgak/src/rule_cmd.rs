@@ -297,7 +297,7 @@ fn test(a: &Args, files: &Files, ctx: &Context) -> Outcome {
             )))
         }
     };
-    let input = ddalgak::simulate::Input {
+    let mut input = ddalgak::simulate::Input {
         profile: a.get("--profile").map(String::from),
         revision: if src == "draft" { None } else { l.revision },
         mode: a.get("--mode").map(String::from),
@@ -320,8 +320,69 @@ fn test(a: &Args, files: &Files, ctx: &Context) -> Outcome {
         injected: a.has("--injected"),
         ..ddalgak::simulate::Input::default()
     };
+    // `explain --context`: the context object of ddalgak-simulation-v1 (Step 77).
+    if let Some(c) = a.get("--context") {
+        context_into(&mut input, c)?;
+    }
     let v = ddalgak::simulate::simulate(&doc, &input).map_err(CliError::usage)?;
     Ok((v, Vec::new()))
+}
+
+/// Reads `{"mode", "engine", "focus", "app": {"exe", "window_title"}, "ime_composing"}` (every
+/// field optional, nothing else).
+fn context_into(i: &mut ddalgak::simulate::Input, text: &str) -> Result<(), CliError> {
+    let bad = |m: &str| CliError::usage(format!("--context: {m}"));
+    let v: Value = serde_json::from_str(text).map_err(|e| bad(&format!("not JSON ({e})")))?;
+    let o = v.as_object().ok_or_else(|| bad("must be an object"))?;
+    for (k, x) in o {
+        match k.as_str() {
+            "mode" => i.mode = Some(x.as_str().ok_or_else(|| bad("`mode` is a mode ID"))?.into()),
+            "engine" => {
+                i.paused = match x.as_str() {
+                    Some("running") => false,
+                    Some("paused") => true,
+                    _ => return Err(bad("`engine` is running or paused")),
+                }
+            }
+            "focus" => {
+                let f = x.as_str().unwrap_or_default();
+                if ![
+                    "normal",
+                    "password_field",
+                    "elevated_window",
+                    "secure_desktop",
+                ]
+                .contains(&f)
+                {
+                    return Err(bad(
+                        "`focus` is normal, password_field, elevated_window or secure_desktop",
+                    ));
+                }
+                i.focus = f.into();
+            }
+            "ime_composing" => {
+                i.ime_composing = x
+                    .as_bool()
+                    .ok_or_else(|| bad("`ime_composing` is true or false"))?;
+            }
+            "app" if x.is_null() => i.app_exe = None,
+            "app" => {
+                let app = x
+                    .as_object()
+                    .ok_or_else(|| bad("`app` is an object or null"))?;
+                for (ak, av) in app {
+                    let s = av.as_str().ok_or_else(|| bad("`app` fields are texts"))?;
+                    match ak.as_str() {
+                        "exe" => i.app_exe = Some(s.into()),
+                        "window_title" => i.window_title = Some(s.into()),
+                        other => return Err(bad(&format!("unknown field `app.{other}`"))),
+                    }
+                }
+            }
+            other => return Err(bad(&format!("unknown field `{other}`"))),
+        }
+    }
+    Ok(())
 }
 
 /// `rule show <id>`
@@ -1463,7 +1524,7 @@ pub fn run(cmd: Cmd, a: &Args, paths: &Paths, notify: Notify<'_>) -> Outcome {
     match cmd {
         Cmd::RuleList => list(a, &files, &ctx),
         Cmd::RuleShow => show(a, &files, &ctx),
-        Cmd::Test => test(a, &files, &ctx),
+        Cmd::Test | Cmd::Explain => test(a, &files, &ctx),
         Cmd::RuleCheck => check(a, &files, &ctx),
         Cmd::RuleAdd => {
             let n = new_rule(a)?;

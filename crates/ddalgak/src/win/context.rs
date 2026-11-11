@@ -19,21 +19,92 @@
 //! installed only while the engine is on.
 
 use super::hook::Shared;
-use super::{own_integrity, process_integrity};
+use super::{own_integrity, process_image, process_integrity};
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     ES_PASSWORD, EVENT_OBJECT_FOCUS, EVENT_OBJECT_IME_HIDE, EVENT_OBJECT_IME_SHOW,
     EVENT_SYSTEM_DESKTOPSWITCH, EVENT_SYSTEM_FOREGROUND, GUITHREADINFO, GWL_STYLE, GetClassNameW,
     GetForegroundWindow, GetGUIThreadInfo, GetWindowLongW, GetWindowThreadProcessId,
-    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    InternalGetWindowText, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
 
 struct Ctx {
     shared: Arc<Shared>,
     own_il: u32,
+}
+
+/// Step 77 (ADR 0078): the focused window for rule conditions. The process path is cached per
+/// (window, process) and warmed by the foreground watcher, so the hook callback normally reads a
+/// cache; when the foreground moved before the watcher saw it, the path is read right then
+/// (`OpenProcess` + `QueryFullProcessImageNameW`, no message to the other window). The title is
+/// read only for a matched rule with a title condition, with `InternalGetWindowText` (never a
+/// `WM_GETTEXT` that could hang on a busy window), compared and dropped — never logged or kept.
+/// A process with a higher integrity level, one that cannot be opened, Ddalgak's own windows and
+/// no window at all are unknown: they match nothing.
+#[derive(Debug)]
+pub struct WinForeground {
+    own_il: u32,
+    /// (window, process ID) → lowercase image path (`None`: unknown).
+    cache: Mutex<(isize, u32, Option<String>)>,
+}
+
+impl WinForeground {
+    fn lookup(&self, hwnd: HWND) -> Option<String> {
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        // SAFETY: `pid` is writable; an invalid window yields 0.
+        unsafe { GetWindowThreadProcessId(hwnd, &raw mut pid) };
+        let mut c = self
+            .cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if c.0 == hwnd as isize && c.1 == pid {
+            return c.2.clone();
+        }
+        let path = (pid != 0 && pid != std::process::id())
+            .then(|| process_integrity(pid).ok().filter(|il| *il <= self.own_il))
+            .flatten()
+            .and_then(|_| process_image(pid).ok())
+            .map(|p| p.to_string_lossy().to_lowercase());
+        *c = (hwnd as isize, pid, path.clone());
+        path
+    }
+}
+
+impl crate::context::Foreground for WinForeground {
+    fn app(&self) -> Option<String> {
+        // SAFETY: no preconditions.
+        self.lookup(unsafe { GetForegroundWindow() })
+    }
+
+    fn title(&self) -> Option<String> {
+        // SAFETY: no preconditions.
+        let hwnd = unsafe { GetForegroundWindow() };
+        // Only a window whose process is known (not elevated, not ours) has a readable title.
+        self.lookup(hwnd)?;
+        let mut buf = [0u16; 512];
+        // SAFETY: `buf` has 512 writable UTF-16 units; reads the window's own text without
+        // sending it a message.
+        let n = unsafe { InternalGetWindowText(hwnd, buf.as_mut_ptr(), 512) };
+        let n = usize::try_from(n).ok().filter(|n| *n > 0)?;
+        Some(String::from_utf16_lossy(&buf[..n]).to_lowercase())
+    }
+}
+
+/// The one foreground reader of this process (the hook's core and the watcher share it).
+pub fn foreground() -> Arc<WinForeground> {
+    static F: LazyLock<Arc<WinForeground>> = LazyLock::new(|| {
+        Arc::new(WinForeground {
+            own_il: own_integrity().unwrap_or(0x2000),
+            cache: Mutex::new((0, 0, None)),
+        })
+    });
+    Arc::clone(&F)
 }
 
 thread_local! {
@@ -85,6 +156,8 @@ fn focused_window() -> HWND {
 }
 
 fn refresh(ctx: &Ctx, foreground: HWND) {
+    // Step 77: warm the condition cache now, outside any hook callback.
+    let _ = self::foreground().lookup(foreground);
     let elevated = is_elevated_window(foreground, ctx.own_il);
     let was = ctx.shared.flags().elevated_foreground;
     ctx.shared.set_elevated_foreground(elevated);
@@ -250,5 +323,25 @@ mod tests {
             DestroyWindow(pw);
             DestroyWindow(plain);
         }
+    }
+
+    /// Step 77: the foreground reader never knows Ddalgak's own windows and names another
+    /// user-level process by its lowercase image path. The shell's desktop window is used, so
+    /// no window of the user is read (no title is read at all here).
+    #[test]
+    fn the_condition_reader_knows_other_processes_but_never_itself() {
+        let f = foreground();
+        let own = edit(0);
+        assert_eq!(f.lookup(own), None, "own window");
+        assert_eq!(f.lookup(std::ptr::null_mut()), None);
+        // SAFETY: no preconditions; null without a shell (then nothing to check).
+        let shell = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetShellWindow() };
+        if !shell.is_null() {
+            let p = f.lookup(shell).expect("explorer runs at the user's level");
+            assert!(p.ends_with("explorer.exe") && p == p.to_lowercase(), "{p}");
+            assert_eq!(f.lookup(shell), Some(p), "cached");
+        }
+        // SAFETY: the test's own window.
+        unsafe { DestroyWindow(own) };
     }
 }

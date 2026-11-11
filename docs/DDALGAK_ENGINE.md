@@ -39,7 +39,7 @@ the rule format is [DDALGAK_RULE_MODEL](DDALGAK_RULE_MODEL.md); the safety scope
 **Never broader.** A rule this version does not run is listed in `status` as inactive with its
 code: `step_unsupported` (an action type of a later Step — `delay`, a typing or mode
 step among other steps and launches or mouse steps mixed with other steps in 78 — or an unknown one),
-`condition_unsupported` (`when`, Step 77), `rule_unsupported` (an unknown field inside the rule),
+`condition_unsupported` (a `when` this version cannot evaluate; known conditions run since Step 77), `rule_unsupported` (an unknown field inside the rule),
 `trigger_invalid`/`trigger_reserved`, `duplicate_rule_id`, `duplicate_trigger` and every other
 error of DDALGAK_RULE_MODEL §8. A file that is not a usable `ddalgak.rules` v1 document is not
 loaded at all and the engine cannot be turned on with it (`rules_invalid`,

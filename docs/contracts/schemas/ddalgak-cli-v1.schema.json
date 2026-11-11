@@ -1059,12 +1059,12 @@
       ]
     },
     "ok_test": {
-      "description": "`ddalgak test` (Step 76): `data` is exactly one ddalgak-simulation-v1 document of kind `simulate`, which that schema closes and the CLI's tests validate; only its identifying fields are repeated here.",
+      "description": "`ddalgak test` (Step 76) and `ddalgak explain` (Step 77): `data` is exactly one ddalgak-simulation-v1 document of kind `simulate`, which that schema closes and the CLI's tests validate; only its identifying fields are repeated here.",
       "allOf": [
         { "$ref": "#/$defs/envelope_ok" },
         {
           "properties": {
-            "command": { "const": "test" },
+            "command": { "enum": ["test", "explain"] },
             "data": {
               "type": "object",
               "required": ["schema", "schema_version", "kind", "profile", "revision", "context", "event", "decision", "effects", "injected_events", "opened"],

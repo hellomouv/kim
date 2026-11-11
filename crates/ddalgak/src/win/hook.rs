@@ -697,6 +697,8 @@ fn run(
                 // keys without changing keyboard state (Step 69, ADR 0034).
                 core.set_runs(queue.runs());
                 core.set_translator(super::typing::translate);
+                // Step 77: rule conditions read the focused app through the watcher's cache.
+                core.set_foreground(super::context::foreground());
                 core
             },
             shared: Arc::clone(shared),

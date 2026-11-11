@@ -275,7 +275,7 @@
       }
     },
     "conditions": {
-      "description": "All present conditions must hold when the trigger fires (evaluated from Step 77; until then a rule with conditions is inactive, never unconditional).",
+      "description": "All present conditions must hold when the trigger fires (evaluated since Step 77; a condition a version cannot evaluate keeps the rule inactive, never unconditional).",
       "type": "object",
       "properties": {
         "apps": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/app_matcher"}},

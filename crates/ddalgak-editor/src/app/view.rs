@@ -2184,8 +2184,25 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             )
             .accessible_name(lang.t("form.only_apps"));
-            if !fl.apps.trim().is_empty() {
-                ui.label(small(lang.t("form.apps_note"), c.warning));
+            ui.label(small(lang.t("form.except_apps"), c.text_muted));
+            ui.add(
+                egui::TextEdit::multiline(&mut fl.except_apps)
+                    .desired_rows(1)
+                    .hint_text("KeePassXC.exe")
+                    .desired_width(f32::INFINITY),
+            )
+            .accessible_name(lang.t("form.except_apps"));
+            labeled(
+                ui,
+                lang.t("form.title_cond"),
+                egui::TextEdit::singleline(&mut fl.window_title).desired_width(220.0),
+            );
+            ui.checkbox(&mut fl.title_exact, lang.t("form.title_exact"));
+            if !fl.apps.trim().is_empty()
+                || !fl.except_apps.trim().is_empty()
+                || !fl.window_title.trim().is_empty()
+            {
+                ui.label(small(lang.t("form.apps_note"), c.text_muted));
             }
             labeled(
                 ui,

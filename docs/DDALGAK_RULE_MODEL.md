@@ -243,7 +243,7 @@ A hotstring trigger has `hotstring` instead of `keys` (and none of `on`, `hold_m
 | `enabled` | Required. A disabled rule is kept, listed and never runs. |
 | `trigger` | §3. |
 | `modes` | Optional list of mode IDs of the same profile (`unknown_mode`). Omitted: active in every mode. |
-| `when` | Optional conditions (§7.2). Evaluated from Step 77; until then a rule with `when` is **inactive** (`condition_unsupported`), never unconditional (`DDALGAK-FR-021`). |
+| `when` | Optional conditions (§7.2), evaluated since Step 77 ([ADR 0078](adr/0078-ddalgak-app-conditions.md)). A condition this version does not know keeps the rule **inactive** (`condition_unsupported`), never unconditional (`DDALGAK-FR-021`). |
 | `priority` | −1000…1000, default 0 (§7.1). |
 | `steps` | 1–32 steps run in order (§5). Total `delay` at most 60 s (`run_too_long`). |
 | `on_error` | `stop` (default): a failing step ends the run. `continue`: later steps still run. |
@@ -684,6 +684,16 @@ between rules whose conditions differ but both hold at that moment. The playgrou
 Conditions are read at trigger time only, from the foreground window; titles are never logged
 or stored (`DDALGAK-SEC-011`). Windows of elevated processes and the secure desktop never match.
 
+**Implemented in Step 77** ([ADR 0078](adr/0078-ddalgak-app-conditions.md)): one matcher
+(`crates/ddalgak/src/context.rs`) for the engine, the validator, the simulator and the editor.
+`path` expands known-folder tokens and reads `/` as `\`. The hook asks for the focused app only
+after a conditioned rule's trigger matched, once per event, from a cache the focus watcher keeps
+(read again when the foreground changed since); the title only for a matched title condition.
+**Unknown never matches**: a window whose process cannot be read (elevated, protected, the secure
+desktop, Ddalgak's own, none) fails `apps` and `except_apps` alike, so the rule stays quiet and a
+lower rule or the application gets the key. Not in v1: window classes, times, modifier-presence
+conditions and switching profiles per app.
+
 ### 7.3 Modes
 
 Exactly one mode of the active profile is active. Rules without `modes` work in every mode;
@@ -865,8 +875,9 @@ The same logic answers `ddalgak test --dry-run --json` and `ddalgak explain --js
 `ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
 [--focus normal|password_field|elevated_window|secure_desktop] [--app <exe>] [--title <text>]
 [--ime] [--injected] [--draft]` prints it (always `simulate`); the editor's Playground page runs
-it and offers `live`. `ddalgak explain` is not built (`ddalgak test` answers for a chosen
-context). Mouse previews use a simulated 1920×1080 desktop with the pointer at its centre and the
+it and offers `live`. Since Step 77 `ddalgak explain <keys> --context <json>` takes the
+context as this section's `context` object (`mode`, `engine`, `focus`, `app` with `exe` — a file
+name or a full path, printed as the file name — and `window_title`, `ime_composing`). Mouse previews use a simulated 1920×1080 desktop with the pointer at its centre and the
 active window at (100, 100).
 
 **Inputs**

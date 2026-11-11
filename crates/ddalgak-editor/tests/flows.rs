@@ -528,11 +528,11 @@ fn search_filter_group_and_bulk_enable() {
     assert_eq!(rule(&d, "p1")["enabled"], true);
     assert_eq!(rule(&d, "p2")["enabled"], true);
     assert_eq!(d["revision"], 2, "one change for the bulk action");
-    // The app-limited rule is inactive (conditions arrive in Step 77): its badge says so.
+    // Step 77: the app-limited rule is evaluated, so no inactive badge is shown for it.
     settle(&mut h);
     assert!(
         h.query_by_label_contains("inactive: condition_unsupported")
-            .is_some()
+            .is_none()
     );
 }
 

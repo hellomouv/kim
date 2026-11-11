@@ -1,0 +1,56 @@
+{
+  "command": "explain",
+  "data": {
+    "context": {
+      "app": {
+        "exe": "notepad.exe"
+      },
+      "engine": "running",
+      "focus": "normal",
+      "ime_composing": false,
+      "mode": "base"
+    },
+    "decision": {
+      "candidates": [
+        {
+          "result": "condition_false",
+          "rule": "paste-plain-code"
+        },
+        {
+          "result": "winner",
+          "rule": "paste-plain-global"
+        }
+      ],
+      "code": "ok",
+      "key_reaches_app": false,
+      "outcome": "fired",
+      "rule": "paste-plain-global"
+    },
+    "effects": [
+      {
+        "performed": false,
+        "preview": {
+          "keys": "Ctrl+Alt+Shift+V"
+        },
+        "step": 0,
+        "summary": "Sends Ctrl+Alt+Shift+V.",
+        "type": "send_keys"
+      }
+    ],
+    "event": {
+      "keys": "Ctrl+Shift+V",
+      "on": "press",
+      "source": "physical"
+    },
+    "injected_events": 0,
+    "kind": "simulate",
+    "opened": [],
+    "profile": "work",
+    "revision": 42,
+    "schema": "ddalgak.simulation",
+    "schema_version": 1
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

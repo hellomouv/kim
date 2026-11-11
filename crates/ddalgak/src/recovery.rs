@@ -187,6 +187,7 @@ mod tests {
             }),
             hotstring: None,
             modes: 0,
+            when: None,
         }
     }
 

@@ -98,8 +98,8 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | --- | --- | --- | --- | --- |
 | DDALGAK-FR-020 | Exactly one rule wins per trigger event, chosen by the deterministic precedence of [RULE_MODEL §7](DDALGAK_RULE_MODEL.md) (mode-scoped, then condition specificity, then priority, then order). Unmatched keys reach the application unchanged. | P0 | D2 | T |
 | DDALGAK-FR-021 | A rule with conditions (`when`) or a step type this version cannot evaluate is inactive with a stated reason; it is never treated as unconditional. | P0 | D2 | T |
-| DDALGAK-FR-022 | App conditions: focused program by file name or path, exclusions, and window title (contains or equals); evaluated only at trigger time. | P1 | D5 | T, M |
-| DDALGAK-FR-023 | `ddalgak explain <keys> --mode <m> --app <exe> --json` and the playground show every candidate with why it won or lost, without running anything. | P1 | D5 | T |
+| DDALGAK-FR-022 | App conditions: focused program by file name or path, exclusions, and window title (contains or equals); evaluated only at trigger time. Step 77: implemented (ADR 0078; unknown windows never match; titles never kept); real per-app firing checked manually. | P1 | D5 | T, M |
+| DDALGAK-FR-023 | `ddalgak explain <keys> --mode <m> --app <exe> --json` and the playground show every candidate with why it won or lost, without running anything. Step 77: implemented as `ddalgak explain <keys> --context <json>` (and `ddalgak test --mode --app --title`). | P1 | D5 | T |
 
 ### 2.4 Profiles, history, import and export
 

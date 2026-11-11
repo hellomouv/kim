@@ -122,7 +122,7 @@ Where a page did not state something, the row says so instead of filling the gap
 | 3.6 | A mouse button to another button or key (`XButton1::LButton`) | RM | `remap` from `MouseMiddle`/`MouseX1`/`MouseX2` to a key, chord or any mouse button (`MouseLeft`/`MouseRight` are the logical primary and secondary buttons); a key can also act as a mouse button | supported | 68 | Step 68: core and worker tests (no mouse input injected; real buttons are a manual check) |
 | 3.7 | The mouse wheel cannot be remapped | RM | Wheel as output: `mouse_scroll` (four directions, one event per notch). Wheel as trigger: not yet (row 1.16) | partial | 71 | Step 71: mouse, core and worker tests on synthetic monitor layouts with a simulated pointer, the exact `INPUT` structures, a real-hook smoke test on obscure keys; real pointer manual (DDALGAK_ENGINE §14) |
 | 3.8 | Disabling a key (`RWin::return`) | RM | `block`, for any key except reserved ones (the Win keys among them), and for the middle and X mouse buttons; a plain trigger is widened (Ctrl+Insert too) | partial | 68 | Step 68: core and worker tests; real-input smoke on obscure keys (DDALGAK_ENGINE §11) |
-| 3.9 | Context-specific remaps (`#HotIf` around remaps) | RM, HI | Modes (exclusive, or layers that fall back to a parent's rules) since Step 72; app conditions in Step 77 | supported | 72, 77 | Step 72: per-mode precedence along a layer's chain in core and loader tests; conditions pending (77) |
+| 3.9 | Context-specific remaps (`#HotIf` around remaps) | RM, HI | Modes (exclusive, or layers that fall back to a parent's rules) since Step 72; app conditions since Step 77 | supported | 72, 77 | Step 72: per-mode precedence along a layer's chain in core and loader tests; conditions pending (77) |
 | 3.10 | Remaps do not trigger other hook hotkeys unless `#InputLevel` is raised | RM, IL, SL | Ddalgak's own output never triggers rules; no levels. `injected: accept` admits only other programs' input, for rules that inject nothing | partial | 66 | — |
 | 3.11 | Registry `Scancode Map` as an alternative (needs a reboot, applies to all users) | RM | Ddalgak never edits system-wide keyboard settings | not intended | — | — |
 | 3.12 | Tap for one key, hold for another (scripted in AutoHotkey) | RM | `remap` with `tap`, `tap_ms`: another key pressed during the hold is sent after the target, unchanged | supported | 68 | Step 68: core and worker tests; real-input smoke on obscure keys (DDALGAK_ENGINE §11) |
@@ -162,11 +162,11 @@ Where a page did not state something, the row says so instead of filling the gap
 
 | # | AutoHotkey v2 behavior | Src | Ddalgak | Status | Step | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 5.1 | `#HotIf WinActive("ahk_exe code.exe")` | HI, WT | `when.apps` by file name or path; `except_apps` | supported | 77 | — |
-| 5.2 | Window title matching (exact, prefix, substring, RegEx via `SetTitleMatchMode`) | WT | `window_title` `contains` or `equals`, case-insensitive; no RegEx in v1 | partial | 77 | — |
-| 5.3 | `ahk_class` | WT | A window-class matcher is an additive condition | planned | 77 | — |
-| 5.4 | `ahk_group` window groups | WT | A list of app matchers in one rule | partial | 77 | — |
-| 5.5 | Any Boolean expression as a condition, evaluated on the main thread when the key is pressed | HI | Fixed condition kinds only, evaluated at trigger time off the hook thread | not intended | — | — |
+| 5.1 | `#HotIf WinActive("ahk_exe code.exe")` | HI, WT | `when.apps` by file name or path; `except_apps` | supported | 77 | Step 77: `context::tests`, `core::tests::the_same_key_fires_per_app_…`, `…an_unknown_foreground_fails_safe`, `e2e/tests/step77_ddalgak_conditions.rs` |
+| 5.2 | Window title matching (exact, prefix, substring, RegEx via `SetTitleMatchMode`) | WT | `window_title` `contains` or `equals`, case-insensitive; no RegEx in v1 | partial | 77 | Step 77: `context::tests::titles_contain_or_equal_…`, the editor's *Window title contains* |
+| 5.3 | `ahk_class` | WT | A window-class matcher is an additive condition | planned | later | Not in Step 77 (ADR 0078); a rule with `window_class` stays inactive (`condition_unsupported`) |
+| 5.4 | `ahk_group` window groups | WT | A list of app matchers in one rule | partial | 77 | Step 77: up to 32 matchers per list |
+| 5.5 | Any Boolean expression as a condition, evaluated on the main thread when the key is pressed | HI | Fixed condition kinds only, evaluated at trigger time from the focus watcher's cache (the title read on demand, never kept) | not intended | — | — |
 | 5.6 | Precedence: the topmost eligible variant wins; the global variant has the lowest precedence | HI | Deterministic precedence: mode-scoped, app, title, priority, order (RULE_MODEL §7.1), shown by `explain` | supported | 77 | — |
 | 5.7 | Context from script variables (`#HotIf MyMode`) | HI | User-defined modes with set, toggle, cycle, hold, previous and default, one-shot and timed exits, `ddalgak mode set`, `toggle`, `reset`, `status` | supported | 72 | Step 72: `modes::tests`, `core::tests`, `tests/cli.rs::modes_through_the_cli_and_the_real_test_host` (DDALGAK_ENGINE §15) |
 

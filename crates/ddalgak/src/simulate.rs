@@ -117,45 +117,26 @@ fn injects(a: &Action) -> bool {
     )
 }
 
-fn app_matches(m: &crate::model::AppMatcher, exe: Option<&str>) -> bool {
-    let Some(exe) = exe else { return false };
-    if let Some(e) = &m.exe {
-        return e.eq_ignore_ascii_case(exe);
-    }
-    if let Some(p) = &m.path {
-        return crate::launch::program_name(p).eq_ignore_ascii_case(exe);
-    }
-    false
+/// The rule's compiled `when` (`Ok(None)` without one), exactly as the engine compiles it.
+fn cond_of(r: &Rule) -> Result<Option<crate::context::Cond>, String> {
+    r.when
+        .as_ref()
+        .map(|w| crate::context::Cond::compile(&serde_json::to_value(w).unwrap_or_default()))
+        .transpose()
 }
 
-/// Whether `when` holds in this context.
+/// Whether `when` holds in this context: the engine's matcher against the chosen app (an exe
+/// name or a full path) and title (Step 77).
 fn condition_holds(r: &Rule, i: &Input) -> bool {
-    let Some(w) = &r.when else { return true };
-    let exe = i.app_exe.as_deref();
-    if let Some(apps) = &w.apps
-        && !apps.iter().any(|m| app_matches(m, exe))
-    {
-        return false;
+    let fg = crate::context::FixedForeground {
+        app: i.app_exe.clone(),
+        title: i.window_title.clone(),
+    };
+    match cond_of(r) {
+        Ok(None) => true,
+        Ok(Some(c)) => c.holds(&fg, &mut crate::context::Probe::default()),
+        Err(_) => false,
     }
-    if let Some(ex) = &w.except_apps
-        && ex.iter().any(|m| app_matches(m, exe))
-    {
-        return false;
-    }
-    if let Some(t) = &w.window_title {
-        let title = i.window_title.as_deref().unwrap_or("").to_lowercase();
-        if let Some(c) = &t.contains
-            && !title.contains(&c.to_lowercase())
-        {
-            return false;
-        }
-        if let Some(e) = &t.equals
-            && title != e.to_lowercase()
-        {
-            return false;
-        }
-    }
-    true
 }
 
 /// Whether the trigger matches the event's keys and kind.
@@ -446,11 +427,7 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
             candidates.push(entry("mode_mismatch", Some(format!("not in mode {mode}"))));
             continue;
         }
-        if r.when
-            .as_ref()
-            .and_then(|w| w.has_unknown_fields())
-            .is_some()
-        {
+        if cond_of(r).is_err() {
             candidates.push(entry(
                 "inactive",
                 Some("a condition this Ddalgak does not know".into()),
@@ -559,7 +536,8 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
         "profile": pid, "revision": i.revision,
         "context": {"mode": mode, "engine": if i.paused { "paused" } else { "running" }, "focus": i.focus,
             "app": i.app_exe.as_ref().map(|e| {
-                let mut a = json!({"exe": e});
+                // A full path is matched as given but printed as its file name (privacy).
+                let mut a = json!({"exe": crate::launch::program_name(e)});
                 if let Some(t) = &i.window_title { a["window_title"] = json!(t.chars().take(200).collect::<String>()); }
                 a
             }),

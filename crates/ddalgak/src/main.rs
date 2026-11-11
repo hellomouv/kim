@@ -51,6 +51,8 @@ USAGE:
     ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
                      [--focus normal|password_field|elevated_window|secure_desktop]
                      [--app <exe>] [--title <text>] [--ime] [--injected] [--draft] [--dry-run] [--json]
+    ddalgak explain <keys> [--context <json>] [--on <kind>] [--profile <p>] [--injected] [--draft]
+                     [--dry-run] [--json]
     ddalgak rule check [--draft] [--json]
     ddalgak rule add --trigger <keys> (--action <type> [inputs] | --step <json>...)
                      [rule options] [--id <id>] [--profile <p>] [--before|--after <id>]
@@ -525,6 +527,7 @@ fn is_rule_cmd(cmd: Cmd) -> bool {
         Cmd::RuleList
             | Cmd::RuleShow
             | Cmd::Test
+            | Cmd::Explain
             | Cmd::RuleCheck
             | Cmd::RuleAdd
             | Cmd::RuleEdit
@@ -802,7 +805,7 @@ fn s(v: &Value) -> String {
 fn human(cmd: Cmd, d: &Value) -> String {
     let mut o = String::new();
     match cmd {
-        Cmd::Test => {
+        Cmd::Test | Cmd::Explain => {
             let dec = &d["decision"];
             o.push_str(&match dec["outcome"].as_str() {
                 Some("fired") => format!(

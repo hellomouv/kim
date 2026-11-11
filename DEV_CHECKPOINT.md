@@ -8,17 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 77** (#82) — the earliest unfinished Ddalgak Step (check its dependencies)
+- Current Step: **Step 78** (#83) — the earliest unfinished Ddalgak Step (check its dependencies)
 - Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #82 (Step 77). Steps 61 (#66), 63 (#68) and 76 (#81) stay OPEN
+- Next action: re-query open issues; read #83 (Step 78). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68) and 76 (#81) stay OPEN
   for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-12: Step 77 — `context::tests` 5/5, core condition tests 4/4 (per-app precedence,
+  200 rapid focus switches, unknown fails safe, one probe per event, hotstrings), loader
+  precedence test, Windows reader test (own window unknown, explorer by path), editor form
+  round-trip; e2e step77 2/2; `cargo xtask ci` EXIT 0.
 - 2026-11-12: Step 76 — `simulate::tests` 4/4 (all 23 `ddalgak-simulation-v1` examples
   reproduced and schema-valid), editor `tests/playground.rs` 2/2 (FakeLauncher: nothing opened
   before *Confirm and open*), e2e step76 1/1, `cargo xtask ci` EXIT 0.

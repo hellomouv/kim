@@ -510,3 +510,45 @@ fn every_category_the_form_saves_becomes_an_active_engine_binding() {
         );
     }
 }
+
+/// Step 77: conditions round-trip through the form — a stored path stays a path, file names
+/// stay names, except_apps and an exact title are kept; bad lines are refused in words.
+#[test]
+fn conditions_round_trip_and_are_checked() {
+    let mut f = with(Effect::Engine, "Ctrl+Alt+Shift+F13");
+    f.fields.apps = "Code.exe\nC:\\Program Files\\Kim\\kim.exe".into();
+    f.fields.except_apps = "KeePassXC.exe".into();
+    f.fields.window_title = "Weekly Meeting".into();
+    f.fields.title_exact = true;
+    assert!(paths(&f).is_empty(), "{:?}", paths(&f));
+    let r = f.build("r1", Some(&profile())).unwrap();
+    let w = serde_json::to_value(r.when.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        w,
+        serde_json::json!({
+            "apps": [{"exe": "Code.exe"}, {"path": "C:\\Program Files\\Kim\\kim.exe"}],
+            "except_apps": [{"exe": "KeePassXC.exe"}],
+            "window_title": {"equals": "Weekly Meeting"}
+        })
+    );
+    let back = RuleForm::edit("default", &r);
+    assert_eq!(back.fields.apps, f.fields.apps);
+    assert_eq!(back.fields.except_apps, "KeePassXC.exe");
+    assert_eq!(
+        (back.fields.window_title.as_str(), back.fields.title_exact),
+        ("Weekly Meeting", true)
+    );
+    assert!(
+        ddalgak::context::Cond::compile(&w).is_ok(),
+        "the engine accepts what the form saves"
+    );
+    for bad in ["Code", "a/b.exe", "x*.exe"] {
+        f.fields.apps = bad.into();
+        assert!(paths(&f).contains(&"when.apps"), "{bad}");
+    }
+    // Clearing every field removes the condition.
+    f.fields.apps.clear();
+    f.fields.except_apps.clear();
+    f.fields.window_title.clear();
+    assert!(f.build("r1", Some(&profile())).unwrap().when.is_none());
+}

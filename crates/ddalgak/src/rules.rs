@@ -443,7 +443,15 @@ pub fn from_store(l: &store::Loaded) -> Loaded {
             }),
         }
     }
-    candidates.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.order.cmp(&b.order)));
+    // §7.1 step 6 after the mode rank (which the table applies with a stable sort): rules with
+    // `when.apps`, then with `when.window_title`, then higher priority, then file order.
+    candidates.sort_by(|a, b| {
+        let key = |c: &Candidate| crate::context::Cond::rank(c.binding.when.as_deref());
+        key(a)
+            .cmp(&key(b))
+            .then(b.priority.cmp(&a.priority))
+            .then(a.order.cmp(&b.order))
+    });
     out.bindings = candidates.into_iter().map(|c| c.binding).collect();
     out
 }
@@ -472,12 +480,14 @@ fn compile(
     if let Some(f) = unknown_field(r, RULE_FIELDS) {
         return Err(("rule_unsupported", format!("unknown field `{f}`")));
     }
-    if r.contains_key("when") {
-        return Err((
-            "condition_unsupported",
-            "app and window conditions are evaluated from Step 77".into(),
-        ));
-    }
+    // Step 77: conditions on the focused app and window (§7.2); anything unknown stays
+    // inactive, never unconditional.
+    let when = r
+        .get("when")
+        .map(crate::context::Cond::compile)
+        .transpose()
+        .map_err(|e| ("condition_unsupported", e))?
+        .map(Arc::new);
     let priority = r.get("priority").and_then(Value::as_i64).unwrap_or(0);
     let t = r
         .get("trigger")
@@ -724,6 +734,7 @@ fn compile(
             action,
             hotstring: hotstring.map(Arc::new),
             modes: 0,
+            when,
         },
         priority,
     ))
@@ -1133,7 +1144,7 @@ mod tests {
             { "id": "future", "title": "f", "enabled": true, "trigger": { "keys": "F14" },
               "steps": [ { "type": "teleport" } ] },
             { "id": "cond", "title": "c", "enabled": true, "trigger": { "keys": "F15" },
-              "when": { "apps": [ { "exe": "Code.exe" } ] },
+              "when": { "apps": [ { "exe": "Code.exe" } ], "window_class": "Chrome_WidgetWin_1" },
               "steps": [ { "type": "engine", "op": "pause" } ] },
             { "id": "newer-field", "title": "n", "enabled": true, "trigger": { "keys": "F16", "only_on_tuesdays": true },
               "steps": [ { "type": "engine", "op": "pause" } ] },
@@ -1300,6 +1311,32 @@ mod tests {
             "{:?}",
             l.inactive[0]
         );
+    }
+
+    /// Step 77 (§7.1 step 6): inside a mode rank, rules with `when.apps` come first, then rules
+    /// with `when.window_title`, then priority and file order; a mode-scoped rule still beats an
+    /// app rule without modes.
+    #[test]
+    fn conditions_rank_after_the_mode_and_before_priority() {
+        let mut title = engine_rule("title", "F13", "pause");
+        title["when"] = json!({"window_title": {"contains": "kim"}});
+        let mut app = engine_rule("app", "F13", "pause");
+        app["when"] = json!({"apps": [{"exe": "Code.exe"}]});
+        app["priority"] = json!(-100);
+        let mut plain = engine_rule("plain", "F13", "pause");
+        plain["priority"] = json!(100);
+        let mut scoped = engine_rule("scoped", "F13", "pause");
+        scoped["modes"] = json!(["base"]);
+        let l = parse(&doc(json!([plain, title, app, scoped])));
+        assert!(l.inactive.is_empty(), "{:?}", l.inactive);
+        let t = l.table();
+        let base: Vec<&str> = t
+            .order(0)
+            .iter()
+            .map(|i| t.binding(usize::from(*i)).unwrap().rule.as_str())
+            .collect();
+        assert_eq!(base, ["scoped", "app", "title", "plain"]);
+        assert!(t.compiled[usize::from(t.order(0)[1])].cond);
     }
 
     #[test]

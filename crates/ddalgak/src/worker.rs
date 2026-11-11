@@ -942,6 +942,7 @@ mod tests {
             action: Action::Engine(vec![op]),
             hotstring: None,
             modes: 0,
+            when: None,
         };
         Rules {
             generation,
@@ -1335,6 +1336,7 @@ mod tests {
             action,
             hotstring: None,
             modes: 0,
+            when: None,
         };
         Rules {
             generation,
@@ -1561,6 +1563,7 @@ mod tests {
             })),
             hotstring: None,
             modes: 0,
+            when: None,
         };
         Rules {
             generation,
@@ -1742,6 +1745,7 @@ mod tests {
             action,
             hotstring: None,
             modes: 0,
+            when: None,
         }
     }
 

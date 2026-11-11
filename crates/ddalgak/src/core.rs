@@ -379,6 +379,9 @@ pub struct Core {
     want_timer: bool,
     /// The time of the last event (ms, the event clock).
     now: u32,
+    /// Step 77: what conditions ask about the focused window (asked only for a matched
+    /// binding with `when`, at most once per event).
+    foreground: Arc<dyn crate::context::Foreground>,
 }
 
 const WIN_BITS: u8 = 0x40 | 0x80;
@@ -419,6 +422,7 @@ impl Core {
             motions: [None; MOTIONS],
             want_timer: false,
             now: 0,
+            foreground: Arc::new(crate::context::NoForeground),
         }
     }
 
@@ -542,6 +546,20 @@ impl Core {
     /// Sets the platform's key translation (hotstrings).
     pub fn set_translator(&mut self, t: Translate) {
         self.translate = Some(t);
+    }
+
+    /// Step 77: where conditions read the focused app and title (default: nothing is known, so
+    /// every rule with `when` stays quiet).
+    pub fn set_foreground(&mut self, f: Arc<dyn crate::context::Foreground>) {
+        self.foreground = f;
+    }
+
+    /// Whether binding `i`'s condition holds (true without one).
+    fn cond_holds(&self, i: usize, probe: &mut crate::context::Probe) -> bool {
+        self.table.bindings[i]
+            .when
+            .as_deref()
+            .is_none_or(|w| w.holds(&*self.foreground, probe))
     }
 
     /// The hotstring buffer's length and bound (tests and diagnostics; never its content).
@@ -1343,6 +1361,7 @@ impl Core {
         let mut skipped: Option<(usize, Skip)> = None;
         let mut seq_start = [0u64; SEQ_WORDS];
         let mut any_seq = false;
+        let mut probe = crate::context::Probe::default();
         // Only the bindings that work in the active mode, in its precedence (Step 72).
         for &bi in self.table.order(self.modes.active()) {
             let i = usize::from(bi);
@@ -1353,6 +1372,10 @@ impl Core {
             let Some(exact) = self.chord_match(&c.steps[0], ev, c.widen && c.len == 1) else {
                 continue;
             };
+            // Step 77: a rule whose `when` does not hold is no candidate (§7.1 step 5).
+            if c.cond && !self.cond_holds(i, &mut probe) {
+                continue;
+            }
             if ev.source == Source::Other && c.injected == Injected::Ignore {
                 skipped.get_or_insert((i, Skip::InjectedInput));
                 continue;
@@ -1571,8 +1594,26 @@ impl Core {
                 return None;
             }
         };
-        let Some(hit) = hotstring::find(self.table.hotstrings_in(self.modes.active()), &self.hs, c)
-        else {
+        let list = self.table.hotstrings_in(self.modes.active());
+        let mut hit = hotstring::find(list, &self.hs, c);
+        // Step 77: a hotstring whose `when` does not hold is no candidate; look again without
+        // the conditioned ones that fail (allocates only for rules with conditions).
+        let mut probe = crate::context::Probe::default();
+        if let Some(h) = &hit
+            && !self.cond_holds(usize::from(list[h.index].0), &mut probe)
+        {
+            let ok: Vec<(u16, Arc<hotstring::Spec>)> = list
+                .iter()
+                .filter(|(b, _)| self.cond_holds(usize::from(*b), &mut probe))
+                .cloned()
+                .collect();
+            hit = hotstring::find(&ok, &self.hs, c).and_then(|h| {
+                let b = ok[h.index].0;
+                let index = list.iter().position(|(x, _)| *x == b)?;
+                Some(hotstring::Hit { index, ..h })
+            });
+        }
+        let Some(hit) = hit else {
             self.hs.push(c);
             return None;
         };
@@ -1676,6 +1717,7 @@ mod tests {
             action: Action::Engine(vec![EngineOp::Pause]),
             hotstring: None,
             modes: 0,
+            when: None,
         }
     }
 
@@ -2276,6 +2318,7 @@ mod tests {
             action: Action::Remap(remap_spec(to, None, 200)),
             hotstring: None,
             modes: 0,
+            when: None,
         }
     }
 
@@ -3131,6 +3174,7 @@ mod tests {
             })),
             hotstring: Some(Arc::new(spec)),
             modes: 0,
+            when: None,
         }
     }
 
@@ -4249,5 +4293,149 @@ mod tests {
         let per = start.elapsed() / 20_000;
         eprintln!("decision with 1000 rules over 8 modes: {per:?}");
         assert!(per < std::time::Duration::from_micros(200), "{per:?}");
+    }
+
+    // ---- Step 77: conditions on the focused app and window (RULE_MODEL §7.2, ADR 0078).
+
+    #[derive(Debug)]
+    struct CountingFg {
+        app: std::sync::Mutex<Option<String>>,
+        title: Option<String>,
+        asks: std::sync::atomic::AtomicUsize,
+    }
+
+    impl crate::context::Foreground for CountingFg {
+        fn app(&self) -> Option<String> {
+            self.asks.fetch_add(1, Ordering::SeqCst);
+            self.app.lock().unwrap().clone()
+        }
+        fn title(&self) -> Option<String> {
+            self.asks.fetch_add(1, Ordering::SeqCst);
+            self.title.clone()
+        }
+    }
+
+    fn when(mut b: Binding, w: &serde_json::Value) -> Binding {
+        b.when = Some(Arc::new(crate::context::Cond::compile(w).unwrap()));
+        b
+    }
+
+    fn cond_core(bindings: Vec<Binding>, app: Option<&str>) -> (T, Arc<CountingFg>) {
+        let mut t = T::new(bindings);
+        let fg = Arc::new(CountingFg {
+            app: std::sync::Mutex::new(app.map(str::to_lowercase)),
+            title: Some("report.xlsx - excel".into()),
+            asks: std::sync::atomic::AtomicUsize::new(0),
+        });
+        t.core
+            .set_foreground(Arc::clone(&fg) as Arc<dyn crate::context::Foreground>);
+        (t, fg)
+    }
+
+    fn set_app(fg: &CountingFg, app: &str) {
+        *fg.app.lock().unwrap() = Some(app.into());
+    }
+
+    /// The same key in two apps and everywhere else: the app's rule wins in its app, the global
+    /// rule elsewhere; focus changes are seen at the next key (no stale decision).
+    #[test]
+    fn the_same_key_fires_per_app_with_a_global_fallback() {
+        let code = when(
+            binding("in-code", "F13"),
+            &serde_json::json!({"apps": [{"exe": "Code.exe"}]}),
+        );
+        let excel = when(
+            binding("in-excel", "F13"),
+            &serde_json::json!({"apps": [{"exe": "EXCEL.EXE"}]}),
+        );
+        let (mut t, fg) = cond_core(
+            vec![code, excel, binding("global", "F13")],
+            Some(r"C:\Apps\Code.exe"),
+        );
+        assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(0));
+        t.ev("F13", true);
+        set_app(&fg, r"c:\office\excel.exe");
+        assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(1));
+        t.ev("F13", true);
+        set_app(&fg, r"c:\windows\notepad.exe");
+        assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(2));
+        t.ev("F13", true);
+        // Rapid switching: 200 alternations, every decision follows the current app.
+        for n in 0..200 {
+            let (app, want) = if n % 2 == 0 {
+                (r"c:\a\code.exe", 0)
+            } else {
+                (r"c:\b\other.exe", 2)
+            };
+            set_app(&fg, app);
+            t.t += 200; // under the per-rule rate limit
+            assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(want), "{n}");
+            t.ev("F13", true);
+        }
+    }
+
+    /// Unknown (elevated, protected, secure desktop) is never a match: the conditioned rule stays
+    /// quiet, a global rule takes over, and without one the key reaches the app.
+    #[test]
+    fn an_unknown_foreground_fails_safe() {
+        let code = when(
+            binding("in-code", "F13"),
+            &serde_json::json!({"apps": [{"exe": "Code.exe"}]}),
+        );
+        let not_code = when(
+            binding("not-code", "F14"),
+            &serde_json::json!({"except_apps": [{"exe": "Code.exe"}]}),
+        );
+        let (mut t, _) = cond_core(vec![code.clone(), not_code], None);
+        let d = t.ev("F13", false);
+        assert!(!d.consume && fired(&d).is_none(), "passes unchanged");
+        t.ev("F13", true);
+        assert!(
+            !t.ev("F14", false).consume,
+            "except_apps cannot be verified either"
+        );
+        t.ev("F14", true);
+        let (mut t, _) = cond_core(vec![code, binding("global", "F13")], None);
+        assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(1));
+    }
+
+    /// The foreground is asked only for a matched binding with a condition, once per event; keys
+    /// without a matching rule and rules without conditions ask nothing (no idle or typing cost).
+    #[test]
+    fn the_foreground_is_asked_only_when_a_condition_needs_it() {
+        let a = when(
+            binding("a", "F13"),
+            &serde_json::json!({"apps": [{"exe": "x.exe"}]}),
+        );
+        let b = when(
+            binding("b", "F13"),
+            &serde_json::json!({"apps": [{"exe": "y.exe"}], "window_title": {"contains": "excel"}}),
+        );
+        let (mut t, fg) = cond_core(vec![a, b, binding("plain", "F15")], Some(r"c:\y.exe"));
+        let asks = || fg.asks.load(Ordering::SeqCst);
+        for k in ["A", "B", "F15", "F16"] {
+            t.ev(k, false);
+            t.ev(k, true);
+        }
+        assert_eq!(asks(), 0);
+        assert_eq!(fired(&t.ev("F13", false)).map(|f| f.0), Some(1));
+        assert_eq!(asks(), 2, "the app once for both rules, the title once");
+    }
+
+    /// A conditioned hotstring that does not hold leaves the abbreviation to an unconditioned one.
+    #[test]
+    fn hotstrings_respect_conditions() {
+        let code = when(
+            hot("in-code", Spec::new("btw")),
+            &serde_json::json!({"apps": [{"exe": "Code.exe"}]}),
+        );
+        let (mut t, _) = typing(vec![code, hot("anywhere", Spec::new("btw"))]);
+        t.core
+            .set_foreground(Arc::new(crate::context::FixedForeground {
+                app: Some(r"c:\notepad.exe".into()),
+                title: None,
+            }));
+        let d = t.type_keys(&["B", "T", "W", "Space"]);
+        assert_eq!(T::fired_hotstring(&d).map(|f| f.0), Some(1), "{d:?}");
     }
 }

@@ -481,11 +481,12 @@ mod tests {
         let imp = &rows[4];
         assert!(imp.needs_review && !imp.enabled);
         assert!(imp.badges.iter().any(|b| b.kind == BadgeKind::Review));
+        // Step 77: an app condition is evaluated, so the rule is active without a badge.
         let code = &rows[5];
         assert!(
+            !code.badges.iter().any(|b| b.kind == BadgeKind::Inactive),
+            "{:?}",
             code.badges
-                .iter()
-                .any(|b| b.code == "condition_unsupported" && b.kind == BadgeKind::Inactive)
         );
         assert_eq!(rows[6].state, "other_profile");
     }
@@ -557,7 +558,7 @@ mod tests {
                 state: StateFilter::Problems,
                 ..Filter::default()
             }),
-            ["dup", "code-only"]
+            ["dup"]
         );
         assert_eq!(
             show(&Filter {

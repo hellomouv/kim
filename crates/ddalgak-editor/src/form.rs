@@ -17,8 +17,8 @@ use ddalgak::edit::{canonical_output, canonical_trigger};
 use ddalgak::inject::Button;
 use ddalgak::launch::{ProgramDraft, UrlDraft};
 use ddalgak::model::{
-    Action, AppMatcher, Condition, EngineOp, Grant, ModeOp, Permission, Profile, Rule, Trigger,
-    TriggerOn,
+    Action, AppMatcher, Condition, EngineOp, Grant, ModeOp, Permission, Profile, Rule, TitleMatch,
+    Trigger, TriggerOn,
 };
 use ddalgak::modes::{ModeAction, ModeSet, ModeState};
 use ddalgak::mouse::{
@@ -255,8 +255,13 @@ pub struct Fields {
     pub engine: EngineOp,
     /// Only in these modes (empty: every mode).
     pub modes: Vec<String>,
-    /// Only in these apps (file names, one per line; evaluated from Step 77).
+    /// Only in these apps (file names or full paths, one per line; Step 77).
     pub apps: String,
+    /// Step 77: not in these apps (same form).
+    pub except_apps: String,
+    /// Step 77: only when the window title contains (or, with `title_exact`, is) this text.
+    pub window_title: String,
+    pub title_exact: bool,
     pub priority: i64,
 }
 
@@ -284,6 +289,9 @@ impl Default for Fields {
             engine: EngineOp::Pause,
             modes: Vec::new(),
             apps: String::new(),
+            except_apps: String::new(),
+            window_title: String::new(),
+            title_exact: false,
             priority: 0,
         }
     }
@@ -315,6 +323,46 @@ pub struct Simulation {
     pub typed: Option<String>,
     /// The simulated pointer's start and end (physical pixels), for a mouse rule.
     pub pointer: Option<(Point, Point)>,
+}
+
+/// The app matchers of a condition as lines: file names and full paths as stored.
+fn app_lines(list: Option<&Vec<AppMatcher>>) -> String {
+    list.map(|a| {
+        a.iter()
+            .filter_map(|m| m.exe.clone().or_else(|| m.path.clone()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+    .unwrap_or_default()
+}
+
+/// A line is a full path when it has a folder (`\` or a drive); otherwise a file name.
+fn is_path_line(a: &str) -> bool {
+    a.contains('\\') || a.contains(':') || a.starts_with('%')
+}
+
+fn app_line_ok(a: &str) -> bool {
+    a.chars().count() <= 260
+        && a.to_lowercase().ends_with(".exe")
+        && !a.contains(['"', '*', '?', '<', '>', '|'])
+        && (is_path_line(a) || !a.contains(['/', ':']))
+}
+
+/// The lines of an apps field as matchers (`None` when empty).
+fn matchers(text: &str) -> Option<Vec<AppMatcher>> {
+    let list = lines(text);
+    (!list.is_empty()).then(|| {
+        list.into_iter()
+            .map(|a| {
+                let path = is_path_line(&a);
+                AppMatcher {
+                    exe: (!path).then(|| a.clone()),
+                    path: path.then_some(a),
+                    extra: Map::new(),
+                }
+            })
+            .collect()
+    })
 }
 
 fn problem(path: &'static str, message: impl Into<String>) -> FieldProblem {
@@ -535,17 +583,19 @@ impl RuleForm {
             description: rule.description.clone().unwrap_or_default(),
             enabled: rule.enabled,
             modes: rule.modes.clone().unwrap_or_default(),
-            apps: rule
+            apps: app_lines(rule.when.as_ref().and_then(|w| w.apps.as_ref())),
+            except_apps: app_lines(rule.when.as_ref().and_then(|w| w.except_apps.as_ref())),
+            window_title: rule
                 .when
                 .as_ref()
-                .and_then(|w| w.apps.as_ref())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|m| m.exe.clone().or_else(|| m.path.clone()))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                })
+                .and_then(|w| w.window_title.as_ref())
+                .and_then(|t| t.contains.clone().or_else(|| t.equals.clone()))
                 .unwrap_or_default(),
+            title_exact: rule
+                .when
+                .as_ref()
+                .and_then(|w| w.window_title.as_ref())
+                .is_some_and(|t| t.equals.is_some()),
             priority: rule.priority(),
             ..Fields::default()
         };
@@ -889,14 +939,20 @@ impl RuleForm {
                 }
             }
         }
-        for a in lines(&f.apps) {
-            if a.chars().count() > 260 || a.contains(['/', '"', '*', '?', '<', '>', '|']) {
-                out.push(problem(
-                    "when.apps",
-                    "a program's file name, like Code.exe (one per line)",
-                ));
-                break;
+        for (field, text) in [("when.apps", &f.apps), ("when.except_apps", &f.except_apps)] {
+            let list = lines(text);
+            if list.len() > 32 {
+                out.push(problem(field, "at most 32 programs"));
             }
+            if list.iter().any(|a| !app_line_ok(a)) {
+                out.push(problem(
+                    field,
+                    "a program's file name like Code.exe, or its full path (one per line)",
+                ));
+            }
+        }
+        if f.window_title.trim().chars().count() > 200 {
+            out.push(problem("when.window_title", "at most 200 characters"));
         }
         if !(-1000..=1000).contains(&f.priority) {
             out.push(problem("priority", "−1000…1000"));
@@ -957,16 +1013,14 @@ impl RuleForm {
         };
         rule.steps = vec![action];
         rule.modes = (!f.modes.is_empty()).then(|| f.modes.clone());
-        let apps = lines(&f.apps);
         let mut when = rule.when.clone().unwrap_or_default();
-        when.apps = (!apps.is_empty()).then(|| {
-            apps.iter()
-                .map(|a| AppMatcher {
-                    exe: Some(a.clone()),
-                    path: None,
-                    extra: Map::new(),
-                })
-                .collect()
+        when.apps = matchers(&f.apps);
+        when.except_apps = matchers(&f.except_apps);
+        let title = f.window_title.trim();
+        when.window_title = (!title.is_empty()).then(|| TitleMatch {
+            contains: (!f.title_exact).then(|| title.to_string()),
+            equals: f.title_exact.then(|| title.to_string()),
+            extra: Map::new(),
         });
         rule.when = (when != Condition::default()).then_some(when);
         rule.priority = (f.priority != 0).then_some(f.priority);

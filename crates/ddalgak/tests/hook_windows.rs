@@ -78,6 +78,7 @@ fn binding(rule: &str, keys: &str, injected: Injected, op: EngineOp) -> Binding 
         action: Action::Engine(vec![op]),
         hotstring: None,
         modes: 0,
+        when: None,
     }
 }
 
@@ -482,6 +483,7 @@ fn remap_binding(rule: &str, keys: &str, to: &str, tap: Option<&str>) -> Binding
         }),
         hotstring: None,
         modes: 0,
+        when: None,
     }
 }
 

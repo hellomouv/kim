@@ -795,7 +795,7 @@ fn extend(
                             .map(|k| format!("trigger.hotstring.{k}"))
                     })
                 })
-                .or_else(|| rule.when.as_ref().and_then(|w| w.has_unknown_fields()))
+                // An unknown condition is `condition_unsupported` (below), as the engine says.
                 .or_else(|| {
                     rule.steps
                         .iter()
@@ -815,13 +815,20 @@ fn extend(
                     Vec::new(),
                 );
             }
-            if rule.when.is_some() {
+            // Step 77: a `when` this version cannot evaluate keeps the rule inactive (the
+            // engine's `Cond::compile` decides exactly what it can).
+            if let Some(w) = rule
+                .when
+                .as_ref()
+                .map(|w| serde_json::to_value(w).unwrap_or_default())
+                && let Err(why) = crate::context::Cond::compile(&w)
+            {
                 push(
                     item,
                     "condition_unsupported",
                     Severity::Info,
                     format!("{at}.when"),
-                    "app and window conditions are evaluated from Step 77; until then the rule is inactive, never unconditional".into(),
+                    format!("{why}; the rule stays inactive, never unconditional"),
                     None,
                     Vec::new(),
                 );
@@ -1597,7 +1604,7 @@ mod tests {
     #[test]
     fn own_shortcuts_unknown_fields_conditions_and_warnings() {
         let mut cond = engine("cond", "F20");
-        cond["when"] = json!({"apps": [{"exe": "Code.exe"}]});
+        cond["when"] = json!({"apps": [{"exe": "Code.exe"}], "window_class": "Chrome_WidgetWin_1"});
         let mut future = engine("future", "Shift+F20");
         future["steps"] = json!([{"type": "teleport"}]);
         let mut odd = engine("odd", "Alt+F20");

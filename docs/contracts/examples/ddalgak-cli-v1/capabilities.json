@@ -166,6 +166,16 @@
       {
         "dry_run": true,
         "effect": "read",
+        "name": "explain",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Explain which rule a key event would fire in a given context (the ddalgak-simulation-v1 context object: mode, engine, focus, app, IME): every candidate with its result and every step's preview; nothing is injected, opened or changed",
+        "usage": "ddalgak explain <keys> [--context <json>] [--on press|release|hold|repeat] [--profile <p>] [--injected] [--draft] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "read",
         "name": "test",
         "network": false,
         "opens_window": false,

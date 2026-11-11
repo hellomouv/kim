@@ -485,13 +485,24 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ),
     (
         "form.only_apps",
-        "Only in apps (file names, one per line)",
-        "이 앱에서만 (파일 이름, 한 줄에 하나)",
+        "Only in apps (file names or full paths, one per line)",
+        "이 앱에서만 (파일 이름 또는 전체 경로, 한 줄에 하나)",
+    ),
+    (
+        "form.except_apps",
+        "Not in apps (one per line)",
+        "이 앱에서는 제외 (한 줄에 하나)",
+    ),
+    ("form.title_cond", "Window title contains", "창 제목에 포함"),
+    (
+        "form.title_exact",
+        "The whole title, exactly",
+        "제목 전체가 정확히 같을 때",
     ),
     (
         "form.apps_note",
-        "App conditions are evaluated from Step 77; until then a rule with one stays inactive (condition_unsupported).",
-        "앱 조건은 Step 77부터 적용됩니다. 그때까지 앱 조건이 있는 규칙은 작동하지 않습니다 (condition_unsupported).",
+        "Checked against the focused window when the key is pressed. A window Ddalgak cannot see (an administrator window, the sign-in screen) never matches, so the rule stays quiet there and the key works as usual. Titles are compared, never saved.",
+        "키를 누를 때 포커스된 창과 비교합니다. 딸깍이 볼 수 없는 창(관리자 창, 로그인 화면)은 절대 일치하지 않으므로 규칙은 조용히 있고 키는 평소대로 동작합니다. 제목은 비교만 하고 저장하지 않습니다.",
     ),
     ("form.priority", "Priority", "우선순위"),
     ("form.summary", "Summary", "요약"),
