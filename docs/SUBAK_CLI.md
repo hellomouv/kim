@@ -507,6 +507,24 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.19 Durable state (`subak state`, Step 29)
+
+[ADR 0063](adr/0063-durable-terminal-state.md), [RECOVERY.md](RECOVERY.md). The Host writes
+`state.json` (default endpoint: `%LOCALAPPDATA%\mouv\subak\state\`; else `host start
+--state-dir <dir>`); loading it starts nothing.
+
+| Command | Effect |
+| --- | --- |
+| `subak state show [--state-dir <dir>]` | the saved Terminals (and what a restore would not find); read only |
+| `subak state check` | the same; exit 4 `state_corrupt` or 5 `state_from_newer_version` |
+| `subak state backups` | the backups, newest first (at most 5) |
+| `subak state policy <terminal> ask\|auto\|never [--dry-run]` | whether it is restored when Subak next opens (Step 30) |
+| `subak state forget <saved terminal> [--dry-run]` | removes a saved record |
+| `subak state rollback [<backup>] [--dry-run]` | makes a backup current; refused while a Host runs |
+
+`policy` and `forget` go through the running Host; without one they edit the file after a
+backup.
+
 ### 3.18 Claude Code hooks and sessions (`subak claude`, Step 27)
 
 [ADR 0061](adr/0061-claude-code-hooks-and-session-events.md), [CLAUDE_CODE_INTEGRATION.md](CLAUDE_CODE_INTEGRATION.md).

@@ -45,11 +45,14 @@ pub enum Code {
     ConfigFromNewerVersion,
     ProfileNotFound,
     SecretInConfig,
+    // The `state` commands (Step 29, ADR 0063).
+    StateCorrupt,
+    StateFromNewerVersion,
 }
 
 impl Code {
     #[cfg(test)]
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 36] = [
         Self::Io,
         Self::Internal,
         Self::PermissionDenied,
@@ -84,6 +87,8 @@ impl Code {
         Self::ConfigFromNewerVersion,
         Self::ProfileNotFound,
         Self::SecretInConfig,
+        Self::StateCorrupt,
+        Self::StateFromNewerVersion,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -122,6 +127,8 @@ impl Code {
             Self::ConfigFromNewerVersion => "config_from_newer_version",
             Self::ProfileNotFound => "profile_not_found",
             Self::SecretInConfig => "secret_in_config",
+            Self::StateCorrupt => "state_corrupt",
+            Self::StateFromNewerVersion => "state_from_newer_version",
         }
     }
 
@@ -142,13 +149,15 @@ impl Code {
             | Self::HostIdentityMismatch
             | Self::HotkeysInvalid
             | Self::ConfigInvalid
-            | Self::SecretInConfig => 4,
+            | Self::SecretInConfig
+            | Self::StateCorrupt => 4,
             Self::UnsupportedPlatform
             | Self::HostTooOld
             | Self::HostTooNew
             | Self::HotkeyUnsupported
             | Self::HotkeysFromNewerVersion
-            | Self::ConfigFromNewerVersion => 5,
+            | Self::ConfigFromNewerVersion
+            | Self::StateFromNewerVersion => 5,
             Self::HostDisconnected | Self::HostUnresponsive | Self::Timeout => 6,
             Self::HostAlreadyRunning
             | Self::NameConflict

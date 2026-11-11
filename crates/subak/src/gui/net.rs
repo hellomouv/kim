@@ -146,6 +146,7 @@ pub fn connect_as(
                     let plan = Plan {
                         shell: None,
                         idle_exit_s: crate::host::DEFAULT_IDLE_EXIT_S,
+                        state_dir: None,
                     };
                     client::connect_or_start_as(&endpoint, &plan, who, &exe)
                         .map(|c| (c.session, c.started))

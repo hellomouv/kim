@@ -45,6 +45,7 @@ use crate::pty::{self, EnvOverrides, Pty};
 use crate::redact::{self, Redactor};
 use crate::screen::{self, HistoryRange, Limits, Pos, Screen};
 use crate::session::{self, Command, EndCause, LastExit, Level, Registry, Spec, Transition};
+use crate::state;
 use crate::win::pipe::{self, Listener, Pipe};
 use crate::win::{self, EnvBlock, JobLimits};
 use serde_json::{Value, json};
@@ -105,6 +106,8 @@ const MAX_COMMAND_LINE: usize = win::launch::MAX_COMMAND_LINE;
 #[derive(Debug)]
 pub struct ServeOpts {
     pub endpoint: String,
+    /// Step 29: where `state.json` lives; `None`: nothing is persisted.
+    pub state_dir: Option<PathBuf>,
     /// The command line of a first Terminal started with the Host; `None` starts a Host that
     /// owns no Terminal (what start on demand uses).
     pub shell: Option<String>,
@@ -473,6 +476,29 @@ struct State {
     claude: HashMap<String, BTreeMap<String, ClaudeSession>>,
     /// Step 28: the Claude state last announced per Terminal (`terminal.claude_changed`).
     claude_told: HashMap<String, &'static str>,
+    /// Step 29 (ADR 0063): the durable state. `saved`: Terminals of an earlier Host run, kept
+    /// as records (never started here); `restore`: the policy of live Terminals.
+    persist: Persist,
+}
+
+/// The Host's side of `state.json` (Step 29).
+#[derive(Debug, Default)]
+struct Persist {
+    store: Option<state::Store>,
+    /// Read-only: a newer version's file, or a store that could not be read.
+    read_only: Option<String>,
+    saved: Vec<Value>,
+    restore: HashMap<String, String>,
+    dirty: bool,
+    /// After the final write of a clean stop nothing more is written (the ending panes must
+    /// not erase the Terminals that should survive).
+    frozen: bool,
+    tx: Option<mpsc::Sender<()>>,
+    writes: u64,
+    last_write: Option<String>,
+    last_bytes: u64,
+    last_error: Option<String>,
+    loaded: Value,
 }
 
 /// One Claude Code session in a pane (Step 27): what its last hook said, and when.
@@ -594,6 +620,49 @@ impl State {
             output_bytes: self.out.get(&p.id).map_or(0, |o| o.seq),
             history: self.out.get(&p.id).map(|o| o.screen.history()),
         }
+    }
+
+    /// Step 29: asks the state writer for a (coalesced) write.
+    fn mark_dirty(&mut self) {
+        let p = &mut self.persist;
+        if p.store.is_none() || p.read_only.is_some() || p.frozen || p.dirty {
+            return;
+        }
+        p.dirty = true;
+        if let Some(tx) = &p.tx {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Step 29: the document to write now: live Terminals, then saved ones (not live).
+    fn state_doc(&self) -> Value {
+        let claude = |pane: &str| {
+            self.claude.get(pane).and_then(|sessions| {
+                sessions
+                    .iter()
+                    .max_by_key(|(_, s)| s.at)
+                    .map(|(sid, _)| sid.clone())
+            })
+        };
+        let mut terminals: Vec<Value> = self
+            .reg
+            .terminals
+            .iter()
+            .map(|t| {
+                let policy = self
+                    .persist
+                    .restore
+                    .get(&t.id)
+                    .map_or("ask", String::as_str);
+                state::terminal_record(t, policy, &claude)
+            })
+            .collect();
+        for s in &self.persist.saved {
+            if !terminals.iter().any(|t| t["id"] == s["id"]) {
+                terminals.push(s.clone());
+            }
+        }
+        state::seal(&terminals, &proto::rfc3339(SystemTime::now()))
     }
 
     /// Step 28: a Terminal's Claude state, the most urgent of its panes' sessions (`none`).
@@ -746,6 +815,10 @@ impl State {
     /// Sends an event to every connection subscribed to `topic`, in the same critical section
     /// as the change it reports.
     fn notify(&mut self, topic: &str, name: &str, data: &Value) {
+        // Step 29: what Terminals, windows, panes and Claude references look like changed.
+        if matches!(topic, "terminals" | "claude") {
+            self.mark_dirty();
+        }
         for c in self.conns.values_mut() {
             if c.topics.iter().any(|t| t == topic) {
                 c.event(name, data);
@@ -960,6 +1033,7 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             in_hook: false,
             claude: HashMap::new(),
             claude_told: HashMap::new(),
+            persist: Persist::default(),
             initial: None,
         }),
         events: ev_tx,
@@ -1002,6 +1076,46 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
         host.lock().initial = Some(created["terminal_id"].as_str().unwrap_or("").to_string());
     }
 
+    // Step 29 (ADR 0063): the state of earlier runs (kept, never started), then the writer.
+    if let Some(dir) = &opts.state_dir {
+        let store = state::Store::new(dir.clone());
+        let l = store.load();
+        let mut st = host.lock();
+        st.persist.loaded = json!({
+            "terminals": l.doc.as_ref().and_then(|d| d["terminals"].as_array()).map_or(0, Vec::len),
+            "migrated": l.migrated,
+            "recovered_from": l.recovered_from.as_ref().map(|p| p.display().to_string()),
+            "corrupt_kept": l.corrupt_kept.as_ref().map(|p| p.display().to_string()),
+            "newer_version": l.newer,
+            "problems": l.problems,
+        });
+        if let Some(v) = l.newer {
+            st.persist.read_only = Some(format!(
+                "state.json is from a newer Subak (schema version {v})"
+            ));
+        } else {
+            let _ = store.backup_current("start");
+        }
+        st.persist.saved = l
+            .doc
+            .and_then(|d| d["terminals"].as_array().cloned())
+            .unwrap_or_default();
+        st.persist.store = Some(store);
+        let (tx, rx) = mpsc::channel::<()>();
+        st.persist.tx = Some(tx);
+        drop(st);
+        thread::spawn({
+            let host = Arc::clone(&host);
+            move || {
+                while rx.recv().is_ok() {
+                    // Coalesce: everything that changes in the next moment goes in one write.
+                    thread::sleep(state::COALESCE);
+                    while rx.try_recv().is_ok() {}
+                    host.write_state();
+                }
+            }
+        });
+    }
     // Step 25: the hook thread runs hooks' command lines one after another.
     let (hook_tx, hook_rx) = mpsc::channel::<HookRun>();
     host.lock().hook_tx = Some(hook_tx);
@@ -1038,6 +1152,10 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
     });
 
     let exit = host.supervise(&ev_rx);
+    // Step 29: a clean stop writes the Terminals as they are, then freezes the state: ending
+    // their processes now must not erase them (they are what a later start restores).
+    host.write_state();
+    host.lock().persist.frozen = true;
     let (requester, reason) = match exit {
         Exit::Stop { conn, id } => (Some((conn, id)), "stop_requested"),
         Exit::Idle => (None, "idle"),
@@ -1314,6 +1432,32 @@ impl Host {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Step 29: writes `state.json` now (the document is built under the lock, written outside).
+    fn write_state(&self) {
+        let (doc, store) = {
+            let mut st = self.lock();
+            if st.persist.frozen || st.persist.read_only.is_some() {
+                return;
+            }
+            let Some(store) = st.persist.store.clone() else {
+                return;
+            };
+            st.persist.dirty = false;
+            (st.state_doc(), store)
+        };
+        let r = store.write(&doc);
+        let mut st = self.lock();
+        match r {
+            Ok(bytes) => {
+                st.persist.writes += 1;
+                st.persist.last_bytes = bytes;
+                st.persist.last_write = doc["written_at"].as_str().map(String::from);
+                st.persist.last_error = None;
+            }
+            Err(e) => st.persist.last_error = Some(e.to_string()),
+        }
     }
 
     /// Lifetime of ADR 0003 §4. Returns why the Host stops; `stopping` is set by then.
@@ -2276,6 +2420,10 @@ impl Host {
             "window.options" => Reply::Now(self.window_options(p)),
             "hook.set" => Reply::Now(self.hook_set(p)),
             "hook.list" => Reply::Now(Ok(self.hook_list())),
+            // Step 29 (ADR 0063): the durable state.
+            "state.status" => Reply::Now(Ok(self.state_status())),
+            "state.forget" => Reply::Now(self.state_forget(p)),
+            "state.set_restore" => Reply::Now(self.state_set_restore(p)),
             // Step 27 (ADR 0061).
             "claude.report" => Reply::Now(self.claude_report(conn, p)),
             "claude.status" => Reply::Now(self.claude_status(p)),
@@ -3853,6 +4001,102 @@ impl Host {
         )
     }
 
+    /// `state.status`: where the state lives, what was loaded and written, the saved records.
+    fn state_status(&self) -> Value {
+        let st = self.lock();
+        let p = &st.persist;
+        json!({
+            "enabled": p.store.is_some(),
+            "path": p.store.as_ref().map(|s| s.file().display().to_string()),
+            "read_only": p.read_only,
+            "loaded": p.loaded,
+            "writes": p.writes,
+            "last_write": p.last_write,
+            "last_bytes": p.last_bytes,
+            "last_error": p.last_error,
+            "saved": p.saved.iter().map(saved_summary).collect::<Vec<_>>(),
+            "live": st.reg.terminals.iter().map(|t| json!({"id": t.id, "name": t.name.display,
+                "restore": p.restore.get(&t.id).map_or("ask", String::as_str)})).collect::<Vec<_>>(),
+        })
+    }
+
+    /// The saved record a target names (its id or name; names are compared ignoring case).
+    fn saved_index(st: &State, target: &str) -> Result<usize, IpcError> {
+        let key = target.to_lowercase();
+        st.persist
+            .saved
+            .iter()
+            .position(|t| {
+                t["id"] == target || t["name"].as_str().is_some_and(|n| n.to_lowercase() == key)
+            })
+            .ok_or_else(|| {
+                IpcError::new(
+                    ErrorCode::TargetNotFound,
+                    format!("no saved Terminal `{target}` (live Terminals are in `subak ls`)"),
+                )
+            })
+    }
+
+    /// `state.forget`: removes a saved record (a live Terminal is not saved: end it instead).
+    fn state_forget(&self, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let mut st = self.lock();
+        if st.persist.read_only.is_some() || st.persist.store.is_none() {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "this Host does not write state",
+            ));
+        }
+        let i = Self::saved_index(&st, target)?;
+        let summary = saved_summary(&st.persist.saved[i]);
+        if flag(p, "dry_run")? {
+            return Ok(json!({"dry_run": true, "would_forget": summary}));
+        }
+        st.persist.saved.remove(i);
+        st.mark_dirty();
+        Ok(json!({"forgotten": summary}))
+    }
+
+    /// `state.set_restore`: whether a Terminal is restored when Subak next opens (`ask`, `auto`,
+    /// `never`); a live or a saved one. Changing it starts and ends nothing.
+    fn state_set_restore(&self, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let restore = optional_string(p, "restore")?
+            .filter(|r| matches!(*r, "ask" | "auto" | "never"))
+            .ok_or_else(|| IpcError::param("restore", "restore is ask, auto or never"))?
+            .to_string();
+        let mut st = self.lock();
+        if st.persist.read_only.is_some() || st.persist.store.is_none() {
+            return Err(IpcError::new(
+                ErrorCode::InvalidState,
+                "this Host does not write state",
+            ));
+        }
+        let (id, name, live) = if let Ok(i) = st.reg.resolve_terminal(target) {
+            let t = &st.reg.terminals[i];
+            (t.id.clone(), t.name.display.clone(), true)
+        } else {
+            let i = Self::saved_index(&st, target)?;
+            let t = &st.persist.saved[i];
+            (
+                t["id"].as_str().unwrap_or("").to_string(),
+                t["name"].as_str().unwrap_or("").to_string(),
+                false,
+            )
+        };
+        let result = json!({"terminal_id": id, "name": name, "live": live, "restore": restore});
+        if flag(p, "dry_run")? {
+            return Ok(json!({"dry_run": true, "would_set": result}));
+        }
+        if live {
+            st.persist.restore.insert(id, restore);
+        } else if let Some(t) = st.persist.saved.iter_mut().find(|t| t["id"] == id) {
+            t["restore"] = json!(restore);
+        }
+        st.mark_dirty();
+        Ok(result)
+    }
+
     /// `claude.report` (a `hook` client: `subak claude report` run by a Claude Code hook): one
     /// event of one session in a pane. Believed only from a process **in that pane's job**;
     /// carries ids, the event and a coarse reason, nothing else (ADR 0061).
@@ -4995,6 +5239,17 @@ enum Op {
     Stop,
     Kill,
     Remove,
+}
+
+/// Step 29: what `state.status` and the CLI show of a saved record.
+fn saved_summary(t: &Value) -> Value {
+    let windows = t["windows"].as_array().map_or(0, Vec::len);
+    let panes: usize = t["windows"].as_array().map_or(0, |w| {
+        w.iter()
+            .map(|w| w["panes"].as_array().map_or(0, Vec::len))
+            .sum()
+    });
+    json!({"id": t["id"], "name": t["name"], "restore": t["restore"], "windows": windows, "panes": panes})
 }
 
 #[cfg(test)]

@@ -416,6 +416,8 @@ impl Session {
 pub struct Plan {
     pub shell: Option<String>,
     pub idle_exit_s: u64,
+    /// Step 29: where the Host keeps `state.json` (`--state-dir`).
+    pub state_dir: Option<String>,
 }
 
 impl Plan {
@@ -427,6 +429,7 @@ impl Plan {
                 Some(a.shell.clone().unwrap_or_else(default_shell))
             },
             idle_exit_s: a.idle_exit.unwrap_or(host::DEFAULT_IDLE_EXIT_S),
+            state_dir: a.state_dir.clone(),
         }
     }
 
@@ -444,6 +447,9 @@ impl Plan {
             "--job-breakaway".into(),
             breakaway.to_string(),
         ]);
+        if let Some(d) = &self.state_dir {
+            v.extend(["--state-dir".into(), d.clone()]);
+        }
         v
     }
 }
@@ -1092,10 +1098,24 @@ fn input(
 pub fn serve_opts(a: &Args, endpoint: String) -> host::ServeOpts {
     let plan = Plan::from_args(a);
     host::ServeOpts {
+        state_dir: state_dir_for(&endpoint, plan.state_dir.as_deref()),
         endpoint,
         shell: plan.shell,
         job_breakaway: a.job_breakaway,
         idle_exit: Duration::from_secs(plan.idle_exit_s),
+    }
+}
+
+/// Step 29 (ADR 0063): where a Host on `endpoint` keeps its state — `--state-dir`, else the
+/// user's state folder for the default endpoint; a private endpoint without `--state-dir`
+/// persists nothing (tests and experiments never touch the user's state).
+pub fn state_dir_for(endpoint: &str, explicit: Option<&str>) -> Option<PathBuf> {
+    match explicit {
+        Some(d) => Some(PathBuf::from(d)),
+        None if pipe::default_endpoint().is_ok_and(|d| d == endpoint) => {
+            crate::state::default_dir()
+        }
+        None => None,
     }
 }
 
@@ -1106,6 +1126,7 @@ pub fn serve_plan(opts: &host::ServeOpts) -> Value {
         "endpoint": pipe::path(&opts.endpoint),
         "shell": opts.shell,
         "idle_exit_s": opts.idle_exit.as_secs(),
+        "state_dir": opts.state_dir.as_ref().map(|p| p.display().to_string()),
         "cwd": profile_dir(env.as_ref()).map(|p| p.display().to_string()),
         "environment": if env.is_some() { "user (CreateEnvironmentBlock)" } else { "inherited" },
     }})

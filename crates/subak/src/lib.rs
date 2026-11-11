@@ -44,6 +44,9 @@ mod pty;
 mod redact;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod session;
+// Step 29: the durable state store (`state.json`).
+#[cfg_attr(not(windows), allow(dead_code))]
+mod state;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod tmuxcmd;
 
@@ -409,9 +412,14 @@ pub fn cli_main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        _ if cmd.is_claude_hooks() => {
+        _ if cmd.is_claude_hooks() || cmd.is_state() => {
             drop(out);
-            match claude::hooks(cmd, &args) {
+            let ran = if cmd.is_state() {
+                state::run(cmd, &args)
+            } else {
+                claude::hooks(cmd, &args)
+            };
+            match ran {
                 Ok((data, human)) => {
                     let mut out = std::io::stdout().lock();
                     if args.json {

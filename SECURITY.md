@@ -49,6 +49,14 @@ should mitigate them).
 - The Host accepts a report for a pane only from a process inside that pane's job object, over
   the per-user pipe; anything else is refused and counted (ADR 0061 §4).
 
+## Durable state (Subak, Step 29)
+
+- `state.json` holds names, ids, topology, working directories and start commands only; a
+  command that holds a secret-looking value is not stored at all; environment values, PIDs and
+  screen content never are (ADR 0063).
+- Loading the state never starts a program; restoring is explicit (Step 30).
+- Writes are atomic with a CRC; corrupt files are kept aside, never silently replaced.
+
 ## Dependency and supply-chain policy
 
 Every dependency is code we ship. The policy:

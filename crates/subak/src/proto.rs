@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 15] = [
+pub const FEATURES: [&str; 16] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -66,6 +66,8 @@ pub const FEATURES: [&str; 15] = [
     "terminal.options",
     // Step 27: Claude Code hook reports and session states.
     "claude.sessions",
+    // Step 29: state.json (saved Terminals are kept, never started).
+    "state.persistence",
 ];
 
 /// One decoded frame.
@@ -578,6 +580,10 @@ pub const METHODS: &[Method] = &[
     m("window.options", CGM, true),
     m("hook.set", CG, true),
     m("hook.list", CGM, true),
+    // Step 29: the durable state.
+    m("state.status", CGM, true),
+    m("state.forget", CG, true),
+    m("state.set_restore", CG, true),
     m("window.select_layout", CG, true),
     m("pane.create", CG, true),
     // Step 22 (ADR 0056): splits and the layout.

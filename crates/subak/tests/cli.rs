@@ -220,7 +220,13 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "claude.hooks.install",
             "claude.hooks.uninstall",
             "claude.report",
-            "claude.status"
+            "claude.status",
+            "state.show",
+            "state.check",
+            "state.backups",
+            "state.forget",
+            "state.policy",
+            "state.rollback"
         ],
         "only commands that really exist"
     );

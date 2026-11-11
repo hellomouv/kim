@@ -167,6 +167,9 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `window.select_layout` | `{target (any level: its window), layout (even-horizontal\|even-vertical\|main-horizontal[-mirrored]\|main-vertical[-mirrored]\|tiled\|next\|previous\|spread), dry_run?}` | `result_layout` | cli, gui, mcp* | **22**, **25** (main-*, next, previous, spread) |
 | `window.set_option` | `{target (any level: its window), option (synchronize-panes\|monitor-activity\|monitor-bell), value? (bool; omitted toggles)}` | `result_window_options` | cli, gui | **25** |
 | `window.options` | `{target}` | `result_window_options` | cli, gui, mcp | **25** |
+| `state.status` | — | `{enabled, path, read_only, loaded, writes, last_write, last_bytes, last_error, saved: [{id, name, restore, windows, panes}], live: [{id, name, restore}]}` | cli, gui, mcp | **29** |
+| `state.forget` | `{target (a saved Terminal's id or name), dry_run?}` | `{forgotten}` or `{dry_run: true, would_forget}` | cli, gui | **29** |
+| `state.set_restore` | `{target, restore (ask\|auto\|never), dry_run?}` | `{terminal_id, name, live, restore}` or `{dry_run: true, would_set}` | cli, gui | **29** |
 | `hook.set` | `{name, command? (a tmux command line; null removes)}` | `result_hooks` | cli, gui | **25** |
 | `hook.list` | — | `result_hooks` with `available` | cli, gui, mcp | **25** |
 | `pane.attach` | `{target?, interactive?, size?, history_lines?}` | `{stream_id, pane_id, terminal_id, seq, interactive, pane: {id, pid, size}, replay_bytes, snapshot: {bytes, frames, history_lines, alternate, size}}`, then the snapshot data frames and live output | cli, gui, mcp* | **09**, **10**, **13** |

@@ -177,6 +177,8 @@ and one code of their own:
 
 | Code | Exit | Meaning |
 | --- | --- | --- |
+| `state_corrupt` | 4 | `state.json` is not a valid `subak.state` document (not JSON, a wrong CRC, an invalid structure); `subak state check` reports it, a Host keeps it aside and uses the newest valid backup (Step 29, ADR 0063). |
+| `state_from_newer_version` | 5 | `state.json` was written by a newer Subak; it is read-only and never rewritten (Step 29). |
 | `secret_in_config` | 4 | The settings to write hold a secret-looking profile value (an environment variable named like a token or password, a value shaped like a token or a URL password, a `--password` argument, or a `***` from an export); Subak never writes secrets into `config.toml`, so nothing was written. |
 
 **Noeul codes** (Step 49 foundation: the resident instance, Noeul IPC v1, region pins requested

@@ -264,6 +264,7 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
         let plan = Plan {
             shell: None,
             idle_exit_s: crate::host::DEFAULT_IDLE_EXIT_S,
+            state_dir: None,
         };
         let Connected {
             session, started, ..

@@ -118,7 +118,11 @@
     {"$ref": "#/$defs/ok_claude_hooks_status"},
     {"$ref": "#/$defs/ok_claude_hooks_change"},
     {"$ref": "#/$defs/ok_claude_report"},
-    {"$ref": "#/$defs/ok_claude_status"}
+    {"$ref": "#/$defs/ok_claude_status"},
+    {"$ref": "#/$defs/ok_state_show"},
+    {"$ref": "#/$defs/ok_state_backups"},
+    {"$ref": "#/$defs/ok_state_change"},
+    {"$ref": "#/$defs/ok_state_rollback"}
   ],
   "$defs": {
     "ok_window_new": {
@@ -320,6 +324,65 @@
     },
     "ok_buffer_delete": {
       "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.delete"}, "data": {"$ref": "#/$defs/result_buffer_delete"}}}]
+    },
+    "state_terminal": {
+      "description": "Step 29: a saved Terminal as `subak state` shows it; `missing` lists working directories and absolute program paths that no longer exist (reported, never acted on).",
+      "type": "object",
+      "required": ["id", "name", "restore", "windows", "panes", "missing"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/terminal_id"},
+        "name": {"type": "string"},
+        "restore": {"enum": ["ask", "auto", "never"]},
+        "windows": {"type": "integer", "minimum": 0},
+        "panes": {"type": "integer", "minimum": 0},
+        "missing": {"type": "array", "items": {"type": "object", "required": ["pane_id", "missing", "path"], "additionalProperties": false,
+          "properties": {"pane_id": {"type": "string"}, "missing": {"enum": ["cwd", "program"]}, "path": {"type": "string"}}}}
+      }
+    },
+    "ok_state_show": {
+      "description": "Step 29: `subak state show|check` — state.json read without changing anything (ADR 0063).",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["state.show", "state.check"]}, "data": {
+        "type": "object",
+        "required": ["path", "exists", "valid", "backups"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "exists": {"type": "boolean"},
+          "valid": {"type": "boolean"},
+          "bytes": {"type": "integer", "minimum": 0},
+          "schema_version": {"type": "integer", "minimum": 1},
+          "migrates_from": {"type": ["integer", "null"]},
+          "read_only": {"const": true},
+          "written_at": {"type": "string"},
+          "problem": {"type": "string"},
+          "backups": {"type": "array", "items": {"type": "string"}},
+          "terminals": {"type": "array", "items": {"$ref": "#/$defs/state_terminal"}}
+        }
+      }}}]
+    },
+    "ok_state_backups": {
+      "description": "Step 29: `subak state backups` — newest first, at most 5.",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "state.backups"}, "data": {
+        "type": "object", "required": ["dir", "backups"], "additionalProperties": false,
+        "properties": {"dir": {"type": "string"}, "backups": {"type": "array", "maxItems": 5, "items": {"type": "object", "required": ["name", "valid", "bytes"], "additionalProperties": false,
+          "properties": {"name": {"type": "string"}, "valid": {"type": "boolean"}, "bytes": {"type": "integer", "minimum": 0}}}}}
+      }}}]
+    },
+    "ok_state_change": {
+      "description": "Step 29: `subak state forget|policy` — done by the running Host (`via: host`) or, without one, in the file (`via: file`, a backup first).",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["state.forget", "state.policy"]}, "data": {
+        "type": "object", "required": ["via", "result"], "additionalProperties": false,
+        "properties": {"via": {"enum": ["host", "file"]}, "result": {"type": "object"}}
+      }}}]
+    },
+    "ok_state_rollback": {
+      "description": "Step 29: `subak state rollback [backup]` (no Host may run): the backup made current; the file it replaced is kept as state.before-rollback-<time>.json.",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "state.rollback"}, "data": {
+        "type": "object", "additionalProperties": false,
+        "properties": {"dry_run": {"const": true}, "would_restore": {"type": "string"}, "restored": {"type": "string"},
+          "terminals": {"type": "array", "items": {"$ref": "#/$defs/state_terminal"}}}
+      }}}]
     },
     "ok_claude_hooks_status": {
       "description": "Step 27: `subak claude hooks status` — whether Subak's hook is in each Claude Code event of the settings file.",
@@ -2175,6 +2238,8 @@
         "hotkeys_from_newer_version",
         "hotkey_conflict",
         "config_invalid",
+        "state_corrupt",
+        "state_from_newer_version",
         "config_from_newer_version",
         "profile_not_found",
         "secret_in_config"
@@ -2274,7 +2339,8 @@
                 "host_identity_mismatch",
                 "hotkeys_invalid",
                 "config_invalid",
-                "secret_in_config"
+                "secret_in_config",
+                "state_corrupt"
               ]
             }
           }
@@ -2291,7 +2357,8 @@
                 "host_too_new",
                 "hotkey_unsupported",
                 "hotkeys_from_newer_version",
-                "config_from_newer_version"
+                "config_from_newer_version",
+                "state_from_newer_version"
               ]
             }
           }

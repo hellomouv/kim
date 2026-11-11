@@ -150,7 +150,7 @@
     },
     {
       "name": "host.start",
-      "usage": "subak host start [--endpoint <name>] [--shell <command> | --no-shell] [--idle-exit <secs>] [--dry-run] [--json]",
+      "usage": "subak host start [--endpoint <name>] [--shell <command> | --no-shell] [--idle-exit <secs>] [--state-dir <dir>] [--dry-run] [--json]",
       "summary": "Start a detached per-user Host (one start lock per endpoint), optionally with a first Terminal",
       "effect": "write",
       "network": false,
@@ -200,7 +200,7 @@
     },
     {
       "name": "host.serve",
-      "usage": "subak host serve [--endpoint <name>] [--shell <command> | --no-shell] [--idle-exit <secs>] [--dry-run] [--json]",
+      "usage": "subak host serve [--endpoint <name>] [--shell <command> | --no-shell] [--idle-exit <secs>] [--state-dir <dir>] [--dry-run] [--json]",
       "summary": "Run the Host in this process (what host start launches detached)",
       "effect": "write",
       "network": false,
@@ -635,6 +635,66 @@
       "effect": "read",
       "network": false,
       "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.show",
+      "usage": "subak state show [--state-dir <dir>] [--json]",
+      "summary": "The saved Terminal topology in state.json (read only; nothing is started or changed)",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.check",
+      "usage": "subak state check [--state-dir <dir>] [--json]",
+      "summary": "Verify state.json: schema, CRC, structure; reports missing working directories and programs",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.backups",
+      "usage": "subak state backups [--state-dir <dir>] [--json]",
+      "summary": "The state backups (newest 5) and whether each is valid",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.forget",
+      "usage": "subak state forget <saved terminal> [--state-dir <dir>] [--dry-run] [--json]",
+      "summary": "Remove a saved Terminal record (through the running Host, else in the file after a backup)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.policy",
+      "usage": "subak state policy <terminal> <ask|auto|never> [--state-dir <dir>] [--dry-run] [--json]",
+      "summary": "Whether a Terminal is restored when Subak next opens; starts and ends nothing",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "state.rollback",
+      "usage": "subak state rollback [<backup>] [--state-dir <dir>] [--dry-run] [--json]",
+      "summary": "Make a backup (default: the newest valid one) the current state; refused while a Host runs",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
       "requires_yes": false,
       "opens_window": false
     }

@@ -7,9 +7,13 @@ Decision: [ADR 0006](../adr/0006-state-and-configuration-storage.md)
 
 ## 1. `state.json` (schema `subak.state`, version 1)
 
-Step 10 implements the Terminal, Window and Pane objects of this schema in the Host's memory;
-IPC shows them with volatile fields ([IPC_PROTOCOL §4.3](IPC_PROTOCOL.md),
-[SESSION_MODEL](../SESSION_MODEL.md)). Nothing is written to `state.json` before Step 29.
+**Implemented in Step 29 as schema version 2** ([ADR 0063](../adr/0063-durable-terminal-state.md),
+[RECOVERY.md](../RECOVERY.md)); machine-readable:
+[schemas/subak-state-v2.schema.json](schemas/subak-state-v2.schema.json), example
+[examples/subak-state-v2/](examples/subak-state-v2/one-terminal-two-windows.json). Version 2 adds
+`restore` per Terminal, window `size`, layout `cells`, pane `command_line`, `command_withheld`,
+`env` as **names only**, `env_unset` and `history_limit`, and drops `env_secret_refs` (Step 34
+decides secret references). Version 1 below is the Step 03 draft; it is migrated on load.
 
 Machine-readable: [schemas/subak-state-v1.schema.json](schemas/subak-state-v1.schema.json);
 examples in [examples/subak-state-v1/](examples/subak-state-v1/two-terminals.json), validated

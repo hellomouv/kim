@@ -96,6 +96,13 @@ pub enum Cmd {
     ClaudeHooksUninstall,
     ClaudeReport,
     ClaudeStatus,
+    // Step 29: the durable state.
+    StateShow,
+    StateCheck,
+    StateBackups,
+    StateForget,
+    StatePolicy,
+    StateRollback,
 }
 
 impl Cmd {
@@ -166,6 +173,12 @@ impl Cmd {
             Self::ClaudeHooksUninstall => "claude.hooks.uninstall",
             Self::ClaudeReport => "claude.report",
             Self::ClaudeStatus => "claude.status",
+            Self::StateShow => "state.show",
+            Self::StateCheck => "state.check",
+            Self::StateBackups => "state.backups",
+            Self::StateForget => "state.forget",
+            Self::StatePolicy => "state.policy",
+            Self::StateRollback => "state.rollback",
         }
     }
 
@@ -193,6 +206,20 @@ impl Cmd {
     /// Whether the command is one of the `config` or `profile` groups (Step 20; portable, never
     /// contacts a Host).
     /// Step 27: the `claude hooks` commands edit a Claude Code settings file (no Host).
+    /// Step 29: the `state` commands read `state.json` themselves (a running Host is asked
+    /// for changes, so it never overwrites them).
+    pub fn is_state(&self) -> bool {
+        matches!(
+            self,
+            Self::StateShow
+                | Self::StateCheck
+                | Self::StateBackups
+                | Self::StateForget
+                | Self::StatePolicy
+                | Self::StateRollback
+        )
+    }
+
     pub fn is_claude_hooks(&self) -> bool {
         matches!(
             self,
@@ -256,6 +283,9 @@ impl Cmd {
             Self::BufferSet => (&["text"], 1),
             Self::BufferPaste => (&["pane"], 1),
             Self::ClaudeStatus => (&["terminal, window or pane"], 0),
+            Self::StateForget => (&["saved terminal"], 1),
+            Self::StatePolicy => (&["terminal", "ask, auto or never"], 2),
+            Self::StateRollback => (&["backup"], 0),
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -276,6 +306,7 @@ impl Cmd {
                 "--no-shell",
                 "--idle-exit",
                 "--job-breakaway",
+                "--state-dir",
                 "--dry-run",
             ],
             Self::HostStart => &[
@@ -283,6 +314,7 @@ impl Cmd {
                 "--shell",
                 "--no-shell",
                 "--idle-exit",
+                "--state-dir",
                 "--dry-run",
             ],
             Self::HostStatus | Self::HostHealth | Self::Ls | Self::Info | Self::Status => {
@@ -395,6 +427,11 @@ impl Cmd {
             Self::ClaudeHooksInstall | Self::ClaudeHooksUninstall => &["--settings", "--dry-run"],
             Self::ClaudeReport => &["--endpoint", "--dry-run"],
             Self::ClaudeStatus => &["--endpoint"],
+            Self::StateShow | Self::StateCheck | Self::StateBackups => {
+                &["--state-dir", "--endpoint"]
+            }
+            Self::StateForget | Self::StatePolicy => &["--state-dir", "--endpoint", "--dry-run"],
+            Self::StateRollback => &["--state-dir", "--endpoint", "--dry-run"],
         };
         if *self == Self::PaneNew && opt == "--name" {
             return false;
@@ -490,6 +527,8 @@ pub struct Args {
     pub before: bool,
     /// Step 27: `claude hooks … --settings <file>`.
     pub settings: Option<String>,
+    /// Step 29: `host start|serve --state-dir <dir>`, `state … --state-dir <dir>`.
+    pub state_dir: Option<String>,
     /// Step 24: `buffer set --append`, `buffer paste --delete`, `command --target <target>`.
     pub append: bool,
     pub delete: bool,
@@ -999,6 +1038,18 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.delete = true;
                 opts.push("--delete");
             }
+            "--state-dir" => {
+                opts.push("--state-dir");
+                if let Some(v) = value("--state-dir") {
+                    if std::path::Path::new(&v).is_absolute() {
+                        a.state_dir = Some(v);
+                    } else {
+                        bad.get_or_insert(CliError::usage(format!(
+                            "--state-dir `{v}` is not an absolute path"
+                        )));
+                    }
+                }
+            }
             "--settings" => {
                 opts.push("--settings");
                 if let Some(v) = value("--settings") {
@@ -1204,6 +1255,21 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "health", ..] => (Cmd::HostHealth, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
+        ["state", "show", ..] => (Cmd::StateShow, 2),
+        ["state", "check", ..] => (Cmd::StateCheck, 2),
+        ["state", "backups", ..] => (Cmd::StateBackups, 2),
+        ["state", "forget", ..] => (Cmd::StateForget, 2),
+        ["state", "policy", ..] => (Cmd::StatePolicy, 2),
+        ["state", "rollback", ..] => (Cmd::StateRollback, 2),
+        ["state", ..] => {
+            return Err((
+                "state".into(),
+                CliError::usage(format!(
+                    "unknown command `{}`; try `subak state show|check|backups|forget|policy|rollback`",
+                    words.join(" ")
+                )),
+            ));
+        }
         ["claude", "hooks", "status", ..] => (Cmd::ClaudeHooksStatus, 3),
         ["claude", "hooks", "install", ..] => (Cmd::ClaudeHooksInstall, 3),
         ["claude", "hooks", "uninstall", ..] => (Cmd::ClaudeHooksUninstall, 3),

@@ -1,0 +1,136 @@
+{
+  "schema": "subak.state",
+  "schema_version": 2,
+  "terminals": [
+    {
+      "active_window": "w-37d9f7c38195",
+      "created_at": "2026-11-11T04:04:38Z",
+      "id": "t-ac2733864a2c",
+      "name": "work",
+      "profile": null,
+      "remain_on_exit": false,
+      "restore": "auto",
+      "windows": [
+        {
+          "active_pane": "p-dc2f36d723af",
+          "automatic_name": true,
+          "id": "w-4e24c561864f",
+          "index": 0,
+          "layout": {
+            "children": [
+              {
+                "cells": 60,
+                "node": {
+                  "pane": "p-15bbf69d4493",
+                  "type": "pane"
+                },
+                "size": 0.5
+              },
+              {
+                "cells": 59,
+                "node": {
+                  "pane": "p-dc2f36d723af",
+                  "type": "pane"
+                },
+                "size": 0.492
+              }
+            ],
+            "direction": "horizontal",
+            "type": "split"
+          },
+          "name": "cmd",
+          "panes": [
+            {
+              "claude": null,
+              "command": {
+                "args": [],
+                "program": "C:\\Windows\\system32\\cmd.exe"
+              },
+              "command_line": null,
+              "command_withheld": false,
+              "cwd": "C:\\Users\\Mutti",
+              "env": {
+                "TOKEN": "x"
+              },
+              "env_unset": [],
+              "history_limit": 2000,
+              "id": "p-15bbf69d4493",
+              "index": 0,
+              "restart_command": null,
+              "scrollback": {
+                "persisted": false
+              },
+              "title": null
+            },
+            {
+              "claude": null,
+              "command": {
+                "args": [],
+                "program": "C:\\Windows\\system32\\cmd.exe"
+              },
+              "command_line": null,
+              "command_withheld": false,
+              "cwd": "C:\\Users\\Mutti",
+              "env": [],
+              "env_unset": [],
+              "history_limit": 2000,
+              "id": "p-dc2f36d723af",
+              "index": 1,
+              "restart_command": null,
+              "scrollback": {
+                "persisted": false
+              },
+              "title": null
+            }
+          ],
+          "size": {
+            "cols": 120,
+            "rows": 30
+          }
+        },
+        {
+          "active_pane": "p-b9aa9778deae",
+          "automatic_name": false,
+          "id": "w-37d9f7c38195",
+          "index": 1,
+          "layout": {
+            "pane": "p-b9aa9778deae",
+            "type": "pane"
+          },
+          "name": "logs",
+          "panes": [
+            {
+              "claude": null,
+              "command": {
+                "args": [],
+                "program": "C:\\Windows\\system32\\cmd.exe"
+              },
+              "command_line": null,
+              "command_withheld": false,
+              "cwd": "C:\\Users\\Mutti",
+              "env": [],
+              "env_unset": [],
+              "history_limit": 2000,
+              "id": "p-b9aa9778deae",
+              "index": 0,
+              "restart_command": null,
+              "scrollback": {
+                "persisted": false
+              },
+              "title": null
+            }
+          ],
+          "size": {
+            "cols": 120,
+            "rows": 30
+          }
+        }
+      ]
+    }
+  ],
+  "writer": {
+    "version": "0.0.1"
+  },
+  "written_at": "2026-11-11T04:04:39Z",
+  "crc32": "0c7770b1"
+}

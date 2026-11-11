@@ -136,6 +136,30 @@ pub fn exit_code(process: HANDLE) -> Option<u32> {
     (unsafe { GetExitCodeProcess(process, &raw mut code) } != 0).then_some(code)
 }
 
+/// Step 29: moves `from` over `to` with write-through (`MoveFileExW`), so a crash leaves the
+/// old file or the new one, never a torn one.
+pub fn replace_file(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+    let w = |p: &std::path::Path| p.as_os_str().encode_wide().chain([0]).collect::<Vec<u16>>();
+    let (a, b) = (w(from), w(to));
+    // SAFETY: both are NUL-terminated wide strings that live across the call.
+    let ok = unsafe {
+        MoveFileExW(
+            a.as_ptr(),
+            b.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if ok == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 /// Opens a process for waiting and querying; `None` when it is gone or inaccessible.
 pub fn open_process(pid: u32) -> Option<Handle> {
     // SAFETY: plain open with limited rights; the result is checked by Handle::new.
