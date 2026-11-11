@@ -311,3 +311,55 @@ pub fn file_url(p: &Path) -> String {
         format!("file:///{s}")
     }
 }
+
+/// Step 38: the test-only interop fixture (`examples/interop_fixture.rs`), built on demand.
+#[allow(dead_code)]
+pub fn fixture_exe() -> PathBuf {
+    // target/<profile>/deps/interop-….exe → target/<profile>/examples/interop_fixture.exe
+    let me = std::env::current_exe().unwrap();
+    let dir = me.parent().unwrap().parent().unwrap().join("examples");
+    let exe = dir.join(format!("interop_fixture{}", std::env::consts::EXE_SUFFIX));
+    if !exe.is_file() {
+        // `cargo test` builds examples; a single `--test interop` run does not.
+        let st = Command::new(env!("CARGO"))
+            .args(["build", "-p", "kim", "--example", "interop_fixture"])
+            .status()
+            .unwrap();
+        assert!(st.success());
+    }
+    assert!(exe.is_file(), "the fixture: {}", exe.display());
+    exe
+}
+
+#[allow(dead_code)]
+/// Puts the fixture into the sandbox as if installed: program, install record, manifest.
+pub fn install_fixture(sb: &Sandbox, version: &str, mode: &str) {
+    let dir = sb.tool_dir("kim-fixture");
+    let vdir = dir.join("versions").join(version);
+    std::fs::create_dir_all(&vdir).unwrap();
+    let exe = vdir.join(format!("kim-fixture{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(fixture_exe(), &exe).unwrap();
+    let out = Command::new(&exe)
+        .args(["capabilities", "--json"])
+        .env("FIXTURE_MODE", mode)
+        .env("FIXTURE_VERSION", version)
+        .output()
+        .unwrap();
+    let env: Value = serde_json::from_slice(&out.stdout).unwrap();
+    std::fs::write(
+        vdir.join("capabilities.json"),
+        serde_json::to_vec_pretty(&env["data"]).unwrap(),
+    )
+    .unwrap();
+    let record = json!({
+        "schema": "kim.install", "schema_version": 1, "tool": "kim-fixture", "version": version,
+        "entrypoint": format!("versions/{version}/kim-fixture{}", std::env::consts::EXE_SUFFIX),
+        "installed_at": "2026-11-11T00:00:00Z", "sha256": "0".repeat(64),
+        "source_url": "file:///test-fixture", "catalog_version": 1, "previous_version": null,
+    });
+    std::fs::write(
+        dir.join("current.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+}

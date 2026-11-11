@@ -927,6 +927,42 @@
       "dry_run": false,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "interop.invoke",
+      "usage": "subak interop invoke --json --no-input [--endpoint <name>] < kim.interop.request",
+      "summary": "Run one Kim interop capability (terminal.list, terminal.open, terminal.paste-path) from a request on stdin; dry runs change nothing",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    }
+  ],
+  "provides": [
+    {
+      "id": "terminal.list",
+      "version": "1.0.0",
+      "summary": "The Terminals of the user's Subak Host (id, name, state); starts nothing",
+      "effect": "read",
+      "network": false,
+      "opens_window": false
+    },
+    {
+      "id": "terminal.open",
+      "version": "1.0.0",
+      "summary": "Open a new Terminal with the default shell or a profile (params: name, cwd, profile)",
+      "effect": "write",
+      "network": false,
+      "opens_window": false
+    },
+    {
+      "id": "terminal.paste-path",
+      "version": "1.0.0",
+      "summary": "Type an existing file's quoted path into a pane, without Enter (params: target, path)",
+      "effect": "write",
+      "network": false,
+      "opens_window": false
     }
   ]
 }

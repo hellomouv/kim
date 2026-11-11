@@ -15,6 +15,7 @@ pub mod error;
 pub mod fetch;
 pub mod hotkeys;
 pub mod install;
+pub mod interop;
 pub mod inventory;
 pub mod paths;
 pub mod platform;

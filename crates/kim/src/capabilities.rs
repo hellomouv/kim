@@ -48,6 +48,10 @@ pub struct Capabilities {
     pub implementation: Implementation,
     pub summary: String,
     pub commands: Vec<CommandInfo>,
+    /// Step 38 (ADR 0071): capabilities other tools may invoke through `interop invoke`
+    /// (optional; absent in older documents).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provides: Vec<crate::interop::Provides>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

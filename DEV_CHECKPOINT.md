@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 38** (#38) — Kim tool interoperability
+- Current Step: **Step 39** (#39) — security, performance and reliability hardening
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #38 (Kim tool interoperability). MCP server is `subak mcp serve`
-  (ADR 0070, docs/MCP_GUIDE.md); Tabby leftovers are follow-up #98
+- Next action: read #39 (hardening). Interop: `kim tools find|invoke`, `subak interop invoke`
+  (ADR 0071, docs/INTEROP.md); MCP: ADR 0070; Tabby leftovers: #98
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-11: Step 38 — kim interop/redact unit tests, kim interop 1/1 (fixture: consent per
+  effect, dry run, versions, missing/old/hung/garbage/failing provider, nothing installed),
+  contract goldens (tools-find, tools-invoke), subak interop_provider 1/1, e2e step38 1/1
+  (release kim → release subak).
 
 - 2026-11-11: Step 37 — mcp unit tests (grants, annotations, handshake, refusals), mcp_server 1/1
   (read-only with no Host, redacted token, ungranted tools refused, cancelled wait, create/type/

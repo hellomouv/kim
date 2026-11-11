@@ -507,6 +507,15 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.26 Kim interop provider (Step 38)
+
+[ADR 0071](adr/0071-capability-interop.md), [INTEROP](INTEROP.md). `subak interop invoke --json
+--no-input [--endpoint <name>]` reads one `kim.interop.request` from stdin and serves
+`terminal.list` (read; no Host started), `terminal.open` (a shell or a profile, never a program
+of the caller's choice) and `terminal.paste-path` (an existing file's quoted path typed into a
+pane, no Enter). Other tools call it through `kim tools invoke`. `SUBAK_ENDPOINT` sets the default
+endpoint for a process tree (`--endpoint` wins).
+
 ### 3.25 MCP server (Step 37)
 
 [ADR 0070](adr/0070-mcp-server.md), [MCP_GUIDE](MCP_GUIDE.md).

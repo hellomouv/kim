@@ -5,7 +5,7 @@
       {
         "capabilities": {
           "cli_contract": 1,
-          "commands": 25,
+          "commands": 27,
           "source": "builtin"
         },
         "damaged": null,

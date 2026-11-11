@@ -140,11 +140,13 @@ different meaning or exit code. `crates/kim/tests/cli_contract.rs` checks that t
 | `stale_catalog` | 7 | The catalog expired; refresh it or pass `--allow-stale`. |
 | `confirmation_required` | 7 | A destructive command needs `--yes` because the tool cannot ask. |
 | `already_installed` | 7 | The requested version is already installed; nothing to do (use `--reinstall` to repair). |
+| `tool_failed` | 1 | An invoked tool reported an error (its code is in `details` as `tool_code: …`, its message redacted) or did not answer with a JSON envelope (Step 38, §9.8). |
 | `cancelled` | 8 | The user cancelled; nothing was changed. |
 
 **Subak codes** (Step 08 `host` prototype, Step 09 Host supervisor and IPC v1, Step 10 Terminal
 lifecycle). `subak` also uses `io`, `internal`, `permission_denied`, `usage`, `timeout`,
-`confirmation_required` and `cancelled` with the meaning and exit code above. For `subak`,
+`confirmation_required` and `cancelled` with the meaning and exit code above, and since Step 38
+(`subak interop invoke`, §9.8) `capability_missing` and `tool_incompatible`. For `subak`,
 `confirmation_required` also covers a Host refusing to end a busy Terminal without consent (IPC
 `busy`). `crates/subak/src/output.rs` tests that this table matches its code.
 
@@ -502,6 +504,18 @@ A tool (or agent) that calls another Kim tool MUST:
 
 Calls are local and run as the same user. No tool accepts remote invocation unless the user
 explicitly enabled it (`SUBAK-SEC-012`).
+
+### 9.8 Capabilities across tools (Step 38)
+
+A tool lists what other tools may call under `provides` in its capabilities document (a dotted
+id, its own interface SemVer, the effect, network and window facts) and serves it as
+`<tool> interop invoke --json --no-input` with a `kim.interop.request` v1 document on stdin.
+`kim tools find <capability>` lists providers from manifests; `kim tools invoke <capability>`
+calls one under §9.5 and §9.6 (write needs `--allow-write`, destructive also `--yes`, install
+never, windows only with `--allow-window`; a dry run needs no consent) and maps failures to
+`capability_missing`, `not_installed`, `tool_incompatible`, `confirmation_required`, `timeout`
+and `tool_failed`. The interfaces, workflows and the compatibility policy are in
+[INTEROP.md](INTEROP.md) ([ADR 0071](adr/0071-capability-interop.md)).
 
 ### 9.7 No orchestrator
 

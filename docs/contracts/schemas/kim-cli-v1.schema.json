@@ -17,6 +17,8 @@
     { "$ref": "#/$defs/ok_uninstall" },
     { "$ref": "#/$defs/ok_tools_list" },
     { "$ref": "#/$defs/ok_tools_describe" },
+    { "$ref": "#/$defs/ok_tools_find" },
+    { "$ref": "#/$defs/ok_tools_invoke" },
     { "$ref": "#/$defs/ok_status" },
     { "$ref": "#/$defs/ok_version" },
     { "$ref": "#/$defs/ok_settings_show" },
@@ -30,6 +32,19 @@
       "description": "Dotted command path, e.g. `catalog.list`; the tool name alone (e.g. `kim`) when the arguments could not be parsed.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
+    },
+    "provided": {
+      "type": "object",
+      "required": ["id", "version", "summary", "effect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$", "maxLength": 64 },
+        "version": { "$ref": "#/$defs/semver" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "effect": { "enum": ["read", "write", "install", "destructive"] },
+        "network": { "type": "boolean" },
+        "opens_window": { "type": "boolean" }
+      }
     },
     "capability": {
       "type": "object",
@@ -75,7 +90,8 @@
         "json_schema_version": { "type": "integer", "minimum": 1 },
         "implementation": { "enum": ["implemented", "placeholder"] },
         "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "commands": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/capability" } }
+        "commands": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/capability" } },
+        "provides": { "description": "Step 38 (ADR 0071, docs/INTEROP.md): capabilities other tools may invoke through `<tool> interop invoke`. Optional; older documents have none.", "type": "array", "items": { "$ref": "#/$defs/provided" } }
       }
     },
 
@@ -89,7 +105,7 @@
         "already_installed", "capabilities_unavailable", "capabilities_invalid",
         "capability_missing", "tool_incompatible", "timeout", "hotkey_invalid",
         "hotkey_reserved", "action_not_found", "hotkeys_invalid", "hotkey_unsupported",
-        "hotkeys_from_newer_version", "hotkey_conflict"
+        "hotkeys_from_newer_version", "hotkey_conflict", "tool_failed"
       ]
     },
     "error": {
@@ -104,7 +120,7 @@
         "details": { "type": "array", "items": { "type": "string" } }
       },
       "oneOf": [
-        { "properties": { "exit_code": { "const": 1 }, "code": { "enum": ["io", "internal", "permission_denied"] } } },
+        { "properties": { "exit_code": { "const": 1 }, "code": { "enum": ["io", "internal", "permission_denied", "tool_failed"] } } },
         { "properties": { "exit_code": { "const": 2 }, "code": { "enum": ["usage", "unsupported_source", "hotkey_invalid", "hotkey_reserved"] } } },
         { "properties": { "exit_code": { "const": 3 }, "code": { "enum": ["tool_not_found", "not_installed", "action_not_found"] } } },
         { "properties": { "exit_code": { "const": 4 }, "code": { "enum": ["catalog_invalid", "signature_invalid", "untrusted_key", "catalog_rollback", "integrity_failed", "package_invalid", "self_check_failed", "capabilities_invalid", "hotkeys_invalid"] } } },
@@ -151,6 +167,42 @@
     "ok_uninstall": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "uninstall" }, "data": { "$ref": "#/$defs/uninstall_data" } } } ] },
     "ok_tools_list": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.list" }, "data": { "$ref": "#/$defs/tools_list" } } } ] },
     "ok_tools_describe": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.describe" }, "data": { "$ref": "#/$defs/tools_describe" } } } ] },
+    "ok_tools_find": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.find" }, "data": { "$ref": "#/$defs/tools_find" } } } ] },
+    "ok_tools_invoke": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "tools.invoke" }, "data": { "$ref": "#/$defs/tools_invoke" } } } ] },
+    "tools_find": {
+      "description": "Step 38 (ADR 0071): the installed tools that provide a capability.",
+      "type": "object",
+      "required": ["capability", "providers"],
+      "additionalProperties": false,
+      "properties": {
+        "capability": { "type": "string" },
+        "providers": { "type": "array", "items": {
+          "type": "object",
+          "required": ["tool", "tool_version", "executable", "capability", "available", "compatible"],
+          "additionalProperties": false,
+          "properties": {
+            "tool": { "$ref": "#/$defs/tool_id" },
+            "tool_version": { "$ref": "#/$defs/semver" },
+            "executable": { "type": "string" },
+            "capability": { "$ref": "#/$defs/provided" },
+            "available": { "type": "boolean" },
+            "compatible": { "type": "boolean" }
+          }
+        } }
+      }
+    },
+    "tools_invoke": {
+      "description": "Step 38: a capability invoked; `result` is the provider's `data`, as the capability's interface defines it (docs/INTEROP.md).",
+      "type": "object",
+      "required": ["capability", "provider", "dry_run", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "capability": { "type": "string" },
+        "provider": { "type": "object", "required": ["tool", "version", "interface"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool_id" }, "version": { "$ref": "#/$defs/semver" }, "interface": { "$ref": "#/$defs/semver" } } },
+        "dry_run": { "type": "boolean" },
+        "result": {}
+      }
+    },
     "ok_status": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "status" }, "data": { "$ref": "#/$defs/status" } } } ] },
     "ok_version": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "version" }, "data": { "$ref": "#/$defs/version" } } } ] },
     "ok_settings_show": { "allOf": [ { "$ref": "#/$defs/success" }, { "properties": { "command": { "const": "settings.show" }, "data": { "$ref": "#/$defs/settings_show" } } } ] },

@@ -40,8 +40,13 @@ pub const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The endpoint from `--endpoint`, or the per-user default.
 pub fn endpoint(a: &Args) -> Result<String, CliError> {
-    match &a.endpoint {
-        Some(e) => Ok(e.clone()),
+    // Step 38: `SUBAK_ENDPOINT` names the default endpoint for a whole process tree (a tool or
+    // test that invokes Subak through Kim interop); `--endpoint` still wins.
+    let from_env = std::env::var("SUBAK_ENDPOINT")
+        .ok()
+        .filter(|e| crate::cli::valid_endpoint(e));
+    match a.endpoint.clone().or(from_env) {
+        Some(e) => Ok(e),
         None => pipe::default_endpoint().map_err(|e| {
             CliError::new(Code::Io, format!("cannot determine the current user: {e}"))
         }),

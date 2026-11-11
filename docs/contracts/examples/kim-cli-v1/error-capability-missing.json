@@ -1,0 +1,12 @@
+{
+  "command": "tools.invoke",
+  "error": {
+    "code": "capability_missing",
+    "details": [],
+    "exit_code": 5,
+    "hint": "`kim tools find` lists providers; Kim never installs one for a call",
+    "message": "no installed tool provides `terminal.open`"
+  },
+  "ok": false,
+  "schema_version": 1
+}

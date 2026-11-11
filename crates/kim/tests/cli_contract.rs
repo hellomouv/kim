@@ -204,6 +204,11 @@ fn every_command_matches_the_schemas_and_stable_outputs_match_golden_files() {
         (&["status"], Some("status")),
         (&["tools", "list"], Some("tools-list")),
         (&["tools", "describe", "kim"], None),
+        (&["tools", "find", "terminal.open"], Some("tools-find")),
+        (
+            &["tools", "invoke", "terminal.open"],
+            Some("error-capability-missing"),
+        ),
         (&["catalog", "list"], Some("catalog-list")),
         (&["catalog", "list", "--installed"], None),
         (&["catalog", "show", "subak"], Some("catalog-show")),
@@ -384,6 +389,23 @@ fn every_command_matches_the_schemas_and_stable_outputs_match_golden_files() {
     );
     assert_eq!(doc["exit"], 0);
 
+    // Step 38: a second tool (the test-only fixture) provides a capability; Kim invokes it.
+    let isb = Sandbox::new("contract-interop");
+    common::install_fixture(&isb, "0.1.0", "normal");
+    let (_, mut doc) = ck.run(
+        &isb,
+        &[
+            "tools",
+            "invoke",
+            "fixture.echo",
+            "--params",
+            r#"{"text":"hi"}"#,
+        ],
+    );
+    assert_eq!(doc["data"]["result"]["echo"], "hi");
+    normalize(&mut doc, &isb, None);
+    golden("tools-invoke", &doc);
+
     // Every command of `kim capabilities` produced at least one schema-valid success document.
     let (_, caps, _) = Sandbox::new("contract-caps").json(&["capabilities", "--json"]);
     let advertised: BTreeSet<String> = caps["data"]["commands"]
@@ -506,8 +528,9 @@ fn kim_capabilities_match_the_published_tool_capabilities_example() {
 #[test]
 fn kim_source_spawns_processes_only_in_the_documented_places() {
     // Inspection test for KIM-FR-012: the headless binary never starts a GUI. The only process
-    // spawns in crates/kim/src are the install self-check (`install.rs`) and the opt-in
-    // capabilities probe (`capabilities.rs`); neither can name a GUI program.
+    // spawns in crates/kim/src are the install self-check (`install.rs`), the opt-in
+    // capabilities probe (`capabilities.rs`) and the interop call (`interop.rs`, Step 38); none
+    // can name a GUI program.
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut spawn_sites = Vec::new();
     let mut stack = vec![src.clone()];
@@ -551,7 +574,10 @@ fn kim_source_spawns_processes_only_in_the_documented_places() {
         spawn_sites,
         [
             "capabilities.rs: Command::new(",
-            "install.rs: Command::new("
+            "install.rs: Command::new(",
+            // Step 38: `tools invoke` runs the provider's `interop invoke` headless (no window,
+            // stdin a request, time-limited); it can only name an installed tool's entrypoint.
+            "interop.rs: Command::new("
         ],
         "a new process spawn in kim needs review against KIM-FR-012 and an update of this list"
     );

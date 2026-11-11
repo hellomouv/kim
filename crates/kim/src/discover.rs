@@ -23,6 +23,58 @@ pub enum ToolsCommand {
     List,
     /// Show one installed tool and its capabilities; optionally check requirements
     Describe(DescribeArgs),
+    /// The installed tools that provide a capability (reads manifests unless --probe)
+    Find(FindArgs),
+    /// Invoke a capability of another installed tool (headless, bounded, with consent)
+    Invoke(InvokeArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct FindArgs {
+    /// Capability id, e.g. `terminal.open`
+    capability: String,
+    /// Only interface versions matching this SemVer requirement are `compatible`, e.g. "^1"
+    #[arg(long, value_name = "REQ")]
+    require_version: Option<String>,
+    /// Ask each installed tool (`capabilities --json`, headless, time-limited) instead of
+    /// reading manifests
+    #[arg(long)]
+    probe: bool,
+    /// Time limit per --probe, in seconds (1-60)
+    #[arg(long, value_name = "SECONDS", default_value_t = 5,
+          value_parser = clap::value_parser!(u64).range(1..=60))]
+    timeout: u64,
+}
+
+#[derive(Debug, Args)]
+pub struct InvokeArgs {
+    /// Capability id, e.g. `terminal.open`
+    capability: String,
+    /// The providing tool (default: the first available, compatible provider)
+    #[arg(long, value_name = "ID")]
+    tool: Option<String>,
+    /// Interface version requirement (default "^1")
+    #[arg(long, value_name = "REQ")]
+    require_version: Option<String>,
+    /// The capability's parameters as one JSON object
+    #[arg(long, value_name = "JSON")]
+    params: Option<String>,
+    /// The user asked for this change (needed for `write` capabilities)
+    #[arg(long)]
+    allow_write: bool,
+    /// The user confirmed (needed, with --allow-write, for `destructive` capabilities)
+    #[arg(long, short = 'y')]
+    yes: bool,
+    /// The user asked for the window this capability opens
+    #[arg(long)]
+    allow_window: bool,
+    /// Ask the provider what it would do; nothing changes
+    #[arg(long)]
+    dry_run: bool,
+    /// Time limit, in seconds (1-300)
+    #[arg(long, value_name = "SECONDS", default_value_t = 30,
+          value_parser = clap::value_parser!(u64).range(1..=300))]
+    timeout: u64,
 }
 
 #[derive(Debug, Args)]
@@ -50,6 +102,8 @@ pub fn tools(c: &ToolsCommand) -> Result<Outcome, KimError> {
     match c {
         ToolsCommand::List => tools_list(),
         ToolsCommand::Describe(a) => tools_describe(a),
+        ToolsCommand::Find(a) => tools_find(a),
+        ToolsCommand::Invoke(a) => tools_invoke(a),
     }
 }
 
@@ -697,4 +751,220 @@ pub fn capabilities() -> Outcome {
         human,
         warnings: Vec::new(),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Step 38 (ADR 0071): capabilities across tools.
+
+fn version_req(r: Option<&str>) -> Result<Option<semver::VersionReq>, KimError> {
+    r.map(|r| {
+        semver::VersionReq::parse(r).map_err(|e| {
+            KimError::new(
+                ErrorCode::Usage,
+                format!("--require-version `{r}` is not a SemVer requirement: {e}"),
+            )
+            .with_hint("examples: \"^1\", \">=1.2\"")
+        })
+    })
+    .transpose()
+}
+
+fn capability_arg(id: &str) -> Result<(), KimError> {
+    if kim::interop::valid_id(id) {
+        Ok(())
+    } else {
+        Err(
+            KimError::new(ErrorCode::Usage, format!("`{id}` is not a capability id"))
+                .with_hint("capability ids are dotted lowercase words, e.g. `terminal.open`"),
+        )
+    }
+}
+
+/// The capabilities documents of the installed tools (manifests, or probes).
+fn installed_docs(
+    paths: &Paths,
+    probe: bool,
+    timeout: Duration,
+    warnings: &mut Vec<String>,
+) -> Vec<(String, String, std::path::PathBuf, Capabilities)> {
+    let mut docs = Vec::new();
+    for t in inventory::installed_tools(paths) {
+        let (Some(version), Some(exe)) = (t.version.clone(), t.entrypoint.clone()) else {
+            continue;
+        };
+        let caps = if probe {
+            capabilities::probe(&exe, &t.id, Some(&version), timeout).map(Some)
+        } else {
+            match manifest_of(&t) {
+                (_, Some(r)) => r.map(Some),
+                (_, None) => Ok(None),
+            }
+        };
+        match caps {
+            Ok(Some(c)) => docs.push((t.id.clone(), version, exe, c)),
+            Ok(None) => {}
+            Err(e) => warnings.push(format!("{}: {}", t.id, e.message)),
+        }
+    }
+    docs
+}
+
+fn tools_find(a: &FindArgs) -> Result<Outcome, KimError> {
+    capability_arg(&a.capability)?;
+    let req = version_req(a.require_version.as_deref())?;
+    let (paths, loaded) = load()?;
+    let mut warnings = loaded.warnings;
+    let docs = installed_docs(
+        &paths,
+        a.probe,
+        Duration::from_secs(a.timeout),
+        &mut warnings,
+    );
+    let found = kim::interop::providers(&a.capability, &docs, req.as_ref());
+    let mut rows = vec![vec![
+        "TOOL".to_string(),
+        "VERSION".into(),
+        "INTERFACE".into(),
+        "EFFECT".into(),
+        "AVAILABLE".into(),
+        "COMPATIBLE".into(),
+    ]];
+    for p in &found {
+        rows.push(vec![
+            p.tool.clone(),
+            p.tool_version.clone(),
+            p.capability.version.clone(),
+            serde_json::to_value(p.capability.effect)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_default(),
+            if p.available { "yes" } else { "no" }.into(),
+            if p.compatible { "yes" } else { "no" }.into(),
+        ]);
+    }
+    let human = if found.is_empty() {
+        format!("No installed tool provides `{}`.\n", a.capability)
+    } else {
+        table(&rows)
+    };
+    Ok(Outcome {
+        data: json!({"capability": a.capability, "providers": found}),
+        human,
+        warnings,
+    })
+}
+
+fn tools_invoke(a: &InvokeArgs) -> Result<Outcome, KimError> {
+    capability_arg(&a.capability)?;
+    let req = version_req(Some(a.require_version.as_deref().unwrap_or("^1")))?;
+    let params: Value = match &a.params {
+        None => json!({}),
+        Some(p) => {
+            let v: Value = serde_json::from_str(p).map_err(|e| {
+                KimError::new(ErrorCode::Usage, format!("--params is not JSON: {e}"))
+            })?;
+            if !v.is_object() {
+                return Err(KimError::new(
+                    ErrorCode::Usage,
+                    "--params must be a JSON object",
+                ));
+            }
+            v
+        }
+    };
+    let (paths, loaded) = load()?;
+    let mut warnings = loaded.warnings;
+    if let Some(t) = &a.tool
+        && inventory::installed_tool(&paths, t).is_none()
+    {
+        return Err(
+            KimError::new(ErrorCode::NotInstalled, format!("{t} is not installed")).with_hint(
+                format!(
+                    "install it explicitly with `kim install {t}`; Kim never installs it for a call"
+                ),
+            ),
+        );
+    }
+    let docs = installed_docs(&paths, false, Duration::from_secs(5), &mut warnings);
+    let all = kim::interop::providers(&a.capability, &docs, req.as_ref());
+    let mine: Vec<_> = all
+        .iter()
+        .filter(|p| a.tool.as_ref().is_none_or(|t| &p.tool == t))
+        .collect();
+    let Some(p) = mine.iter().find(|p| p.available && p.compatible).copied() else {
+        if let Some(p) = mine.iter().find(|p| !p.compatible) {
+            return Err(KimError::new(
+                ErrorCode::ToolIncompatible,
+                format!(
+                    "{} provides `{}` {}, which does not satisfy {}",
+                    p.tool,
+                    a.capability,
+                    p.capability.version,
+                    a.require_version.as_deref().unwrap_or("^1")
+                ),
+            )
+            .with_hint("update that tool explicitly, or ask for a matching interface version"));
+        }
+        if let Some(p) = mine.first() {
+            return Err(KimError::new(
+                ErrorCode::NotInstalled,
+                format!("{}'s program is missing", p.tool),
+            )
+            .with_hint(format!(
+                "repair it explicitly with `kim install {} --reinstall`",
+                p.tool
+            )));
+        }
+        return Err(KimError::new(
+            ErrorCode::CapabilityMissing,
+            format!(
+                "no installed tool{} provides `{}`",
+                a.tool
+                    .as_ref()
+                    .map_or(String::new(), |t| format!(" named {t}")),
+                a.capability
+            ),
+        )
+        .with_hint("`kim tools find` lists providers; Kim never installs one for a call"));
+    };
+    kim::interop::check_consent(
+        &p.capability,
+        &p.tool,
+        kim::interop::Consent {
+            allow_write: a.allow_write,
+            yes: a.yes,
+            allow_window: a.allow_window,
+            dry_run: a.dry_run,
+        },
+    )?;
+    let major = semver::Version::parse(&p.capability.version).map_or(1, |v| v.major);
+    let request = kim::interop::request(&a.capability, &major.to_string(), &params, a.dry_run);
+    diag(format!(
+        "invoking {} interop invoke `{}` (time limit {} s)",
+        p.executable, a.capability, a.timeout
+    ));
+    let result = kim::interop::invoke(
+        std::path::Path::new(&p.executable),
+        &p.tool,
+        &request,
+        Duration::from_secs(a.timeout),
+    )?;
+    let human = format!(
+        "{} {} `{}`{}:\n{}\n",
+        p.tool,
+        p.tool_version,
+        a.capability,
+        if a.dry_run { " (dry run)" } else { "" },
+        serde_json::to_string_pretty(&result).unwrap_or_default()
+    );
+    Ok(Outcome {
+        data: json!({
+            "capability": a.capability,
+            "provider": {"tool": p.tool, "version": p.tool_version, "interface": p.capability.version},
+            "dry_run": a.dry_run,
+            "result": result,
+        }),
+        human,
+        warnings,
+    })
 }

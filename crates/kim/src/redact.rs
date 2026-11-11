@@ -75,6 +75,66 @@ pub fn text(s: &str) -> String {
     out
 }
 
+/// Step 38: redacts text that came from another tool (an interop error message), which may
+/// hold more than URLs: URLs as [`text`], then every `name=value` or `name: value` whose name
+/// looks secret, and words shaped like well-known tokens (`ghp_…`, `github_pat_…`, `sk-…`,
+/// `xoxb-…`, `glpat-…`, `AKIA…`).
+pub fn foreign(s: &str) -> String {
+    const PREFIXES: &[&str] = &[
+        "ghp_",
+        "gho_",
+        "ghu_",
+        "ghs_",
+        "ghr_",
+        "github_pat_",
+        "sk-",
+        "xoxb-",
+        "xoxp-",
+        "xoxa-",
+        "glpat-",
+        "AKIA",
+    ];
+    let s = text(s);
+    let mut out = String::with_capacity(s.len());
+    let mut mask_next = false;
+    for (i, word) in s.split(' ').enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        if mask_next && !word.is_empty() {
+            out.push_str(MASK);
+            mask_next = false;
+            continue;
+        }
+        let secret_name = |n: &str| {
+            let n = n.to_ascii_lowercase();
+            SECRET_NAME_PARTS.iter().any(|p| n.contains(p))
+        };
+        if let Some((name, _)) = word.split_once('=')
+            && secret_name(name)
+        {
+            out.push_str(name);
+            out.push('=');
+            out.push_str(MASK);
+            continue;
+        }
+        if let Some(name) = word.strip_suffix(':')
+            && secret_name(name)
+        {
+            out.push_str(word);
+            mask_next = true;
+            continue;
+        }
+        let bare = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-');
+        if bare.len() >= 12 && PREFIXES.iter().any(|p| bare.starts_with(p)) {
+            out.push_str(&word.replace(bare, MASK));
+            continue;
+        }
+        out.push_str(word);
+    }
+    out
+}
+
 /// Redacts every string inside a JSON value (object keys are left alone).
 pub fn json(v: &mut Value) {
     match v {
@@ -184,5 +244,16 @@ mod tests {
     fn redaction_is_idempotent() {
         let once = text("x https://u:p@h/?token=t y");
         assert_eq!(text(&once), once);
+    }
+
+    #[test]
+    fn foreign_text_hides_named_secrets_and_token_shapes() {
+        let t = foreign(
+            "disk full; token=ghp_abcdefghijklmnopqrstuvwxyz0123 password: hunter2 see https://u:p@h/x?sig=1 key ghp_abcdefghijklmnopqrstuvwxyz",
+        );
+        assert!(!t.contains("ghp_abcdefghij"), "{t}");
+        assert!(!t.contains("hunter2") && !t.contains("u:p@"), "{t}");
+        assert!(t.contains("disk full;") && t.contains("token=***"), "{t}");
+        assert_eq!(foreign("nothing secret here"), "nothing secret here");
     }
 }

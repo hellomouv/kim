@@ -128,6 +128,21 @@ const COMMANDS: &[Spec] = &[
         "One installed tool and its capabilities; optionally checks requirements",
     ),
     read(
+        "tools.find",
+        "kim tools find <capability> [--require-version <req>] [--probe [--timeout <s>]]",
+        "The installed tools that provide a capability (id, interface version, executable, availability); reads manifests only unless --probe",
+    ),
+    Spec {
+        name: "tools.invoke",
+        usage: "kim tools invoke <capability> [--tool <id>] [--require-version <req>] [--params <json>] \
+                [--allow-write] [--yes] [--allow-window] [--dry-run] [--timeout <s>]",
+        summary: "Invoke a capability of another installed tool headlessly, with the consent its effect needs (read freely; write with --allow-write; destructive also --yes; install never)",
+        effect: Effect::Destructive,
+        network: false,
+        dry_run: true,
+        requires_yes: true,
+    },
+    read(
         "status",
         "kim status",
         "Kim version, catalog freshness, settings, installed tools and available updates",
@@ -231,5 +246,6 @@ pub(crate) fn capabilities() -> Capabilities {
                 opens_window: false,
             })
             .collect(),
+        provides: Vec::new(),
     }
 }

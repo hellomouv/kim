@@ -132,6 +132,8 @@ pub enum Cmd {
     /// Step 37 (ADR 0070): the MCP server over stdio.
     McpServe,
     McpTools,
+    /// Step 38 (ADR 0071): a Kim interop request on stdin.
+    InteropInvoke,
 }
 
 impl Cmd {
@@ -231,6 +233,7 @@ impl Cmd {
             Self::SshHosts => "ssh.hosts",
             Self::McpServe => "mcp.serve",
             Self::McpTools => "mcp.tools",
+            Self::InteropInvoke => "interop.invoke",
         }
     }
 
@@ -601,6 +604,7 @@ impl Cmd {
             Self::SshHosts => &["--ssh-config"],
             Self::McpServe => &["--endpoint", "--allow", "--dry-run"],
             Self::McpTools => &["--allow"],
+            Self::InteropInvoke => &["--endpoint"],
             Self::TelnetConnect => &[
                 "--endpoint",
                 "--allow-insecure",
@@ -1673,6 +1677,7 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["ssh", "hosts", ..] => (Cmd::SshHosts, 2),
         ["mcp", "serve", ..] => (Cmd::McpServe, 2),
         ["mcp", "tools", ..] => (Cmd::McpTools, 2),
+        ["interop", "invoke", ..] => (Cmd::InteropInvoke, 2),
         ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
         ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),

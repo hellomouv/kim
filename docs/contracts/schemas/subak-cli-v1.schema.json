@@ -136,7 +136,8 @@
     {"$ref": "#/$defs/ok_bridge_connect"},
     {"$ref": "#/$defs/ok_serial_list"},
     {"$ref": "#/$defs/ok_ssh_hosts"},
-    {"$ref": "#/$defs/ok_mcp_tools"}
+    {"$ref": "#/$defs/ok_mcp_tools"},
+    {"$ref": "#/$defs/ok_interop_invoke"}
   ],
   "$defs": {
     "ssh_plan": {"description": "Step 34 (ADR 0067): how the SSH pane connects — Windows' OpenSSH client with strict host keys and no agent forwarding; whether the destination is in known_hosts and a saved secret answers the password or passphrase prompt (never the secret itself; `env` lists names only).", "type": "object", "required": ["target", "program", "args", "saved_secret_used", "host_verified"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "saved_secret_used": {"type": "boolean"}, "host_verified": {"type": "boolean"}, "why": {"type": "string"}, "env": {"type": "array", "items": {"type": "string"}}, "jumps": {"description": "Step 35 (ADR 0068): jump hosts in order.", "type": "array", "items": {"type": "string"}}, "forwards": {"type": "array", "items": {"$ref": "#/$defs/ssh_forward"}}, "agent_forward": {"type": "boolean"}, "x11": {"type": "boolean"}, "proxy": {"type": ["string", "null"]}, "warnings": {"description": "Step 35: what the user must know (agent or X11 forwarding, a forward beyond loopback); also printed on stderr.", "type": "array", "items": {"type": "string"}}}},
@@ -150,6 +151,7 @@
     "ok_bridge_connect": {"description": "Step 36: `subak telnet connect` / `subak serial connect` — the `new` result of a Terminal whose pane runs Subak's Telnet or serial bridge.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["telnet.connect", "serial.connect"]}, "data": {"$ref": "#/$defs/data_new"}}}]},
     "ok_serial_list": {"description": "Step 36: `subak serial list` — the serial ports Windows lists (read only).", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "serial.list"}, "data": {"type": "object", "required": ["ports"], "additionalProperties": false, "properties": {"ports": {"type": "array", "items": {"type": "object", "required": ["port", "driver"], "additionalProperties": false, "properties": {"port": {"type": "string"}, "driver": {"type": "string"}}}}}}}}]},
     "ok_ssh_hosts": {"description": "Step 36: `subak ssh hosts` — the concrete Host entries of an ssh config (read only).", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "ssh.hosts"}, "data": {"type": "object", "required": ["file", "hosts"], "additionalProperties": false, "properties": {"file": {"type": ["string", "null"]}, "hosts": {"type": "array", "items": {"type": "object", "required": ["alias", "hostname", "user", "port", "identity", "jump"], "additionalProperties": false, "properties": {"alias": {"type": "string"}, "hostname": {"type": ["string", "null"]}, "user": {"type": ["string", "null"]}, "port": {"type": ["integer", "null"]}, "identity": {"type": ["string", "null"]}, "jump": {"type": ["string", "null"]}}}}}}}}]},
+    "ok_interop_invoke": {"description": "Step 38 (ADR 0071): `subak interop invoke` — the result of one Kim interop capability (terminal.list, terminal.open, terminal.paste-path), as docs/INTEROP.md defines it.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "interop.invoke"}, "data": {"type": "object"}}}]},
     "ok_mcp_tools": {"description": "Step 37 (ADR 0070): `subak mcp tools` and `subak mcp serve --dry-run` — the MCP tools a server with these grants offers.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["mcp.tools", "mcp.serve"]}, "data": {"type": "object", "required": ["grants", "tools", "protocol_versions"], "additionalProperties": false, "properties": {"grants": {"type": "array", "items": {"enum": ["create", "input", "run", "control", "destructive", "recover"]}}, "protocol_versions": {"type": "array", "items": {"type": "string"}}, "tools": {"type": "array", "items": {"type": "object", "required": ["name", "title", "description", "inputSchema", "annotations"], "additionalProperties": false, "properties": {"name": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "inputSchema": {"type": "object"}, "annotations": {"type": "object"}}}}}}}}]},
     "ok_sftp_ls": {"description": "Step 35: `subak sftp ls <dest> [<path>]` — the directory as the server lists it.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "sftp.ls"}, "data": {"type": "object", "required": ["target", "path", "entries"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "entries": {"type": "array", "items": {"type": "object", "required": ["name", "type", "size", "mode", "mtime"], "additionalProperties": false, "properties": {"name": {"type": "string"}, "type": {"enum": ["file", "dir", "link", "other", "unknown"]}, "size": {"type": ["integer", "null"]}, "mode": {"type": ["string", "null"]}, "mtime": {"type": ["integer", "null"]}}}}}}}}]},
     "ok_sftp_change": {"description": "Step 35: `subak sftp mkdir|rm <dest> <path>`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["sftp.mkdir", "sftp.rm"]}, "data": {"type": "object", "required": ["target", "path", "dry_run"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "dry_run": {"type": "boolean"}}}}}]},
@@ -997,6 +999,52 @@
           "items": {
             "$ref": "#/$defs/capability"
           }
+        },
+        "provides": {
+          "description": "Step 38 (ADR 0071, docs/INTEROP.md): capabilities other tools may invoke through `<tool> interop invoke`. Optional; older documents have none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/provided"
+          }
+        }
+      }
+    },
+    "provided": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "summary",
+        "effect"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+          "maxLength": 64
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "effect": {
+          "enum": [
+            "read",
+            "write",
+            "install",
+            "destructive"
+          ]
+        },
+        "network": {
+          "type": "boolean"
+        },
+        "opens_window": {
+          "type": "boolean"
         }
       }
     },
@@ -2285,7 +2333,9 @@
         "remote_error",
         "file_exists",
         "port_in_use",
-        "unsafe_path"
+        "unsafe_path",
+        "capability_missing",
+        "tool_incompatible"
       ]
     },
     "error": {
@@ -2403,7 +2453,9 @@
                 "hotkey_unsupported",
                 "hotkeys_from_newer_version",
                 "config_from_newer_version",
-                "state_from_newer_version"
+                "state_from_newer_version",
+                "capability_missing",
+                "tool_incompatible"
               ]
             }
           }

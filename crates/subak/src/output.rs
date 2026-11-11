@@ -54,11 +54,14 @@ pub enum Code {
     FileExists,
     PortInUse,
     UnsafePath,
+    // Kim interop (Step 38, ADR 0071), with Kim's meaning.
+    CapabilityMissing,
+    ToolIncompatible,
 }
 
 impl Code {
     #[cfg(test)]
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 43] = [
         Self::Io,
         Self::Internal,
         Self::PermissionDenied,
@@ -100,6 +103,8 @@ impl Code {
         Self::FileExists,
         Self::PortInUse,
         Self::UnsafePath,
+        Self::CapabilityMissing,
+        Self::ToolIncompatible,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -145,6 +150,8 @@ impl Code {
             Self::FileExists => "file_exists",
             Self::PortInUse => "port_in_use",
             Self::UnsafePath => "unsafe_path",
+            Self::CapabilityMissing => "capability_missing",
+            Self::ToolIncompatible => "tool_incompatible",
         }
     }
 
@@ -178,7 +185,9 @@ impl Code {
             | Self::HotkeyUnsupported
             | Self::HotkeysFromNewerVersion
             | Self::ConfigFromNewerVersion
-            | Self::StateFromNewerVersion => 5,
+            | Self::StateFromNewerVersion
+            | Self::CapabilityMissing
+            | Self::ToolIncompatible => 5,
             Self::HostDisconnected | Self::HostUnresponsive | Self::Timeout | Self::SshFailed => 6,
             Self::HostAlreadyRunning
             | Self::NameConflict

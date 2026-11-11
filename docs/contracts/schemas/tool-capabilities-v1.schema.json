@@ -15,7 +15,8 @@
     "json_schema_version": { "type": "integer", "minimum": 1 },
     "implementation": { "enum": ["implemented", "placeholder"] },
     "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "commands": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/capability" } }
+    "commands": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/capability" } },
+    "provides": { "description": "Step 38 (ADR 0071, docs/INTEROP.md): capabilities other tools may invoke through `<tool> interop invoke`. Optional; older documents have none.", "type": "array", "items": { "$ref": "#/$defs/provided" } }
   },
   "$defs": {
     "tool_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
@@ -24,6 +25,19 @@
       "description": "Dotted command path, e.g. `catalog.list`; the tool name alone (e.g. `kim`) when the arguments could not be parsed.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
+    },
+    "provided": {
+      "type": "object",
+      "required": ["id", "version", "summary", "effect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$", "maxLength": 64 },
+        "version": { "$ref": "#/$defs/semver" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "effect": { "enum": ["read", "write", "install", "destructive"] },
+        "network": { "type": "boolean" },
+        "opens_window": { "type": "boolean" }
+      }
     },
     "capability": {
       "type": "object",

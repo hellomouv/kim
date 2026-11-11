@@ -85,6 +85,9 @@ pub enum ErrorCode {
     HotkeysFromNewerVersion,
     /// The change conflicts with another binding; nothing was changed.
     HotkeyConflict,
+    /// Step 38: an invoked tool reported an error (its own code is in `details`), or did not
+    /// answer with a JSON envelope.
+    ToolFailed,
 }
 
 impl ErrorCode {
@@ -127,6 +130,7 @@ impl ErrorCode {
             Self::HotkeyUnsupported => "hotkey_unsupported",
             Self::HotkeysFromNewerVersion => "hotkeys_from_newer_version",
             Self::HotkeyConflict => "hotkey_conflict",
+            Self::ToolFailed => "tool_failed",
         }
     }
 
@@ -144,7 +148,7 @@ impl ErrorCode {
     /// | 8 | cancelled by the user |
     pub fn exit_code(self) -> u8 {
         match self {
-            Self::Internal | Self::Io | Self::PermissionDenied => 1,
+            Self::Internal | Self::Io | Self::PermissionDenied | Self::ToolFailed => 1,
             Self::Usage | Self::UnsupportedSource | Self::HotkeyInvalid | Self::HotkeyReserved => 2,
             Self::ToolNotFound | Self::NotInstalled | Self::ActionNotFound => 3,
             Self::CatalogInvalid
@@ -214,6 +218,7 @@ impl ErrorCode {
         Self::HotkeyUnsupported,
         Self::HotkeysFromNewerVersion,
         Self::HotkeyConflict,
+        Self::ToolFailed,
     ];
 }
 
@@ -244,6 +249,11 @@ impl KimError {
     }
 
     #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.details.push(detail.into());
+        self
+    }
+
     pub fn with_details(mut self, details: Vec<String>) -> Self {
         self.details = details;
         self

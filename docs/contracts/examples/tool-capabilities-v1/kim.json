@@ -124,6 +124,26 @@
     {
       "dry_run": false,
       "effect": "read",
+      "name": "tools.find",
+      "network": false,
+      "opens_window": false,
+      "requires_yes": false,
+      "summary": "The installed tools that provide a capability (id, interface version, executable, availability); reads manifests only unless --probe",
+      "usage": "kim tools find <capability> [--require-version <req>] [--probe [--timeout <s>]]"
+    },
+    {
+      "dry_run": true,
+      "effect": "destructive",
+      "name": "tools.invoke",
+      "network": false,
+      "opens_window": false,
+      "requires_yes": true,
+      "summary": "Invoke a capability of another installed tool headlessly, with the consent its effect needs (read freely; write with --allow-write; destructive also --yes; install never)",
+      "usage": "kim tools invoke <capability> [--tool <id>] [--require-version <req>] [--params <json>] [--allow-write] [--yes] [--allow-window] [--dry-run] [--timeout <s>]"
+    },
+    {
+      "dry_run": false,
+      "effect": "read",
       "name": "status",
       "network": false,
       "opens_window": false,

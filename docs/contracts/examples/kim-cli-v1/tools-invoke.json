@@ -1,0 +1,19 @@
+{
+  "command": "tools.invoke",
+  "data": {
+    "capability": "fixture.echo",
+    "dry_run": false,
+    "provider": {
+      "interface": "1.2.0",
+      "tool": "kim-fixture",
+      "version": "0.1.0"
+    },
+    "result": {
+      "caller": "kim",
+      "echo": "hi"
+    }
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

@@ -24,6 +24,7 @@
 mod claude;
 // Step 33: the local shells found on this PC (profiles that need no configuration).
 /// Step 34: SSH sessions in panes, saved secrets in Credential Manager (ADR 0067).
+mod interop;
 mod mcp;
 mod remote;
 mod sftp;
@@ -306,6 +307,11 @@ MCP (docs/MCP_GUIDE.md):
                   stdin/stdout for the agent that starts it (no listener). Read only unless
                   granted; screens always redacted; destructive tools preview until confirmed.
     mcp tools [--allow ...]   The tools such a server offers.
+
+KIM INTEROP (docs/INTEROP.md):
+    interop invoke  One kim.interop.request on stdin (terminal.list, terminal.open,
+                  terminal.paste-path); other Kim tools call it through `kim tools invoke`.
+    SUBAK_ENDPOINT  Environment: the default --endpoint for this process and its children.
     telnet connect <host[:port]> [<name>] --allow-insecure   A Telnet pane. Off by default:
                   it is unencrypted, and every connection says so.
     serial list | serial connect COMn [<name>]   Serial ports: --baud, --data-bits, --parity,
@@ -643,6 +649,7 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::New => terminal::new(a, &endpoint),
         Cmd::SshConnect => ssh::connect(a, &endpoint),
         Cmd::TelnetConnect => remote::telnet_connect(a, &endpoint),
+        Cmd::InteropInvoke => interop::invoke(a, &endpoint),
         Cmd::SerialConnect => remote::serial_connect(a, &endpoint),
         Cmd::Ls => terminal::list(&endpoint),
         Cmd::Status => terminal::status(&endpoint),

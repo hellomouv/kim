@@ -249,7 +249,8 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "serial.connect",
             "ssh.hosts",
             "mcp.serve",
-            "mcp.tools"
+            "mcp.tools",
+            "interop.invoke"
         ],
         "only commands that really exist"
     );

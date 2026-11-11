@@ -922,10 +922,46 @@
         "requires_yes": false,
         "summary": "The MCP tools a server with these grants offers, with schemas and annotations",
         "usage": "subak mcp tools [--allow <grant>]... [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "interop.invoke",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Run one Kim interop capability (terminal.list, terminal.open, terminal.paste-path) from a request on stdin; dry runs change nothing",
+        "usage": "subak interop invoke --json --no-input [--endpoint <name>] < kim.interop.request"
       }
     ],
     "implementation": "implemented",
     "json_schema_version": 1,
+    "provides": [
+      {
+        "effect": "read",
+        "id": "terminal.list",
+        "network": false,
+        "opens_window": false,
+        "summary": "The Terminals of the user's Subak Host (id, name, state); starts nothing",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "terminal.open",
+        "network": false,
+        "opens_window": false,
+        "summary": "Open a new Terminal with the default shell or a profile (params: name, cwd, profile)",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "terminal.paste-path",
+        "network": false,
+        "opens_window": false,
+        "summary": "Type an existing file's quoted path into a pane, without Enter (params: target, path)",
+        "version": "1.0.0"
+      }
+    ],
     "schema": "kim.capabilities",
     "schema_version": 1,
     "summary": "Pre-alpha: per-user Host with IPC v1, named Terminals (new, ls, attach, rename, kill, capture…), windows and panes, subak-gui tabs, hotkeys, settings and profiles; no split layouts or recovery yet",

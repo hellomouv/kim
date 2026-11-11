@@ -1,0 +1,10 @@
+{
+  "command": "tools.find",
+  "data": {
+    "capability": "terminal.open",
+    "providers": []
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}
