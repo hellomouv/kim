@@ -259,6 +259,12 @@ Step 24 ([ADR 0058](adr/0058-subak-tmux-commands-copy-mode-and-buffers.md)) adds
 (alias `subak tmux`; data `{results: [{command, method, result}]}` or a dry-run plan) and `subak
 buffer ls|show|set|delete|paste` (`buffer.*` results). Parse errors are `usage` with a stable
 `details` `kind`; kills need `--yes` (`confirmation_required`); no error code is added.
+Step 27 ([ADR 0061](adr/0061-claude-code-hooks-and-session-events.md)) adds `subak claude hooks
+status|install|uninstall [--settings <file>]` (no Host; an invalid settings file is
+`config_invalid`), `subak claude status [target]` (`result_claude_status`) and `subak claude
+report`, which a Claude Code hook runs: it is the one command that **always exits 0** and prints
+nothing without `--json` (a hook must never disturb Claude); its data says whether the event was
+delivered. No error code is added.
 `capture`, `history` and `clear-history` (Step 13, [SCROLLBACK.md](SCROLLBACK.md)) answer
 `pane.capture` (all pages joined, plus `name` and `requests`), its counters with the Terminal's
 `name` and `state`, and `pane.clear_history` plus `name`; `capture` redacts secret-looking

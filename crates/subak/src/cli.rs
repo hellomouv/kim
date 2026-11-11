@@ -90,6 +90,12 @@ pub enum Cmd {
     BufferSet,
     BufferDelete,
     BufferPaste,
+    // Step 27: Claude Code hooks and session states.
+    ClaudeHooksStatus,
+    ClaudeHooksInstall,
+    ClaudeHooksUninstall,
+    ClaudeReport,
+    ClaudeStatus,
 }
 
 impl Cmd {
@@ -155,6 +161,11 @@ impl Cmd {
             Self::BufferSet => "buffer.set",
             Self::BufferDelete => "buffer.delete",
             Self::BufferPaste => "buffer.paste",
+            Self::ClaudeHooksStatus => "claude.hooks.status",
+            Self::ClaudeHooksInstall => "claude.hooks.install",
+            Self::ClaudeHooksUninstall => "claude.hooks.uninstall",
+            Self::ClaudeReport => "claude.report",
+            Self::ClaudeStatus => "claude.status",
         }
     }
 
@@ -181,6 +192,14 @@ impl Cmd {
 
     /// Whether the command is one of the `config` or `profile` groups (Step 20; portable, never
     /// contacts a Host).
+    /// Step 27: the `claude hooks` commands edit a Claude Code settings file (no Host).
+    pub fn is_claude_hooks(&self) -> bool {
+        matches!(
+            self,
+            Self::ClaudeHooksStatus | Self::ClaudeHooksInstall | Self::ClaudeHooksUninstall
+        )
+    }
+
     pub fn is_settings(&self) -> bool {
         matches!(
             self,
@@ -236,6 +255,7 @@ impl Cmd {
             Self::BufferShow | Self::BufferDelete => (&["buffer"], 0),
             Self::BufferSet => (&["text"], 1),
             Self::BufferPaste => (&["pane"], 1),
+            Self::ClaudeStatus => (&["terminal, window or pane"], 0),
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -371,6 +391,10 @@ impl Cmd {
             Self::BufferDelete => &["--endpoint", "--dry-run"],
             Self::BufferSet => &["--endpoint", "--name", "--append", "--dry-run"],
             Self::BufferPaste => &["--endpoint", "--name", "--delete", "--dry-run"],
+            Self::ClaudeHooksStatus => &["--settings"],
+            Self::ClaudeHooksInstall | Self::ClaudeHooksUninstall => &["--settings", "--dry-run"],
+            Self::ClaudeReport => &["--endpoint", "--dry-run"],
+            Self::ClaudeStatus => &["--endpoint"],
         };
         if *self == Self::PaneNew && opt == "--name" {
             return false;
@@ -464,6 +488,8 @@ pub struct Args {
     pub split: Option<bool>,
     /// `pane split --before`: the new pane goes left of or above the split one.
     pub before: bool,
+    /// Step 27: `claude hooks … --settings <file>`.
+    pub settings: Option<String>,
     /// Step 24: `buffer set --append`, `buffer paste --delete`, `command --target <target>`.
     pub append: bool,
     pub delete: bool,
@@ -973,6 +999,12 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.delete = true;
                 opts.push("--delete");
             }
+            "--settings" => {
+                opts.push("--settings");
+                if let Some(v) = value("--settings") {
+                    a.settings = Some(v);
+                }
+            }
             "--target" => {
                 opts.push("--target");
                 if let Some(v) = value("--target") {
@@ -1172,6 +1204,20 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "health", ..] => (Cmd::HostHealth, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
+        ["claude", "hooks", "status", ..] => (Cmd::ClaudeHooksStatus, 3),
+        ["claude", "hooks", "install", ..] => (Cmd::ClaudeHooksInstall, 3),
+        ["claude", "hooks", "uninstall", ..] => (Cmd::ClaudeHooksUninstall, 3),
+        ["claude", "report", ..] => (Cmd::ClaudeReport, 2),
+        ["claude", "status", ..] => (Cmd::ClaudeStatus, 2),
+        ["claude", ..] => {
+            return Err((
+                "claude".into(),
+                CliError::usage(format!(
+                    "unknown command `{}`; try `subak claude hooks status|install|uninstall`, `subak claude status` or `subak claude report`",
+                    words.join(" ")
+                )),
+            ));
+        }
         ["buffer", sub, ..] if buffer_verb(sub).is_some() => {
             (buffer_verb(sub).expect("checked above"), 2)
         }

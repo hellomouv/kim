@@ -215,7 +215,12 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "buffer.show",
             "buffer.set",
             "buffer.delete",
-            "buffer.paste"
+            "buffer.paste",
+            "claude.hooks.status",
+            "claude.hooks.install",
+            "claude.hooks.uninstall",
+            "claude.report",
+            "claude.status"
         ],
         "only commands that really exist"
     );

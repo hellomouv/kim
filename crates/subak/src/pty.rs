@@ -18,7 +18,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Variables the Host sets in every pane itself (ADR 0010 §1); an override may not touch them.
-pub const RESERVED_VARS: [&str; 2] = ["SUBAK_PANE_ID", "SUBAK_TERMINAL_ID"];
+/// Step 27: `SUBAK_ENDPOINT` names the Host, so hooks in a pane report to the right one.
+pub const RESERVED_VARS: [&str; 3] = ["SUBAK_PANE_ID", "SUBAK_TERMINAL_ID", "SUBAK_ENDPOINT"];
 /// Most environment overrides one `terminal.create` may carry.
 pub const MAX_ENV_OVERRIDES: usize = 256;
 /// Longest variable name (UTF-16 units).
@@ -271,6 +272,11 @@ pub trait Pty: Send + Sync + std::fmt::Debug {
     fn processes(&self) -> u32;
     /// Ends every process in the container at once with `code`.
     fn kill_tree(&self, code: u32);
+    /// Step 27: whether process `pid` runs in the pane's container (Windows: its job). The Host
+    /// believes a Claude hook's report for a pane only from a process inside it.
+    fn contains(&self, _pid: u32) -> bool {
+        false
+    }
 }
 
 /// A started pane.

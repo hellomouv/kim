@@ -8,14 +8,17 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 27** (#27) — Claude Code session events
-- Last fully completed Step: Step 26 (#26, tmux compatibility validated by docs-check, ADR 0060)
+- Current Step: **Step 28** (#28) — Claude Code status indicators
+- Last fully completed Step: Step 27 (#27, Claude Code hooks and session events, ADR 0061)
 - Uncommitted changes: none expected between Steps
-- Next action: read #27. The tmux matrix: 88 implemented, 140 partial, 352 deferred (F1–F10 of
-  #97), 26 unsupported, 0 planned; `docs-check` enforces it
+- Next action: read #28. The Host has `claude.status` and `claude.state_changed` (topic
+  `claude`); GUI indicators are next. Sessions are memory-only (persisting for resume: 29/30)
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 27 — claude unit tests 3/3, claude_hooks 2/2, a real `claude -p` (2.1.322)
+  in a Subak pane reported SessionStart/UserPromptSubmit/Stop/SessionEnd, e2e step27 1/1
+  (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 26 — xtask tmux matrix check (606 rows, 302 evidence refs), tmux_journeys
   1/1, e2e step26 1/1 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 25 — layout/tmuxcmd/session/screen unit tests, tmux_advanced 2/2, full

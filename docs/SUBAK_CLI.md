@@ -506,6 +506,20 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.18 Claude Code hooks and sessions (`subak claude`, Step 27)
+
+[ADR 0061](adr/0061-claude-code-hooks-and-session-events.md), [CLAUDE_CODE_INTEGRATION.md](CLAUDE_CODE_INTEGRATION.md).
+
+| Command | Effect |
+| --- | --- |
+| `subak claude hooks status [--settings <file>]` | whether Subak's hooks are in a Claude Code settings file (default `~/.claude/settings.json`) |
+| `subak claude hooks install [--settings <file>] [--dry-run]` | opt in: merge Subak's hooks, keeping every other setting and hook; a backup first |
+| `subak claude hooks uninstall [--settings <file>] [--dry-run]` | remove exactly Subak's entries; a backup first |
+| `subak claude report` | run by the hooks: forward the event and session id to the pane's Host; prints nothing (with `--json`, whether it was delivered), always exit 0 |
+| `subak claude status [<target>]` | the Claude sessions per pane and their states |
+
+An invalid settings file is `config_invalid` (exit 2) and is not changed.
+
 ### 3.17 Advanced tmux commands (Step 25)
 
 [ADR 0059](adr/0059-subak-advanced-tmux-behaviours.md). `subak command` also runs:

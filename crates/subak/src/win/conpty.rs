@@ -277,6 +277,23 @@ impl ConPty {
         if ok == 0 { 0 } else { info.ActiveProcesses }
     }
 
+    /// Step 27: whether `pid` runs in the pane's job (`IsProcessInJob`).
+    pub fn job_contains(&self, pid: u32) -> bool {
+        let Some(h) = super::open_process(pid) else {
+            return false;
+        };
+        let mut result = 0;
+        // SAFETY: both handles are valid for the call; `result` is writable.
+        let ok = unsafe {
+            windows_sys::Win32::System::JobObjects::IsProcessInJob(
+                h.raw(),
+                self.job.raw(),
+                &raw mut result,
+            )
+        };
+        ok != 0 && result != 0
+    }
+
     /// Ends every process in the pane's job.
     pub fn terminate_job(&self, code: u32) {
         // SAFETY: valid job handle.
@@ -366,6 +383,10 @@ impl crate::pty::Pty for ConPty {
 
     fn processes(&self) -> u32 {
         self.job_processes()
+    }
+
+    fn contains(&self, pid: u32) -> bool {
+        self.job_contains(pid)
     }
 
     fn kill_tree(&self, code: u32) {

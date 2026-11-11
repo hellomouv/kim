@@ -35,6 +35,7 @@
 //! waiter per pane, and the main thread that supervises lifetime and teardown. A panic while
 //! handling one request fails that request with `internal_error`; the Host continues.
 
+use crate::claude;
 use crate::layout;
 use crate::output::{CliError, Code};
 use crate::proto::{
@@ -406,6 +407,9 @@ struct Stats {
     /// Step 25: hook command lines run and refused.
     hooks_run: u64,
     hooks_failed: u64,
+    /// Step 27: Claude reports accepted, and refused (not from a process in the pane).
+    claude_reports: u64,
+    claude_refused: u64,
     connections_total: u64,
     rejected_identity: u64,
     rejected_limit: u64,
@@ -465,7 +469,24 @@ struct State {
     /// events never trigger hooks: no loops).
     hook_tx: Option<mpsc::Sender<HookRun>>,
     in_hook: bool,
+    /// Step 27: Claude Code sessions per pane (memory only): pane id → session id → state.
+    claude: HashMap<String, BTreeMap<String, ClaudeSession>>,
 }
+
+/// One Claude Code session in a pane (Step 27): what its last hook said, and when.
+#[derive(Debug, Clone)]
+struct ClaudeSession {
+    terminal_id: String,
+    state: String,
+    event: String,
+    reason: Option<String>,
+    since: SystemTime,
+    at: Instant,
+}
+
+/// After this long without a hook, an `in-progress` session is `unknown` (a missed hook, a
+/// killed Claude): Subak does not guess (ADR 0010 §4).
+pub const CLAUDE_STALE: Duration = Duration::from_secs(30 * 60);
 
 /// One hook run (Step 25): the command line and where its event happened.
 #[derive(Debug, Clone)]
@@ -804,6 +825,8 @@ struct Host {
     environment: &'static str,
     /// The default working directory of new panes: the user profile.
     home: Option<PathBuf>,
+    /// Step 27: the endpoint's name (`SUBAK_ENDPOINT` in every pane).
+    endpoint_name: String,
 }
 
 /// Runs the Host until it is stopped or idles out. Returns the final report.
@@ -843,6 +866,7 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             hooks: BTreeMap::new(),
             hook_tx: None,
             in_hook: false,
+            claude: HashMap::new(),
             initial: None,
         }),
         events: ev_tx,
@@ -858,6 +882,7 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
         idle_exit: opts.idle_exit,
         environment: if env.is_some() { "user" } else { "inherited" },
         home,
+        endpoint_name: opts.endpoint.clone(),
     });
     if let Some(shell) = &opts.shell {
         let spec = Spec {
@@ -1282,7 +1307,11 @@ impl Host {
             cwd: &cwd,
             env: &launch.env,
             // ADR 0010 §1: how a program (and Claude Code's hooks) knows which pane it runs in.
-            host_vars: &[("SUBAK_PANE_ID", &pane_id), ("SUBAK_TERMINAL_ID", &tid)],
+            host_vars: &[
+                ("SUBAK_PANE_ID", &pane_id),
+                ("SUBAK_TERMINAL_ID", &tid),
+                ("SUBAK_ENDPOINT", &self.endpoint_name),
+            ],
             size,
         });
         let started = match spawned {
@@ -1572,6 +1601,15 @@ impl Host {
             "exit_code": exit_code,
         });
         st.notify("panes", "pane.exited", &data);
+        // Step 27: a pane that ended has no Claude session any more (ADR 0061).
+        if let Some(sessions) = st.claude.remove(&rt.pane_id) {
+            for (sid, s) in sessions {
+                let data = json!({"pane_id": rt.pane_id, "terminal_id": rt.terminal_id,
+                    "session_id": sid, "state": "none", "previous_state": s.state,
+                    "event": "pane.exited"});
+                st.notify("claude", "claude.state_changed", &data);
+            }
+        }
     }
 
     /// Applies the end of a Terminal to the model: releases the panes it ended, records how it
@@ -2127,6 +2165,9 @@ impl Host {
             "window.options" => Reply::Now(self.window_options(p)),
             "hook.set" => Reply::Now(self.hook_set(p)),
             "hook.list" => Reply::Now(Ok(self.hook_list())),
+            // Step 27 (ADR 0061).
+            "claude.report" => Reply::Now(self.claude_report(conn, p)),
+            "claude.status" => Reply::Now(self.claude_status(p)),
             "window.select_layout" => Reply::Now(self.layout_op(p, LayoutOp::Preset)),
             "window.list" => Reply::Now(self.topology(p, false)),
             "pane.list" => Reply::Now(self.topology(p, true)),
@@ -2289,6 +2330,10 @@ impl Host {
                 "lagging_clients_dropped": s.lagging_clients_dropped,
                 "lagging_resyncs": s.lagging_resyncs,
                 "output_frames_skipped": s.output_frames_skipped,
+                "hooks_run": s.hooks_run,
+                "hooks_failed": s.hooks_failed,
+                "claude_reports": s.claude_reports,
+                "claude_refused": s.claude_refused,
             },
         })
     }
@@ -3373,7 +3418,11 @@ impl Host {
             raw_line: l.raw_line.as_deref(),
             cwd: &cwd,
             env: &l.env,
-            host_vars: &[("SUBAK_PANE_ID", &pane_id), ("SUBAK_TERMINAL_ID", &tid)],
+            host_vars: &[
+                ("SUBAK_PANE_ID", &pane_id),
+                ("SUBAK_TERMINAL_ID", &tid),
+                ("SUBAK_ENDPOINT", &self.endpoint_name),
+            ],
             size: l.size,
         })
         .map_err(|e| {
@@ -3691,6 +3740,153 @@ impl Host {
         Ok(
             json!({"terminal_id": tid, "window_id": wid, "option": name, "value": now, "options": options}),
         )
+    }
+
+    /// `claude.report` (a `hook` client: `subak claude report` run by a Claude Code hook): one
+    /// event of one session in a pane. Believed only from a process **in that pane's job**;
+    /// carries ids, the event and a coarse reason, nothing else (ADR 0061).
+    fn claude_report(&self, conn: u64, p: &Value) -> Result<Value, IpcError> {
+        let field = |k: &str, max: usize| -> Result<String, IpcError> {
+            p[k].as_str()
+                .filter(|s| {
+                    !s.is_empty()
+                        && s.len() <= max
+                        && s.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                })
+                .map(String::from)
+                .ok_or_else(|| {
+                    IpcError::param(k, format!("{k} is 1-{max} letters, digits, - or _"))
+                })
+        };
+        let pane_id = field("pane_id", 64)?;
+        let session_id = field("session_id", 128)?;
+        let event = field("event", 64)?;
+        let reason = match &p["reason"] {
+            Value::Null => None,
+            _ => Some(field("reason", 32)?),
+        };
+        let (rt, pid) = {
+            let st = self.lock();
+            let pid = st.conns.get(&conn).and_then(|c| c.pid);
+            (st.rt.get(&pane_id).cloned(), pid)
+        };
+        let Some(rt) = rt else {
+            return Err(IpcError::new(
+                ErrorCode::TargetNotFound,
+                format!("no running pane `{pane_id}`"),
+            ));
+        };
+        if !pid.is_some_and(|pid| rt.pty.contains(pid)) {
+            let mut st = self.lock();
+            st.stats.claude_refused += 1;
+            return Err(IpcError::new(
+                ErrorCode::Unauthorized,
+                "a report for a pane is accepted only from a process running in it",
+            ));
+        }
+        let mut st = self.lock();
+        st.stats.claude_reports += 1;
+        let sessions = st.claude.entry(pane_id.clone()).or_default();
+        let previous = sessions.get(&session_id).map(|s| s.state.clone());
+        let now_state = previous.clone().unwrap_or_else(|| "unknown".into());
+        let next = claude::next_state(&event, reason.as_deref(), &now_state);
+        match &next {
+            Some(state) => {
+                sessions.insert(
+                    session_id.clone(),
+                    ClaudeSession {
+                        terminal_id: rt.terminal_id.clone(),
+                        state: state.clone(),
+                        event: event.clone(),
+                        reason,
+                        since: SystemTime::now(),
+                        at: Instant::now(),
+                    },
+                );
+            }
+            None => {
+                sessions.remove(&session_id);
+            }
+        }
+        if sessions.is_empty() {
+            st.claude.remove(&pane_id);
+        }
+        let state = next.unwrap_or_else(|| "none".into());
+        if previous.as_deref() != Some(state.as_str()) {
+            let data = json!({"pane_id": pane_id, "terminal_id": rt.terminal_id,
+                "session_id": session_id, "state": state, "previous_state": previous,
+                "event": event});
+            st.notify("claude", "claude.state_changed", &data);
+        }
+        Ok(json!({"pane_id": pane_id, "session_id": session_id, "state": state}))
+    }
+
+    /// `claude.status`: the Claude Code sessions Subak knows of (all panes, or a target's).
+    /// A pane's state is its most recently reported session's; `unknown` after
+    /// [`CLAUDE_STALE`] in progress without a hook.
+    fn claude_status(&self, p: &Value) -> Result<Value, IpcError> {
+        let st = self.lock();
+        let only: Option<Vec<String>> = match optional_string(p, "target")? {
+            None => None,
+            Some(t) => {
+                let r = st.reg.resolve(t)?;
+                let term = &st.reg.terminals[r.terminal];
+                Some(match r.level {
+                    Level::Pane => vec![term.windows[r.window].panes[r.pane].id.clone()],
+                    Level::Window => term.windows[r.window]
+                        .panes
+                        .iter()
+                        .map(|x| x.id.clone())
+                        .collect(),
+                    Level::Terminal => term
+                        .windows
+                        .iter()
+                        .flat_map(|w| w.panes.iter().map(|x| x.id.clone()))
+                        .collect(),
+                })
+            }
+        };
+        let shown = |s: &ClaudeSession| -> (String, bool) {
+            let stale = s.state == "in-progress" && s.at.elapsed() > CLAUDE_STALE;
+            (
+                if stale {
+                    "unknown".into()
+                } else {
+                    s.state.clone()
+                },
+                stale,
+            )
+        };
+        let mut panes: Vec<Value> = st
+            .claude
+            .iter()
+            .filter(|(id, _)| only.as_ref().is_none_or(|o| o.contains(id)))
+            .map(|(id, sessions)| {
+                let latest = sessions
+                    .iter()
+                    .max_by_key(|(_, s)| s.at)
+                    .map(|(sid, s)| (sid.clone(), s.clone()))
+                    .expect("never empty");
+                let (state, stale) = shown(&latest.1);
+                json!({
+                    "pane_id": id,
+                    "terminal_id": latest.1.terminal_id,
+                    "state": state,
+                    "stale": stale,
+                    "since": proto::rfc3339(latest.1.since),
+                    "session_id": latest.0,
+                    "sessions": sessions.iter().map(|(sid, s)| {
+                        let (state, stale) = shown(s);
+                        json!({"session_id": sid, "state": state, "stale": stale,
+                            "event": s.event, "reason": s.reason,
+                            "since": proto::rfc3339(s.since)})
+                    }).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        panes.sort_by(|a, b| a["pane_id"].as_str().cmp(&b["pane_id"].as_str()));
+        Ok(json!({"panes": panes, "persisted": false}))
     }
 
     /// `window.options` (tmux `show-window-options`).

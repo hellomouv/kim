@@ -1,0 +1,10 @@
+{
+  "command": "claude.report",
+  "data": {
+    "delivered": false,
+    "why": "not in a Subak pane (no SUBAK_PANE_ID)"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

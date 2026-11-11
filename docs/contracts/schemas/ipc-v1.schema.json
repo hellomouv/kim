@@ -150,6 +150,7 @@
         {"$ref": "#/$defs/event_window_layout"},
         {"$ref": "#/$defs/event_window_alert"},
         {"$ref": "#/$defs/event_window_options"},
+        {"$ref": "#/$defs/event_claude_state_changed"},
         {"$ref": "#/$defs/event_other"}
       ]
     },
@@ -181,7 +182,8 @@
               "pane.selected",
               "window.layout",
               "window.alert",
-              "window.options"
+              "window.options",
+              "claude.state_changed"
             ]
           }
         },
@@ -227,6 +229,76 @@
             "options": {"$ref": "#/$defs/window_options"}
           }
         }
+      }
+    },
+    "claude_state": {"enum": ["idle", "in-progress", "need-input", "done", "error", "unknown", "none"]},
+    "event_claude_state_changed": {
+      "description": "Step 27 (topic `claude`): a Claude Code session in a pane changed state; `none` when it ended or its pane did.",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "claude.state_changed"},
+        "data": {
+          "type": "object",
+          "required": ["pane_id", "terminal_id", "session_id", "state", "previous_state", "event"],
+          "additionalProperties": false,
+          "properties": {
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "session_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+            "state": {"$ref": "#/$defs/claude_state"},
+            "previous_state": {"anyOf": [{"$ref": "#/$defs/claude_state"}, {"type": "null"}]},
+            "event": {"type": "string", "maxLength": 64}
+          }
+        }
+      }
+    },
+    "result_claude_report": {
+      "description": "Step 27: claude.report (hook clients only, from a process in the pane's job).",
+      "type": "object",
+      "required": ["pane_id", "session_id", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "pane_id": {"$ref": "#/$defs/pane_id"},
+        "session_id": {"type": "string"},
+        "state": {"$ref": "#/$defs/claude_state"}
+      }
+    },
+    "result_claude_status": {
+      "description": "Step 27: claude.status — the Claude Code sessions per pane, from hooks only, kept in the Host's memory (`persisted: false`).",
+      "type": "object",
+      "required": ["panes", "persisted"],
+      "additionalProperties": false,
+      "properties": {
+        "persisted": {"const": false},
+        "panes": {"type": "array", "items": {
+          "type": "object",
+          "required": ["pane_id", "terminal_id", "state", "stale", "since", "session_id", "sessions"],
+          "additionalProperties": false,
+          "properties": {
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "state": {"$ref": "#/$defs/claude_state"},
+            "stale": {"type": "boolean"},
+            "since": {"$ref": "#/$defs/timestamp"},
+            "session_id": {"type": "string"},
+            "sessions": {"type": "array", "items": {
+              "type": "object",
+              "required": ["session_id", "state", "stale", "event", "reason", "since"],
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {"type": "string"},
+                "state": {"$ref": "#/$defs/claude_state"},
+                "stale": {"type": "boolean"},
+                "event": {"type": "string"},
+                "reason": {"type": ["string", "null"]},
+                "since": {"$ref": "#/$defs/timestamp"}
+              }
+            }}
+          }
+        }}
       }
     },
     "window_options": {"type": "object", "required": ["synchronize-panes", "monitor-activity", "monitor-bell"], "additionalProperties": false, "properties": {"synchronize-panes": {"type": "boolean"}, "monitor-activity": {"type": "boolean"}, "monitor-bell": {"type": "boolean"}}},

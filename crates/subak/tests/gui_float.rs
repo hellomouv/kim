@@ -833,11 +833,6 @@ fn repeated_quick_open_close_leaks_nothing_and_the_idle_icon_and_manager_cost_no
     // Open and close once to load everything the manager needs, then 30 quick cycles.
     f.click_icon();
     f.click_icon();
-    let before = f.until("closed", |d| d["manager"].is_null());
-    for _ in 0..30 {
-        f.click_icon();
-        f.click_icon();
-    }
     // Posted clicks are handled after this test's (sent) dump requests: wait until all are.
     let opens = || {
         f.history()
@@ -845,6 +840,20 @@ fn repeated_quick_open_close_leaks_nothing_and_the_idle_icon_and_manager_cost_no
             .filter(|l| l.contains(r#""event":"manager""#) && l.contains(r#""open":true"#))
             .count()
     };
+    let closed = || {
+        f.history()
+            .lines()
+            .filter(|l| l.contains(r#""event":"manager""#) && l.contains(r#""open":false"#))
+            .count()
+    };
+    // The baseline only after the warm-up cycle really ran (a dump can overtake the posted
+    // clicks and see a manager that was never opened yet).
+    wait_for("the warm-up cycle", || opens() == 1 && closed() == 1);
+    let before = f.until("closed", |d| d["manager"].is_null());
+    for _ in 0..30 {
+        f.click_icon();
+        f.click_icon();
+    }
     wait_for("every click toggled the manager", || opens() == 31);
     let after = f.until("closed again", |d| d["manager"].is_null());
     let closes = f

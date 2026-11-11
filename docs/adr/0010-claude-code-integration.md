@@ -65,3 +65,7 @@ also offers `claude --resume <session-id>`.
   `SUBAK_TERMINAL_ID`, set last so no override can change them
   ([ADR 0025](0025-pane-programs-environment-and-backpressure.md) §4; measured in a real
   child process, [PTY_PROCESSES §3](../PTY_PROCESSES.md)).
+- 2026-11-11 (Step 27): §2, §3, §4 (states without the GUI) and §6 are implemented and refined in
+  [ADR 0061](0061-claude-code-hooks-and-session-events.md): `SUBAK_ENDPOINT` joins the pane
+  variables, `PostToolUse` returns a session to `in-progress`, reports are believed only from a
+  process in the pane's job, and the reporter sends no timestamp (the Host stamps it).

@@ -582,6 +582,56 @@
         "requires_yes": false,
         "summary": "Type a paste buffer into a pane as input (tmux paste-buffer)",
         "usage": "subak buffer paste <pane> [--name <name>] [--delete] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "claude.hooks.status",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Whether Subak's Claude Code hooks are in a settings file (default ~/.claude/settings.json); other hooks are counted, never changed",
+        "usage": "subak claude hooks status [--settings <file>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "claude.hooks.install",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Opt in: merge Subak's hook entries into a Claude Code settings file, keeping every other setting and hook; a backup first",
+        "usage": "subak claude hooks install [--settings <file>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "claude.hooks.uninstall",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Remove exactly Subak's hook entries from a Claude Code settings file; a backup first",
+        "usage": "subak claude hooks uninstall [--settings <file>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "claude.report",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Run by a Claude Code hook: forward the event and session id (nothing else) to the pane's Host; prints nothing, always exits 0",
+        "usage": "subak claude report [--endpoint <name>] [--dry-run] [--json] < hook-input.json"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "claude.status",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The Claude Code sessions per pane that hooks reported (states idle, in-progress, need-input, done, unknown)",
+        "usage": "subak claude status [<terminal | window | pane>] [--json]"
       }
     ],
     "implementation": "implemented",

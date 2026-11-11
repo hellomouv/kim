@@ -1,0 +1,21 @@
+{
+  "command": "claude.hooks.status",
+  "data": {
+    "command": "\"C:/Program Files/Kim/subak.exe\" claude report",
+    "events": {
+      "Notification": true,
+      "PostToolUse": true,
+      "SessionEnd": true,
+      "SessionStart": true,
+      "Stop": true,
+      "UserPromptSubmit": true
+    },
+    "exists": true,
+    "installed": true,
+    "other_hooks": 1,
+    "settings": "C:/Users/me/.claude/settings.json"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

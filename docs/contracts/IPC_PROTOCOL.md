@@ -179,8 +179,8 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `buffer.set` / `.list` / `.get` / `.delete` / `.paste` | `{name?, data, append?}` / `{}` / `{name?}` / `{name?}` / `{target, name?, delete?}` (`dry_run?` on set, delete, paste) | `result_buffer_set` / `_list` / `_get` / `_delete`, `result_input` | cli, gui, mcp* | **24** |
 | `pane.capture` | `{target?, start?, end?, format?: "text" \| "vt", join?, redact?}` | `{terminal_id, pane_id, format, join, redact, redacted, start, end, truncated, lines, screen, history}` | cli, gui, mcp* | **13** |
 | `pane.clear_history` | `{target?, dry_run?}` | `{terminal_id, pane_id, cleared_lines, cleared_bytes, history}` or `{dry_run: true, would_clear}` | cli, gui, mcp* | **13** |
-| `claude.report` | `{pane_id, session_id, event, at, reason?}` | `{}` | **hook only** | 27 |
-| `claude.status` | `{target?}` | `{panes: [{pane_id, state, since, session_id?}]}` | cli, gui, mcp | 28 |
+| `claude.report` | `{pane_id, session_id, event, reason?}`; only from a process in the pane's job | `result_claude_report` | **hook only** | **27** |
+| `claude.status` | `{target?}` | `result_claude_status`: `{panes: [{pane_id, terminal_id, state, stale, since, session_id, sessions}], persisted: false}` | cli, gui, mcp | **27** |
 
 `mcp*` = only once the user granted that capability to MCP clients (Step 37). Until then MCP
 clients may call only the unstarred methods. Bold Step = implemented by the Step 21 Host.
@@ -460,7 +460,7 @@ subscribes and then lists sees every later change exactly once, after its list.
 | `window.alert` | `terminals` | `{terminal_id, window_id, pane_id, kind: "activity" \| "bell"}`: a window that is not shown had output or a bell (once until it is shown) | 25 |
 | `window.options` | `terminals` | `{terminal_id, window_id, options}`: `window.set_option` changed an option | 25 |
 
-Later Steps: `claude.state_changed`.
+| `claude.state_changed` | `claude` | `{pane_id, terminal_id, session_id, state, previous_state, event}` ([ADR 0061](../adr/0061-claude-code-hooks-and-session-events.md)); `state` `none` when the session or its pane ended | 27 |
 
 ## 6. Error codes (stable)
 

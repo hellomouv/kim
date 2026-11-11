@@ -40,6 +40,15 @@ Attacks that require an already-compromised administrator account or physical ac
 unlocked session, and findings in third-party software (report those upstream; tell us if Kim
 should mitigate them).
 
+## Claude Code hooks (Subak, Step 27)
+
+- Opt-in only (`subak claude hooks install`); the user's settings file is merged, backed up
+  first and written in place; nothing is installed or updated automatically.
+- The reporter forwards only `pane_id`, `session_id`, the event name and a coarse reason; hook
+  input content (prompts, tool input/output, messages, paths) is never sent, logged or stored.
+- The Host accepts a report for a pane only from a process inside that pane's job object, over
+  the per-user pipe; anything else is refused and counted (ADR 0061 §4).
+
 ## Dependency and supply-chain policy
 
 Every dependency is code we ship. The policy:

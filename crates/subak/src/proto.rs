@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 14] = [
+pub const FEATURES: [&str; 15] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -64,6 +64,8 @@ pub const FEATURES: [&str; 14] = [
     // Step 25: window options (`synchronize-panes`, `monitor-*`), alerts, hooks, more layouts,
     // target tokens.
     "terminal.options",
+    // Step 27: Claude Code hook reports and session states.
+    "claude.sessions",
 ];
 
 /// One decoded frame.
@@ -598,8 +600,8 @@ pub const METHODS: &[Method] = &[
     // Step 13: reading and clearing a pane's history needs the MCP grant too (Step 37).
     m("pane.capture", CG, true),
     m("pane.clear_history", CG, true),
-    m("claude.report", HOOK, false),
-    m("claude.status", CGM, false),
+    m("claude.report", HOOK, true),
+    m("claude.status", CGM, true),
 ];
 
 /// Whether `kind` may call `method`, and whether this Host can serve it.
@@ -1116,7 +1118,7 @@ mod tests {
             code(Cli, "terminal.restore"),
             Some(ErrorCode::UnknownRequest)
         );
-        assert_eq!(code(Hook, "claude.report"), Some(ErrorCode::UnknownRequest));
+        assert_eq!(code(Hook, "claude.report"), None, "Step 27");
         assert_eq!(code(Cli, "claude.report"), Some(ErrorCode::Unauthorized));
         // Every method name fits the schema's pattern.
         for m in METHODS {

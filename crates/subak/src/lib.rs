@@ -20,6 +20,8 @@
 // Portable modules: compiled and unit-tested on every target, but until the Linux Host (M4,
 // ADR 0011) only the Windows Host and clients use most of them.
 #[cfg_attr(not(windows), allow(dead_code))]
+// Step 27: Claude Code hooks (settings merge, the reporter's input) and session states.
+mod claude;
 mod cli;
 /// `config.toml`: the window's settings and the basic shell profiles (Step 20, ADR 0051).
 /// Portable; read by the window and the `subak config`/`profile` commands, never by the Host.
@@ -393,6 +395,43 @@ pub fn cli_main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+        // Step 27: a Claude Code hook runs `claude report`: it never fails and prints nothing
+        // unless asked for JSON (Claude adds some hooks' output to the conversation).
+        Cmd::ClaudeReport => {
+            drop(out);
+            let data = claude::report(&args);
+            if args.json {
+                let _ = writeln!(
+                    std::io::stdout().lock(),
+                    "{}",
+                    output::success(cmd.name(), &data, &[])
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        _ if cmd.is_claude_hooks() => {
+            drop(out);
+            match claude::hooks(cmd, &args) {
+                Ok((data, human)) => {
+                    let mut out = std::io::stdout().lock();
+                    if args.json {
+                        let _ = writeln!(
+                            out,
+                            "{}",
+                            output::success(
+                                cmd.name(),
+                                &data,
+                                &deprecation.into_iter().collect::<Vec<_>>()
+                            )
+                        );
+                    } else {
+                        let _ = write!(out, "{human}");
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => fail(cmd.name(), &e, args.json),
+            }
+        }
         _ if cmd.is_hotkeys() || cmd.is_settings() => {
             drop(out);
             let ran = if cmd.is_hotkeys() {
@@ -513,6 +552,7 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
             terminal::layout(a, &endpoint, cmd)
         }
         Cmd::Command => terminal::command(a, &endpoint),
+        Cmd::ClaudeStatus => terminal::claude_status(a, &endpoint),
         Cmd::BufferLs | Cmd::BufferShow | Cmd::BufferSet | Cmd::BufferDelete | Cmd::BufferPaste => {
             terminal::buffer(a, &endpoint, cmd)
         }

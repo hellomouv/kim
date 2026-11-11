@@ -587,6 +587,56 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "claude.hooks.status",
+      "usage": "subak claude hooks status [--settings <file>] [--json]",
+      "summary": "Whether Subak's Claude Code hooks are in a settings file (default ~/.claude/settings.json); other hooks are counted, never changed",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "claude.hooks.install",
+      "usage": "subak claude hooks install [--settings <file>] [--dry-run] [--json]",
+      "summary": "Opt in: merge Subak's hook entries into a Claude Code settings file, keeping every other setting and hook; a backup first",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "claude.hooks.uninstall",
+      "usage": "subak claude hooks uninstall [--settings <file>] [--dry-run] [--json]",
+      "summary": "Remove exactly Subak's hook entries from a Claude Code settings file; a backup first",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "claude.report",
+      "usage": "subak claude report [--endpoint <name>] [--dry-run] [--json] < hook-input.json",
+      "summary": "Run by a Claude Code hook: forward the event and session id (nothing else) to the pane's Host; prints nothing, always exits 0",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "claude.status",
+      "usage": "subak claude status [<terminal | window | pane>] [--json]",
+      "summary": "The Claude Code sessions per pane that hooks reported (states idle, in-progress, need-input, done, unknown)",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

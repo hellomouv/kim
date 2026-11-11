@@ -1004,3 +1004,9 @@ pub fn end(a: &Args, endpoint: &str, cmd: Cmd) -> Result<Value, CliError> {
         client::STOP_TIMEOUT,
     )
 }
+
+/// Step 27: `subak claude status [target]` — the Claude Code sessions the Host knows of.
+pub fn claude_status(a: &Args, endpoint: &str) -> Result<Value, CliError> {
+    let target = a.positional.first().cloned();
+    require(endpoint)?.request("claude.status", &json!({"target": target}))
+}

@@ -114,7 +114,11 @@
     },
     {
       "$ref": "#/$defs/ok_buffer_paste"
-    }
+    },
+    {"$ref": "#/$defs/ok_claude_hooks_status"},
+    {"$ref": "#/$defs/ok_claude_hooks_change"},
+    {"$ref": "#/$defs/ok_claude_report"},
+    {"$ref": "#/$defs/ok_claude_status"}
   ],
   "$defs": {
     "ok_window_new": {
@@ -316,6 +320,58 @@
     },
     "ok_buffer_delete": {
       "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.delete"}, "data": {"$ref": "#/$defs/result_buffer_delete"}}}]
+    },
+    "ok_claude_hooks_status": {
+      "description": "Step 27: `subak claude hooks status` — whether Subak's hook is in each Claude Code event of the settings file.",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "claude.hooks.status"}, "data": {
+        "type": "object",
+        "required": ["installed", "events", "other_hooks", "settings", "exists", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "installed": {"type": "boolean"},
+          "events": {"type": "object", "additionalProperties": {"type": "boolean"}},
+          "other_hooks": {"type": "integer", "minimum": 0},
+          "settings": {"type": "string"},
+          "exists": {"type": "boolean"},
+          "command": {"type": "string"}
+        }
+      }}}]
+    },
+    "ok_claude_hooks_change": {
+      "description": "Step 27: `subak claude hooks install|uninstall` — the events Subak's hook was added to or removed from, and the backup written first (null: no file before, a dry run, or nothing to change).",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["claude.hooks.install", "claude.hooks.uninstall"]}, "data": {
+        "type": "object",
+        "required": ["settings", "events", "command", "dry_run", "backup"],
+        "additionalProperties": false,
+        "properties": {
+          "settings": {"type": "string"},
+          "events": {"type": "array", "items": {"type": "string"}},
+          "command": {"type": "string"},
+          "dry_run": {"type": "boolean"},
+          "backup": {"type": ["string", "null"]}
+        }
+      }}}]
+    },
+    "ok_claude_report": {
+      "description": "Step 27: `subak claude report` (run by a Claude Code hook; always exit 0): whether the event reached the pane's Host. Only ids, the event and the state — never hook input content.",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "claude.report"}, "data": {
+        "type": "object",
+        "required": ["delivered"],
+        "additionalProperties": false,
+        "properties": {
+          "delivered": {"type": "boolean"},
+          "dry_run": {"const": true},
+          "why": {"type": "string"},
+          "pane_id": {"type": "string"},
+          "session_id": {"type": "string"},
+          "event": {"type": "string"},
+          "state": {"type": "string"}
+        }
+      }}}]
+    },
+    "ok_claude_status": {
+      "description": "Step 27: `subak claude status [target]` — ipc-v1 result_claude_status.",
+      "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "claude.status"}, "data": {"type": "object", "required": ["panes", "persisted"]}}}]
     },
     "ok_buffer_paste": {
       "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "buffer.paste"}, "data": {"$ref": "#/$defs/result_input"}}}]

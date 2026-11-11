@@ -313,7 +313,7 @@ fn unauthorized_clients_cannot_type_into_or_read_a_pane() {
         (5, "host.stats", "unauthorized"),
         (6, "terminal.create", "unauthorized"),
         (7, "events.subscribe", "unauthorized"),
-        (8, "claude.report", "unknown_request"), // the hook's own method: Step 27
+        (8, "claude.report", "invalid_params"), // the hook's own method since Step 27
     ] {
         let r = hook.request(id, method, &json!({"kill_terminals": true}));
         assert_eq!(error_code(&r), code, "hook {method}");
