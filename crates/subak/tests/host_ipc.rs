@@ -195,7 +195,7 @@ fn requests_are_validated_and_violations_close_only_that_connection() {
         (
             "terminal.restore",
             json!({"target": "t-000000000001", "claude_resume": true}),
-            "unknown_request",
+            "target_not_found", // implemented since Step 30: no such saved Terminal
         ),
         (
             "terminal.create",
@@ -293,7 +293,7 @@ fn requests_are_validated_and_violations_close_only_that_connection() {
         st["ipc"]["errors_total"]["unknown_request"]
             .as_u64()
             .unwrap()
-            >= 3
+            >= 2
     );
     assert_eq!(st["ipc"]["panics"], 0);
     eprintln!(

@@ -1,8 +1,8 @@
 # Subak recovery model
 
-Status: **current** for persistence (Step 29) · restore and Claude resume: Step 30 · shutdown,
-sleep and crash validation: Step 31 · Decisions: [ADR 0006](adr/0006-state-and-configuration-storage.md),
-[ADR 0063](adr/0063-durable-terminal-state.md)
+Status: **current** for persistence (Step 29) and restore with Claude resume (Step 30) ·
+shutdown, sleep and crash validation: Step 31 · Decisions: [ADR 0006](adr/0006-state-and-configuration-storage.md),
+[ADR 0063](adr/0063-durable-terminal-state.md), [ADR 0064](adr/0064-cold-recovery-and-claude-resume.md)
 
 ## 1. Two different things
 
@@ -33,14 +33,36 @@ Written 500 ms after a change (coalesced), atomically, and once more at a clean 
 3. A file from a newer Subak: read-only, never rewritten.
 4. An older schema: migrated after a backup.
 
-## 4. Recovery limits
+## 4. Restoring (Step 30)
+
+```console
+> subak recover list                         # restorable Terminals, pane by pane (starts nothing)
+> subak recover work --dry-run --claude-resume
+> subak recover work --yes                   # the same id, windows and layout, fresh shells
+> subak recover agent --claude-resume --yes  # claude --resume <saved id> in its pane
+> subak recover job --with-commands --yes    # run the saved start commands again (explicit)
+> subak state policy work auto               # restored at the next Host start, shells only
+```
+
+| What | Comes back |
+| --- | --- |
+| Terminal id, name, windows, layout and sizes, active pane | yes |
+| A shell in each pane's folder | yes (the profile folder if the folder is gone) |
+| The Claude conversation | with `--claude-resume`, when Claude Code still has the session and it does not already run |
+| Saved start commands | only with `--with-commands` (never one withheld as secret-looking) |
+| Running programs, their memory, child processes, shell variables and history, screen contents | **no** — a reboot or stop ended them |
+
+A second restore of the same Terminal is refused, and so is one whose name a live Terminal
+uses.
+
+## 5. Recovery limits
 
 - Changes in the last 500 ms before a crash can be lost; the file is never torn.
 - Commands that looked secret and environment values are not restorable (on purpose).
 - A missing working directory or program is reported by `subak state show`/`check`; nothing is
   started in its place.
 
-## 5. Commands
+## 6. Commands
 
 ```console
 > subak state show            # what is saved (nothing changes)

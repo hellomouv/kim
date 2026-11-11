@@ -489,6 +489,13 @@ struct Persist {
     read_only: Option<String>,
     saved: Vec<Value>,
     restore: HashMap<String, String>,
+    /// Step 30 (ADR 0010 §5): the last Claude session id each pane reported, kept after the
+    /// session ends (a finished conversation can still be resumed); gone with the pane.
+    last_claude: HashMap<String, String>,
+    /// Step 30: live Terminals whose Claude sessions resume on their next restore (opt-in).
+    claude_resume: std::collections::HashSet<String>,
+    /// Step 30: saved Terminals being restored now (a second restore is refused).
+    restoring: std::collections::HashSet<String>,
     dirty: bool,
     /// After the final write of a clean stop nothing more is written (the ending panes must
     /// not erase the Terminals that should survive).
@@ -637,12 +644,15 @@ impl State {
     /// Step 29: the document to write now: live Terminals, then saved ones (not live).
     fn state_doc(&self) -> Value {
         let claude = |pane: &str| {
-            self.claude.get(pane).and_then(|sessions| {
-                sessions
-                    .iter()
-                    .max_by_key(|(_, s)| s.at)
-                    .map(|(sid, _)| sid.clone())
-            })
+            self.claude
+                .get(pane)
+                .and_then(|sessions| {
+                    sessions
+                        .iter()
+                        .max_by_key(|(_, s)| s.at)
+                        .map(|(sid, _)| sid.clone())
+                })
+                .or_else(|| self.persist.last_claude.get(pane).cloned())
         };
         let mut terminals: Vec<Value> = self
             .reg
@@ -654,7 +664,8 @@ impl State {
                     .restore
                     .get(&t.id)
                     .map_or("ask", String::as_str);
-                state::terminal_record(t, policy, &claude)
+                let resume = self.persist.claude_resume.contains(&t.id);
+                state::terminal_record(t, policy, resume, &claude)
             })
             .collect();
         for s in &self.persist.saved {
@@ -872,6 +883,7 @@ impl State {
             .map(|(k, _)| k.clone())
             .collect();
         for k in panes {
+            self.persist.last_claude.remove(&k);
             if let Some(o) = self.out.remove(&k) {
                 let h = o.screen.history();
                 self.stats.ended_output_bytes += o.seq;
@@ -1101,6 +1113,23 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             .and_then(|d| d["terminals"].as_array().cloned())
             .unwrap_or_default();
         st.persist.store = Some(store);
+        // Step 30: Terminals the user marked `auto` come back at once — shells only (and a
+        // Claude session only where the user opted in for it); nothing else is run.
+        let auto: Vec<String> = st
+            .persist
+            .saved
+            .iter()
+            .filter(|t| t["restore"] == "auto")
+            .filter_map(|t| t["id"].as_str().map(String::from))
+            .collect();
+        if !auto.is_empty() {
+            let host = Arc::clone(&host);
+            thread::spawn(move || {
+                for id in auto {
+                    let _ = host.terminal_restore(&json!({"target": id}), true);
+                }
+            });
+        }
         let (tx, rx) = mpsc::channel::<()>();
         st.persist.tx = Some(tx);
         drop(st);
@@ -1516,6 +1545,17 @@ impl Host {
         launch: &Launch,
         keep: bool,
     ) -> Result<Value, IpcError> {
+        self.create_with(spec, launch, keep, None)
+    }
+
+    /// [`Host::create`]; Step 30: `restored` keeps a saved Terminal's id and creation time.
+    fn create_with(
+        self: &Arc<Self>,
+        spec: Spec,
+        launch: &Launch,
+        keep: bool,
+        restored: Option<(String, String)>,
+    ) -> Result<Value, IpcError> {
         let (tid, pane_id, stream, size, cwd, command, history_limit) = {
             let mut st = self.lock();
             if st.stopping {
@@ -1530,8 +1570,18 @@ impl Host {
                     format!("this Host already owns {MAX_TERMINALS} Terminals"),
                 ));
             }
-            let created_at = proto::rfc3339(SystemTime::now());
-            let i = st.reg.reserve(spec, created_at, proto::new_object_id)?;
+            let (mut hint, created_at) = match restored {
+                Some((id, at)) => (Some(id), at),
+                None => (None, proto::rfc3339(SystemTime::now())),
+            };
+            let i = st.reg.reserve(spec, created_at, |k| {
+                if k == 't'
+                    && let Some(id) = hint.take()
+                {
+                    return id;
+                }
+                proto::new_object_id(k)
+            })?;
             st.stats.terminals_created += 1;
             let t = &st.reg.terminals[i];
             let p = t.active_pane();
@@ -2424,6 +2474,9 @@ impl Host {
             "state.status" => Reply::Now(Ok(self.state_status())),
             "state.forget" => Reply::Now(self.state_forget(p)),
             "state.set_restore" => Reply::Now(self.state_set_restore(p)),
+            // Step 30 (ADR 0064): cold recovery.
+            "terminal.recoverable" => Reply::Now(Ok(self.recoverable())),
+            "terminal.restore" => Reply::Now(self.terminal_restore(p, false)),
             // Step 27 (ADR 0061).
             "claude.report" => Reply::Now(self.claude_report(conn, p)),
             "claude.status" => Reply::Now(self.claude_status(p)),
@@ -4088,13 +4141,451 @@ impl Host {
         if flag(p, "dry_run")? {
             return Ok(json!({"dry_run": true, "would_set": result}));
         }
+        let claude_resume = match &p["claude_resume"] {
+            Value::Null => None,
+            Value::Bool(b) => Some(*b),
+            _ => {
+                return Err(IpcError::param(
+                    "claude_resume",
+                    "claude_resume is true or false",
+                ));
+            }
+        };
         if live {
-            st.persist.restore.insert(id, restore);
+            st.persist.restore.insert(id.clone(), restore);
+            match claude_resume {
+                Some(true) => {
+                    st.persist.claude_resume.insert(id);
+                }
+                Some(false) => {
+                    st.persist.claude_resume.remove(&id);
+                }
+                None => {}
+            }
         } else if let Some(t) = st.persist.saved.iter_mut().find(|t| t["id"] == id) {
             t["restore"] = json!(restore);
+            if let Some(on) = claude_resume {
+                for w in t["windows"].as_array_mut().into_iter().flatten() {
+                    for p in w["panes"].as_array_mut().into_iter().flatten() {
+                        if p["claude"].is_object() {
+                            p["claude"]["resume"] = json!(on);
+                        }
+                    }
+                }
+            }
         }
         st.mark_dirty();
         Ok(result)
+    }
+
+    /// Step 30: whether Claude Code keeps a session `sid` (its transcript file exists under
+    /// `~/.claude/projects/*/`); only the file name is looked at, never its content.
+    fn claude_session_exists(&self, sid: &str) -> Option<bool> {
+        let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+            .map(PathBuf::from)
+            .or_else(|| self.home.as_ref().map(|h| h.join(".claude")))?;
+        let projects = base.join("projects");
+        let dirs = std::fs::read_dir(&projects).ok()?;
+        let file = format!("{sid}.jsonl");
+        Some(
+            dirs.filter_map(Result::ok)
+                .any(|d| d.path().join(&file).is_file()),
+        )
+    }
+
+    /// Step 30: what restoring a saved record would do, pane by pane, and what cannot come back.
+    fn restore_plan(
+        &self,
+        st: &State,
+        t: &Value,
+        claude_resume: bool,
+        with_commands: bool,
+    ) -> Value {
+        let live_sessions: HashMap<String, String> = st
+            .claude
+            .iter()
+            .flat_map(|(pane, s)| s.keys().map(move |sid| (sid.clone(), pane.clone())))
+            .collect();
+        let mut panes = Vec::new();
+        for (wi, w) in t["windows"].as_array().into_iter().flatten().enumerate() {
+            for p in w["panes"].as_array().into_iter().flatten() {
+                let mut notes: Vec<String> = Vec::new();
+                let cwd = p["cwd"].as_str().map(String::from);
+                let cwd_ok = cwd.as_deref().is_some_and(|c| Path::new(c).is_dir());
+                if cwd.is_some() && !cwd_ok {
+                    notes.push(
+                        "its working directory no longer exists: it starts in your profile folder"
+                            .into(),
+                    );
+                }
+                let sid = p["claude"]["session_id"].as_str().map(String::from);
+                let wants_claude =
+                    sid.is_some() && (claude_resume || p["claude"]["resume"] == true);
+                let mut launch = "shell";
+                let mut claude = Value::Null;
+                if let Some(sid) = &sid {
+                    let exists = self.claude_session_exists(sid);
+                    let running = live_sessions.get(sid);
+                    claude = json!({"session_id": sid, "found": exists, "running_in": running});
+                    if wants_claude {
+                        if let Some(pane) = running {
+                            notes.push(format!(
+                                "Claude session {sid} already runs in {pane}: not started twice"
+                            ));
+                        } else if exists == Some(false) {
+                            notes.push(format!("Claude session {sid} was not found (moved or deleted): a shell starts instead"));
+                        } else {
+                            launch = "claude";
+                        }
+                    } else {
+                        notes.push("a Claude session can resume with --claude-resume".into());
+                    }
+                }
+                if launch == "shell" && with_commands {
+                    if p["command"].is_object() {
+                        launch = "command";
+                    } else if p["command_withheld"] == true {
+                        notes.push(
+                            "its command held a secret-looking value and was not saved".into(),
+                        );
+                    }
+                } else if launch == "shell" && p["command"].is_object() {
+                    notes.push(
+                        "its saved command is not run again (only with --with-commands)".into(),
+                    );
+                }
+                panes.push(json!({
+                    "window_index": wi, "saved_pane": p["id"], "cwd": if cwd_ok { json!(cwd) } else { json!(self.home.as_ref().map(|h| h.display().to_string())) },
+                    "launch": launch, "command": if launch == "command" { p["command"].clone() } else { Value::Null },
+                    "command_line": if launch == "command" { p["command_line"].clone() } else { Value::Null },
+                    "claude": claude, "notes": notes,
+                }));
+            }
+        }
+        json!({
+            "terminal_id": t["id"], "name": t["name"], "state": "restorable", "restore": t["restore"],
+            "panes": panes,
+            "not_restored": [
+                "the programs that ran and their memory (a reboot or a stop ended them)",
+                "unsaved shell state: variables, history, the current directory after a cd",
+                "screen and scrollback contents",
+                "processes they had started",
+            ],
+        })
+    }
+
+    /// `terminal.recoverable`: every saved record with its plan (nothing starts).
+    fn recoverable(&self) -> Value {
+        let st = self.lock();
+        let plans: Vec<Value> = st
+            .persist
+            .saved
+            .iter()
+            .map(|t| {
+                let mut plan = self.restore_plan(&st, t, false, false);
+                if st
+                    .persist
+                    .restoring
+                    .contains(t["id"].as_str().unwrap_or(""))
+                {
+                    plan["state"] = json!("restoring");
+                }
+                plan
+            })
+            .collect();
+        json!({"terminals": plans, "enabled": st.persist.store.is_some()})
+    }
+
+    /// `terminal.restore` (Step 30, ADR 0064): starts a saved Terminal again — the same id and
+    /// name, its windows, the layout tree and sizes — with a **fresh shell** in each pane's
+    /// folder. Only on request: `claude_resume` resumes the saved Claude session in its pane
+    /// (`claude --resume <id>` in a shell, once), `with_commands` runs the saved start commands.
+    /// New processes get new pane ids: nothing claims to have survived.
+    fn terminal_restore(self: &Arc<Self>, p: &Value, auto: bool) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let claude_resume = flag(p, "claude_resume")?;
+        let with_commands = flag(p, "with_commands")?;
+        let dry_run = flag(p, "dry_run")?;
+        let (record, plan) = {
+            let mut st = self.lock();
+            if st.stopping {
+                return Err(IpcError::new(
+                    ErrorCode::HostStopping,
+                    "the Host is shutting down",
+                ));
+            }
+            let i = match Self::saved_index(&st, target) {
+                Ok(i) => i,
+                Err(e) => {
+                    // A Terminal already running is not restored again.
+                    if st.reg.resolve_terminal(target).is_ok() {
+                        return Err(IpcError::new(
+                            ErrorCode::InvalidState,
+                            format!("`{target}` is already running; it is not restored twice"),
+                        ));
+                    }
+                    return Err(e);
+                }
+            };
+            let record = st.persist.saved[i].clone();
+            let id = record["id"].as_str().unwrap_or("").to_string();
+            if st.persist.restoring.contains(&id) {
+                return Err(IpcError::new(
+                    ErrorCode::InvalidState,
+                    "it is being restored now",
+                ));
+            }
+            if st.reg.get(&id).is_some() {
+                return Err(IpcError::new(
+                    ErrorCode::InvalidState,
+                    "a Terminal with its id already runs",
+                ));
+            }
+            let name = session::parse_name(record["name"].as_str().unwrap_or(""))?;
+            st.reg.check_free(&name, None)?;
+            let plan = self.restore_plan(&st, &record, claude_resume, with_commands);
+            if dry_run {
+                return Ok(json!({"dry_run": true, "would_restore": plan}));
+            }
+            st.persist.restoring.insert(id);
+            (record, plan)
+        };
+        let id = record["id"].as_str().unwrap_or("").to_string();
+        let r = self.rebuild(&record, &plan);
+        let mut st = self.lock();
+        st.persist.restoring.remove(&id);
+        match r {
+            Ok(mut out) => {
+                st.persist.saved.retain(|t| t["id"] != id.as_str());
+                st.persist
+                    .restore
+                    .insert(id, record["restore"].as_str().unwrap_or("ask").to_string());
+                st.mark_dirty();
+                out["plan"] = plan;
+                out["automatic"] = json!(auto);
+                Ok(out)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Step 30: starts the saved windows and panes (one request at a time, as a client would).
+    fn rebuild(self: &Arc<Self>, t: &Value, plan: &Value) -> Result<Value, IpcError> {
+        let launch_of = |pp: &Value| -> (Option<Value>, Option<String>) {
+            match pp["launch"].as_str() {
+                Some("command") => (
+                    pp["command_line"].is_null().then(|| pp["command"].clone()),
+                    pp["command_line"].as_str().map(String::from),
+                ),
+                Some("claude") => (
+                    None,
+                    Some(format!(
+                        "cmd.exe /d /k claude --resume {}",
+                        pp["claude"]["session_id"].as_str().unwrap_or("")
+                    )),
+                ),
+                _ => (None, None),
+            }
+        };
+        let plan_panes: Vec<Value> = plan["panes"].as_array().cloned().unwrap_or_default();
+        let plan_for = |saved: &Value| {
+            plan_panes
+                .iter()
+                .find(|x| &x["saved_pane"] == saved)
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
+        let tid = t["id"].as_str().unwrap_or("").to_string();
+        let mut map: HashMap<String, String> = HashMap::new();
+        let mut failed: Vec<String> = Vec::new();
+        let windows: Vec<Value> = t["windows"].as_array().cloned().unwrap_or_default();
+        for (wi, w) in windows.iter().enumerate() {
+            let order = {
+                let mut v = Vec::new();
+                fn leaves(n: &Value, out: &mut Vec<String>) {
+                    match n["type"].as_str() {
+                        Some("pane") => out.push(n["pane"].as_str().unwrap_or("").to_string()),
+                        _ => n["children"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .for_each(|c| leaves(&c["node"], out)),
+                    }
+                }
+                leaves(&w["layout"], &mut v);
+                v
+            };
+            let first = order.first().cloned().unwrap_or_default();
+            let fp = plan_for(&json!(first));
+            let (command, line) = launch_of(&fp);
+            let size = json!({"cols": w["size"]["cols"].as_u64().unwrap_or(80), "rows": w["size"]["rows"].as_u64().unwrap_or(24)});
+            let first_new = if wi == 0 {
+                let (cmd, raw) = match (&command, &line) {
+                    (_, Some(l)) => (session::split_command_line(l), Some(l.clone())),
+                    (Some(c), None) => (
+                        Command {
+                            program: c["program"].as_str().unwrap_or("").to_string(),
+                            args: c["args"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|a| a.as_str().map(String::from))
+                                .collect(),
+                        },
+                        None,
+                    ),
+                    (None, None) => (session::split_command_line(&default_shell()), None),
+                };
+                let spec = Spec {
+                    name: Some(session::parse_name(t["name"].as_str().unwrap_or(""))?),
+                    command: cmd,
+                    command_line: raw.clone(),
+                    cwd: fp["cwd"].as_str().map(String::from),
+                    env: pty::EnvNames::default(),
+                    size: (
+                        u16::try_from(size["cols"].as_u64().unwrap_or(80)).unwrap_or(80),
+                        u16::try_from(size["rows"].as_u64().unwrap_or(24)).unwrap_or(24),
+                    ),
+                    remain_on_exit: t["remain_on_exit"] == true,
+                    history_limit: Self::history_of(w, &first),
+                };
+                let r = self.create_with(
+                    spec,
+                    &Launch {
+                        raw_line: raw,
+                        env: EnvOverrides::default(),
+                    },
+                    false,
+                    Some((
+                        tid.clone(),
+                        t["created_at"].as_str().unwrap_or("").to_string(),
+                    )),
+                )?;
+                r["pane_id"].as_str().unwrap_or("").to_string()
+            } else {
+                let mut params = json!({"target": tid, "select": false, "cwd": fp["cwd"], "size": size,
+                    "history_limit": Self::history_of(w, &first)});
+                if w["automatic_name"] == false {
+                    params["name"] = w["name"].clone();
+                }
+                Self::put_launch(&mut params, command, line);
+                match self.create_in(&params, "window.create") {
+                    Ok(r) => r["pane_id"].as_str().unwrap_or("").to_string(),
+                    Err(e) => {
+                        failed.push(format!("window {wi}: {}", e.message));
+                        continue;
+                    }
+                }
+            };
+            map.insert(first.clone(), first_new.clone());
+            // The split tree: each split's other children split off its first leaf, in order.
+            let mut stack = vec![(w["layout"].clone(), first_new.clone())];
+            while let Some((node, at)) = stack.pop() {
+                if node["type"] != "split" {
+                    continue;
+                }
+                let dir = node["direction"].as_str().unwrap_or("vertical").to_string();
+                let kids = node["children"].as_array().cloned().unwrap_or_default();
+                let mut current = at.clone();
+                let mut regions = vec![(kids[0]["node"].clone(), at.clone())];
+                for k in &kids[1..] {
+                    let mut leaf = Vec::new();
+                    fn first_leaf(n: &Value, out: &mut Vec<String>) {
+                        if n["type"] == "pane" {
+                            out.push(n["pane"].as_str().unwrap_or("").to_string());
+                        } else if let Some(c) = n["children"].as_array().and_then(|c| c.first()) {
+                            first_leaf(&c["node"], out);
+                        }
+                    }
+                    first_leaf(&k["node"], &mut leaf);
+                    let saved_id = leaf.first().cloned().unwrap_or_default();
+                    let pp = plan_for(&json!(saved_id));
+                    let (command, line) = launch_of(&pp);
+                    let mut params = json!({"target": current, "direction": dir, "select": false,
+                        "cwd": pp["cwd"], "history_limit": Self::history_of(w, &saved_id)});
+                    Self::put_launch(&mut params, command, line);
+                    match self.create_in(&params, "pane.split") {
+                        Ok(r) => {
+                            let new = r["pane_id"].as_str().unwrap_or("").to_string();
+                            map.insert(saved_id, new.clone());
+                            regions.push((k["node"].clone(), new.clone()));
+                            current = new;
+                        }
+                        Err(e) => failed.push(format!("a pane of window {wi}: {}", e.message)),
+                    }
+                }
+                stack.extend(regions);
+            }
+            // The saved sizes.
+            let mut st = self.lock();
+            if let Some(ti) = st.reg.index_of(&tid)
+                && let Some(wix) = st.reg.terminals[ti]
+                    .windows
+                    .iter()
+                    .position(|x| x.panes.iter().any(|p| p.id == first_new))
+            {
+                let mut next = st.reg.terminals[ti].windows[wix].clone();
+                if let Ok(((), changed)) = next.relayout(|l| {
+                    l.apply_cells(&w["layout"]);
+                    Ok(())
+                }) {
+                    let wid = next.id.clone();
+                    st.reg.terminals[ti].windows[wix] = next;
+                    st.layout_event(&tid, &wid);
+                    let resizes = st.resized(changed);
+                    drop(st);
+                    let _ = apply_resizes(&resizes);
+                }
+            }
+        }
+        // The active window and pane, as saved.
+        let mut st = self.lock();
+        if let Some(ti) = st.reg.index_of(&tid) {
+            let active_w = windows
+                .iter()
+                .position(|w| w["id"] == t["active_window"])
+                .unwrap_or(0);
+            let active_p = windows
+                .get(active_w)
+                .and_then(|w| w["active_pane"].as_str())
+                .and_then(|p| map.get(p))
+                .cloned();
+            let term = &mut st.reg.terminals[ti];
+            if let Some(pid) = active_p
+                && let Some((wi, pi)) =
+                    term.windows.iter().enumerate().find_map(|(wi, w)| {
+                        w.panes.iter().position(|p| p.id == pid).map(|pi| (wi, pi))
+                    })
+            {
+                let (wc, pc) = term.select_pane(wi, pi);
+                st.selected(&tid, wc, pc);
+            }
+        }
+        let t_json = st.reg.get(&tid).map(|t| st.terminal_json(t));
+        Ok(json!({
+            "terminal_id": tid, "name": t["name"], "terminal": t_json,
+            "panes": map.iter().map(|(old, new)| json!({"saved_pane": old, "pane_id": new})).collect::<Vec<_>>(),
+            "failed": failed,
+        }))
+    }
+
+    fn history_of(w: &Value, saved_pane: &str) -> usize {
+        w["panes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|p| p["id"] == saved_pane)
+            .and_then(|p| p["history_limit"].as_u64())
+            .and_then(|n| usize::try_from(n).ok())
+            .unwrap_or(screen::DEFAULT_HISTORY_LINES)
+    }
+
+    fn put_launch(params: &mut Value, command: Option<Value>, line: Option<String>) {
+        if let Some(l) = line {
+            params["command_line"] = json!(l);
+        } else if let Some(c) = command {
+            params["command"] = c;
+        }
     }
 
     /// `claude.report` (a `hook` client: `subak claude report` run by a Claude Code hook): one
@@ -4142,6 +4633,9 @@ impl Host {
         }
         let mut st = self.lock();
         st.stats.claude_reports += 1;
+        st.persist
+            .last_claude
+            .insert(pane_id.clone(), session_id.clone());
         let before = st.claude_of(&rt.terminal_id);
         let sessions = st.claude.entry(pane_id.clone()).or_default();
         let previous = sessions.get(&session_id).map(|s| s.state.clone());

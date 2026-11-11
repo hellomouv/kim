@@ -507,6 +507,18 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.20 Cold recovery (`subak recover`, Step 30)
+
+[ADR 0064](adr/0064-cold-recovery-and-claude-resume.md), [RECOVERY.md §4](RECOVERY.md).
+
+| Command | Effect |
+| --- | --- |
+| `subak recover list` | the saved Terminals and, pane by pane, what a restore would start and what it cannot bring back; starts nothing |
+| `subak recover <terminal> [--dry-run] [--claude-resume] [--with-commands] --yes` | the Terminal again: its id, name, windows and layout, a fresh shell per pane; `--claude-resume` resumes the saved Claude session, `--with-commands` runs saved start commands |
+
+Without `--yes` (and not a dry run): `confirmation_required` (exit 7). A Terminal already
+running is `invalid_state` (exit 7), never started twice.
+
 ### 3.19 Durable state (`subak state`, Step 29)
 
 [ADR 0063](adr/0063-durable-terminal-state.md), [RECOVERY.md](RECOVERY.md). The Host writes

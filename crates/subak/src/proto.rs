@@ -37,7 +37,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Event topics a client can subscribe to.
 pub const TOPICS: [&str; 4] = ["terminals", "panes", "claude", "host"];
 /// Additive capabilities announced in `welcome.features`.
-pub const FEATURES: [&str; 16] = [
+pub const FEATURES: [&str; 17] = [
     "host.health",
     "host.stats",
     "events.subscribe",
@@ -68,6 +68,8 @@ pub const FEATURES: [&str; 16] = [
     "claude.sessions",
     // Step 29: state.json (saved Terminals are kept, never started).
     "state.persistence",
+    // Step 30: saved Terminals are restored on request (or by an `auto` policy), shells only.
+    "terminal.restore",
 ];
 
 /// One decoded frame.
@@ -566,7 +568,7 @@ pub const METHODS: &[Method] = &[
     m("terminal.stop", CG, true),
     m("terminal.kill", CG, true),
     m("terminal.remove", CG, true),
-    m("terminal.restore", CG, false),
+    m("terminal.restore", CG, true),
     // Step 21 (ADR 0054): internal windows and panes; listing is read-only like terminal.list.
     m("window.create", CG, true),
     m("window.list", CGM, true),
@@ -584,6 +586,8 @@ pub const METHODS: &[Method] = &[
     m("state.status", CGM, true),
     m("state.forget", CG, true),
     m("state.set_restore", CG, true),
+    // Step 30: cold recovery.
+    m("terminal.recoverable", CGM, true),
     m("window.select_layout", CG, true),
     m("pane.create", CG, true),
     // Step 22 (ADR 0056): splits and the layout.
@@ -1119,11 +1123,16 @@ mod tests {
         assert_eq!(code(Gui, "client.detach"), None);
         assert_eq!(code(Mcp, "client.detach"), Some(ErrorCode::Unauthorized));
         assert_eq!(code(Hook, "client.detach"), Some(ErrorCode::Unauthorized));
-        // Later Steps' methods: refused by kind first, then reported as not implemented.
+        // Step 30: every method of the table is implemented; a name not in it is unknown.
+        assert!(
+            METHODS.iter().all(|m| m.implemented),
+            "a method still planned"
+        );
         assert_eq!(
-            code(Cli, "terminal.restore"),
+            code(Cli, "terminal.teleport"),
             Some(ErrorCode::UnknownRequest)
         );
+        assert_eq!(code(Cli, "terminal.restore"), None);
         assert_eq!(code(Hook, "claude.report"), None, "Step 27");
         assert_eq!(code(Cli, "claude.report"), Some(ErrorCode::Unauthorized));
         // Every method name fits the schema's pattern.

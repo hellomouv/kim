@@ -149,7 +149,8 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `terminal.stop` | `{target, force, dry_run}` | `{affected, terminal, removed, terminal_id, name}` or `{dry_run: true, would_stop}` | cli, gui, mcp* | **10** |
 | `terminal.kill` | `{target, force, dry_run}` | as `terminal.stop` (`would_kill`) | cli, gui, mcp* | **10** |
 | `terminal.remove` | `{target, force?, dry_run}` | as `terminal.stop` (`would_remove`) | cli, gui, mcp* | **10** |
-| `terminal.restore` | `{target, dry_run, claude_resume}` | `{plan}` or `{restored}` | cli, gui, mcp* | 30 |
+| `terminal.recoverable` | — | `result_terminal_recoverable`: `{terminals: [restore_plan], enabled}` | cli, gui, mcp | **30** |
+| `terminal.restore` | `{target (a saved Terminal), dry_run?, claude_resume?, with_commands?}` | `result_terminal_restore` ([ADR 0064](../adr/0064-cold-recovery-and-claude-resume.md)) | cli, gui | **30** |
 | `window.create` | `{target (Terminal), name?, command? \| command_line?, cwd?, env?, size?, history_limit?, select?, dry_run?}` | `{terminal_id, window_id, pane_id, selected, window}` or `{dry_run: true, would_create}` (§4.4) | cli, gui, mcp* | **21** |
 | `window.list` | `{target (Terminal)}` | `{terminal_id, name, state, active_window, windows}` | cli, gui, mcp | **21** |
 | `window.select` | `{target (window), dry_run?}` | `{terminal_id, window_id, pane_id, changed}` or `{dry_run: true, would_select}` | cli, gui, mcp* | **21** |

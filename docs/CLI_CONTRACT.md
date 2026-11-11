@@ -267,6 +267,11 @@ status|install|uninstall [--settings <file>]` (no Host; an invalid settings file
 report`, which a Claude Code hook runs: it is the one command that **always exits 0** and prints
 nothing without `--json` (a hook must never disturb Claude); its data says whether the event was
 delivered. No error code is added.
+Step 29 ([ADR 0063](adr/0063-durable-terminal-state.md)) adds `subak state
+show|check|backups|forget|policy|rollback` (errors `state_corrupt`, `state_from_newer_version`);
+Step 30 ([ADR 0064](adr/0064-cold-recovery-and-claude-resume.md)) adds `subak recover list` and
+`subak recover <terminal>`, which is not destructive but starts processes, so it needs `--yes`
+(`confirmation_required` without it) like the destructive commands.
 `capture`, `history` and `clear-history` (Step 13, [SCROLLBACK.md](SCROLLBACK.md)) answer
 `pane.capture` (all pages joined, plus `name` and `requests`), its counters with the Terminal's
 `name` and `state`, and `pane.clear_history` plus `name`; `capture` redacts secret-looking

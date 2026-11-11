@@ -561,6 +561,8 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         }
         Cmd::Command => terminal::command(a, &endpoint),
         Cmd::ClaudeStatus => terminal::claude_status(a, &endpoint),
+        Cmd::RecoverList => terminal::recover_list(&endpoint),
+        Cmd::Recover => terminal::recover(a, &endpoint),
         Cmd::BufferLs | Cmd::BufferShow | Cmd::BufferSet | Cmd::BufferDelete | Cmd::BufferPaste => {
             terminal::buffer(a, &endpoint, cmd)
         }

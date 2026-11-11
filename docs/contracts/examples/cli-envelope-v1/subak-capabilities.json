@@ -681,7 +681,7 @@
         "opens_window": false,
         "requires_yes": false,
         "summary": "Whether a Terminal is restored when Subak next opens; starts and ends nothing",
-        "usage": "subak state policy <terminal> <ask|auto|never> [--state-dir <dir>] [--dry-run] [--json]"
+        "usage": "subak state policy <terminal> <ask|auto|never> [--claude-resume] [--state-dir <dir>] [--dry-run] [--json]"
       },
       {
         "dry_run": true,
@@ -692,6 +692,26 @@
         "requires_yes": false,
         "summary": "Make a backup (default: the newest valid one) the current state; refused while a Host runs",
         "usage": "subak state rollback [<backup>] [--state-dir <dir>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "recover.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The saved Terminals the Host can restore, pane by pane, and what a restore cannot bring back (starts nothing)",
+        "usage": "subak recover list [--endpoint <name>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "recover",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": true,
+        "summary": "Start a saved Terminal again: its id, name, windows and layout with fresh shells; the saved Claude session or start commands only when asked",
+        "usage": "subak recover <saved terminal> [--claude-resume] [--with-commands] [--dry-run] --yes [--json]"
       }
     ],
     "implementation": "implemented",

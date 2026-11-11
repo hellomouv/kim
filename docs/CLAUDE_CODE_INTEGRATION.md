@@ -71,10 +71,20 @@ in `config.toml` hides the tab marks ([SUBAK_GUI §18](SUBAK_GUI.md)).
 - **The Host restarts:** sessions are in memory only (`persisted: false`) and start empty; the
   next hook re-creates them. Persisting the last session id for `claude --resume` is Step 29/30.
 
-## 6. Versions checked
+## 6. Resuming a conversation after a restart (Step 30)
+
+The last session id of each pane is saved (also after the session ended). `subak recover
+<terminal> --claude-resume --yes` starts `claude --resume <id>` in that pane's shell — only if
+Claude Code still has the session and it does not already run in another pane; otherwise a shell
+starts with a note. Subak sends no prompt and approves nothing; the resumed Claude waits for you
+with your own Claude settings. Store the opt-in with `subak state policy <t> auto
+--claude-resume` to resume on an automatic restore ([ADR 0064](adr/0064-cold-recovery-and-claude-resume.md)).
+
+## 7. Versions checked
 
 | Claude Code | How | Result |
 | --- | --- | --- |
+| 2.1.322 (Windows) | Step 30: a real `claude -p` conversation in a Subak pane, its session id persisted, the Host stopped and started, `subak recover agent --claude-resume --yes` (2026-11-11) | the restored pane showed the earlier conversation ("Remember the code word KIWI-42…" / "ok") and waited at Claude's prompt; a second recover was refused |
 | 2.1.322 (Windows, native installer) | a real `claude -p` in a Subak pane with `--settings <file written by subak claude hooks install> --setting-sources local` (2026-11-11) | `SessionStart` → `idle`, `UserPromptSubmit` → `in-progress`, `Stop` → `done`, `SessionEnd` ended it; the answer printed normally |
 
 Hook fields were checked against the official reference

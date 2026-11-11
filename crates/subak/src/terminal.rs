@@ -1011,3 +1011,41 @@ pub fn claude_status(a: &Args, endpoint: &str) -> Result<Value, CliError> {
     let target = a.positional.first().cloned();
     require(endpoint)?.request("claude.status", &json!({"target": target}))
 }
+
+/// Step 30: `subak recover list` — the saved Terminals a Host can restore, with what each
+/// restore would do and what cannot come back. Starts nothing (and no Host).
+pub fn recover_list(endpoint: &str) -> Result<Value, CliError> {
+    let mut s = Session::open(endpoint, Duration::from_millis(500)).map_err(|e| {
+        if e.code == Code::HostNotRunning {
+            e.hint("`subak state show` reads the saved state without a Host; `subak recover <terminal> --yes` starts one")
+        } else {
+            e
+        }
+    })?;
+    s.request("terminal.recoverable", &json!({}))
+}
+
+/// Step 30: `subak recover <terminal> [--dry-run] [--claude-resume] [--with-commands] --yes` —
+/// starts a saved Terminal again: fresh shells in its windows and panes; the saved Claude
+/// session and start commands only when asked. Needs `--yes` (it starts processes).
+pub fn recover(a: &Args, endpoint: &str) -> Result<Value, CliError> {
+    let target = a.positional.first().cloned().unwrap_or_default();
+    let params = json!({"target": target, "claude_resume": a.claude_resume,
+        "with_commands": a.with_commands, "dry_run": a.dry_run});
+    if !a.dry_run && !a.yes {
+        return Err(CliError::new(
+            Code::ConfirmationRequired,
+            format!("recovering `{target}` starts new processes; nothing was started"),
+        )
+        .hint(format!(
+            "look first: `subak recover {target} --dry-run`; then add --yes"
+        )));
+    }
+    let plan = Plan {
+        shell: None,
+        idle_exit_s: crate::host::DEFAULT_IDLE_EXIT_S,
+        state_dir: a.state_dir.clone(),
+    };
+    let Connected { mut session, .. } = client::connect_or_start(endpoint, &plan)?;
+    session.request_within("terminal.restore", &params, CREATE_TIMEOUT)
+}

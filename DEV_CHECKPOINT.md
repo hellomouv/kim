@@ -8,16 +8,18 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 30** (#30) — cold recovery and Claude resume
-- Last fully completed Step: Step 29 (#29, durable state, ADR 0063)
+- Current Step: **Step 31** (#31) — validate shutdown, sleep and crash recovery
+- Last fully completed Step: Step 30 (#30, cold recovery and Claude resume, ADR 0064)
 - Uncommitted changes: none expected between Steps
-- Next action: read #30. Saved records (`Persist.saved` in host.rs, `state.status`) are never
-  started; Step 30 adds explicit restore (policy ask/auto/never) and opt-in `claude --resume`
+- Next action: read #31 (real shutdown/sleep/crash validation; a reboot needs the maintainer)
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 30 — recovery 2/2 (topology, sizes, id, no rerun, confirm, duplicate, auto,
+  Claude resume decisions), a real Claude 2.1.322 conversation resumed by `subak recover
+  --claude-resume`, e2e step30 1/1 (focused local run, LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 29 — state unit tests 5/5, state_persistence 3/3 (clean stop, no relaunch,
   killed Host, torn file, newer version, rollback, secrets, private Hosts), e2e step29 1/1
   (focused local run, LEDGER); `cargo xtask ci` before push.

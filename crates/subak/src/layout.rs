@@ -222,6 +222,41 @@ impl Layout {
         next
     }
 
+    /// Step 30: gives this tree the saved tree's cell sizes where both have the same shape
+    /// (`map`: saved pane id → this tree's pane id), then fits the window. A part whose shape
+    /// differs keeps its sizes.
+    pub fn apply_cells(&mut self, saved: &Value) {
+        fn walk(n: &mut Node, s: &Value) {
+            match n {
+                Node::Pane(_) => {}
+                Node::Split { dir, children } => {
+                    let sdir = match s["direction"].as_str() {
+                        Some("horizontal") => Some(Dir::Horizontal),
+                        Some("vertical") => Some(Dir::Vertical),
+                        _ => None,
+                    };
+                    let Some(sc) = s["children"].as_array() else {
+                        return;
+                    };
+                    if sdir != Some(*dir) || sc.len() != children.len() {
+                        return;
+                    }
+                    for (c, x) in children.iter_mut().zip(sc) {
+                        if let Some(cells) = x["cells"].as_u64().and_then(|v| u16::try_from(v).ok())
+                        {
+                            c.size = cells.max(1);
+                        }
+                        walk(&mut c.node, &x["node"]);
+                    }
+                }
+            }
+        }
+        walk(&mut self.root, saved);
+        let size = self.size;
+        fit(&mut self.root, Dir::Horizontal, size.0);
+        fit(&mut self.root, Dir::Vertical, size.1);
+    }
+
     /// Step 25 (`select-layout -E`): every split shares its space equally among its children.
     pub fn spread(&mut self) {
         fn ones(n: &mut Node) {

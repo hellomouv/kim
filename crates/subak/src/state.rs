@@ -239,6 +239,7 @@ fn layout_panes(n: &Value, out: &mut Vec<String>, depth: usize) -> Result<(), St
 pub fn terminal_record(
     t: &crate::session::Terminal,
     restore: &str,
+    claude_resume: bool,
     claude: &dyn Fn(&str) -> Option<String>,
 ) -> Value {
     let windows: Vec<Value> = t
@@ -271,7 +272,7 @@ pub fn terminal_record(
                         "env_unset": p.env.unset,
                         "history_limit": p.history_limit,
                         "title": null,
-                        "claude": claude(&p.id).map(|sid| json!({"session_id": sid, "resume": false})),
+                        "claude": claude(&p.id).map(|sid| json!({"session_id": sid, "resume": claude_resume})),
                         "scrollback": {"persisted": false},
                     })
                 })
@@ -763,7 +764,8 @@ pub fn run(cmd: Cmd, a: &Args) -> Result<(Value, String), CliError> {
                 } else {
                     (
                         "state.set_restore",
-                        json!({"target": target, "restore": policy, "dry_run": a.dry_run}),
+                        json!({"target": target, "restore": policy, "dry_run": a.dry_run,
+                            "claude_resume": if a.claude_resume { json!(true) } else { Value::Null }}),
                     )
                 };
                 let r = s.request(method, &params)?;
@@ -776,6 +778,15 @@ pub fn run(cmd: Cmd, a: &Args) -> Result<(Value, String), CliError> {
                     Ok(json!({"forgotten": summary(&ts.remove(i))}))
                 } else {
                     ts[i]["restore"] = json!(policy);
+                    if a.claude_resume {
+                        for w in ts[i]["windows"].as_array_mut().into_iter().flatten() {
+                            for p in w["panes"].as_array_mut().into_iter().flatten() {
+                                if p["claude"].is_object() {
+                                    p["claude"]["resume"] = json!(true);
+                                }
+                            }
+                        }
+                    }
                     Ok(
                         json!({"terminal_id": ts[i]["id"], "name": ts[i]["name"], "restore": policy}),
                     )

@@ -103,6 +103,9 @@ pub enum Cmd {
     StateForget,
     StatePolicy,
     StateRollback,
+    // Step 30: cold recovery.
+    RecoverList,
+    Recover,
 }
 
 impl Cmd {
@@ -179,6 +182,8 @@ impl Cmd {
             Self::StateForget => "state.forget",
             Self::StatePolicy => "state.policy",
             Self::StateRollback => "state.rollback",
+            Self::RecoverList => "recover.list",
+            Self::Recover => "recover",
         }
     }
 
@@ -286,6 +291,7 @@ impl Cmd {
             Self::StateForget => (&["saved terminal"], 1),
             Self::StatePolicy => (&["terminal", "ask, auto or never"], 2),
             Self::StateRollback => (&["backup"], 0),
+            Self::Recover => (&["saved terminal"], 1),
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
             _ => (&[], 0),
         }
@@ -430,8 +436,18 @@ impl Cmd {
             Self::StateShow | Self::StateCheck | Self::StateBackups => {
                 &["--state-dir", "--endpoint"]
             }
-            Self::StateForget | Self::StatePolicy => &["--state-dir", "--endpoint", "--dry-run"],
+            Self::StateForget => &["--state-dir", "--endpoint", "--dry-run"],
+            Self::StatePolicy => &["--state-dir", "--endpoint", "--claude-resume", "--dry-run"],
             Self::StateRollback => &["--state-dir", "--endpoint", "--dry-run"],
+            Self::RecoverList => &["--endpoint"],
+            Self::Recover => &[
+                "--endpoint",
+                "--state-dir",
+                "--claude-resume",
+                "--with-commands",
+                "--yes",
+                "--dry-run",
+            ],
         };
         if *self == Self::PaneNew && opt == "--name" {
             return false;
@@ -529,6 +545,10 @@ pub struct Args {
     pub settings: Option<String>,
     /// Step 29: `host start|serve --state-dir <dir>`, `state … --state-dir <dir>`.
     pub state_dir: Option<String>,
+    /// Step 30: `recover --claude-resume`, `state policy … --claude-resume`, `recover
+    /// --with-commands`.
+    pub claude_resume: bool,
+    pub with_commands: bool,
     /// Step 24: `buffer set --append`, `buffer paste --delete`, `command --target <target>`.
     pub append: bool,
     pub delete: bool,
@@ -867,6 +887,14 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
             "-y" | "--yes" => {
                 a.yes = true;
                 opts.push("--yes");
+            }
+            "--claude-resume" => {
+                a.claude_resume = true;
+                opts.push("--claude-resume");
+            }
+            "--with-commands" => {
+                a.with_commands = true;
+                opts.push("--with-commands");
             }
             "--endpoint" => {
                 opts.push("--endpoint");
@@ -1255,6 +1283,8 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["host", "health", ..] => (Cmd::HostHealth, 2),
         ["host", "attach", ..] => (Cmd::HostAttach, 2),
         ["host", "stop", ..] => (Cmd::HostStop, 2),
+        ["recover", "list", ..] => (Cmd::RecoverList, 2),
+        ["recover", ..] => (Cmd::Recover, 1),
         ["state", "show", ..] => (Cmd::StateShow, 2),
         ["state", "check", ..] => (Cmd::StateCheck, 2),
         ["state", "backups", ..] => (Cmd::StateBackups, 2),

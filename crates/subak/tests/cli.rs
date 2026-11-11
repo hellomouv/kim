@@ -226,7 +226,9 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "state.backups",
             "state.forget",
             "state.policy",
-            "state.rollback"
+            "state.rollback",
+            "recover.list",
+            "recover"
         ],
         "only commands that really exist"
     );
@@ -244,7 +246,12 @@ fn capabilities_are_honest_and_follow_the_contract() {
                 | "pane.kill"
         );
         assert_eq!(c["effect"] == "destructive", destructive, "{c}");
-        assert_eq!(c["requires_yes"] == true, destructive, "{c}");
+        // `recover` (Step 30) is not destructive but starts processes: it needs --yes too.
+        assert_eq!(
+            c["requires_yes"] == true,
+            destructive || c["name"] == "recover",
+            "{c}"
+        );
     }
     assert!(
         data["commands"]
