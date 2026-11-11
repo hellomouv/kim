@@ -108,7 +108,8 @@ at once and no timer runs.
 
 Every state keeps its own shape and its words: the window title "(Claude needs input)", the
 floating icon's tooltip and accessible name ("…, Claude needs input"), the manager's row
-("· Claude need-input"). Static mode keeps all of it. High Contrast draws the watermelon as an
+("· ! Claude need-input": the resting mark and the words; the row does not move — the manager
+is a short-lived flyout, the tab and the badge carry the motion). Static mode keeps all of it. High Contrast draws the watermelon as an
 outline in the system text colour and the badge in the highlight colour. Tab keys, focus and IME
 are untouched (the mark is part of the tab's text, not a separate control).
 

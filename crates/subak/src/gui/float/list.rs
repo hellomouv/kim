@@ -121,8 +121,9 @@ impl Entry {
             1 => d.push_str(" · shown in 1 window"),
             n => d.push_str(&format!(" · shown in {n} windows")),
         }
-        if self.claude != Claude::None {
-            d.push_str(&format!(" · Claude {}", self.claude.as_str()));
+        // Step 44: the state's mark (the same shape as the tab's resting mark) and its words.
+        if let Some(mark) = crate::gui::claude_motion::rest(self.claude) {
+            d.push_str(&format!(" · {mark} Claude {}", self.claude.as_str()));
         }
         d
     }
@@ -1306,7 +1307,11 @@ mod tests {
         t["claude_state"] = json!("need-input");
         let m = connected(vec![t, term("t-b", "b", "running", false, 0)]);
         assert_eq!(m.entries()[0].claude, Claude::NeedInput);
-        assert!(m.entries()[0].detail().ends_with("Claude need-input"));
+        assert!(
+            m.entries()[0].detail().ends_with("· ! Claude need-input"),
+            "{}",
+            m.entries()[0].detail()
+        );
         assert_eq!(m.icon_state().claude, Claude::NeedInput);
         assert_eq!(m.entries()[1].claude, Claude::None);
     }
