@@ -439,3 +439,81 @@ fn an_embedded_icc_profile_is_converted_to_srgb() {
     assert!(!broken.icc);
     assert_eq!(bgra_at(&broken.frame, 0, 0), [200, 150, 100, 255]);
 }
+
+/// Step 63 (NOEUL-SEC-009, threat model in docs/SECURITY.md §5): a deterministic mutation fuzz of
+/// every format Noeul decodes — flipped bytes, truncations, inserted and repeated bytes, a huge
+/// size field — never panics, never returns a picture beyond the limits, and fails with
+/// `image_invalid` naming no path. 600 mutations per format, a fixed seed (reproducible).
+#[test]
+fn mutated_pictures_never_panic_or_exceed_the_limits() {
+    let ledger = Ledger::new();
+    let src = ramp(12, 9);
+    let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    let mut decoded = 0;
+    for format in [
+        Format::Png,
+        Format::Jpeg,
+        Format::Gif,
+        Format::Bmp,
+        Format::Ico,
+        Format::Tiff,
+        Format::Tga,
+    ] {
+        let good = encode(format, 12, 9, &src);
+        for _ in 0..600 {
+            let mut d = good.clone();
+            let n = d.len();
+            match next() % 5 {
+                0 => {
+                    for _ in 0..1 + next() % 8 {
+                        let i = (next() as usize) % n;
+                        d[i] ^= (next() & 0xFF) as u8 | 1;
+                    }
+                }
+                1 => d.truncate((next() as usize) % n),
+                2 => {
+                    let i = (next() as usize) % n;
+                    let extra: Vec<u8> = (0..1 + next() % 64)
+                        .map(|_| (next() & 0xFF) as u8)
+                        .collect();
+                    d.splice(i..i, extra);
+                }
+                3 => {
+                    let i = (next() as usize) % n;
+                    let b = d[i];
+                    d.splice(i..i, std::iter::repeat_n(b, 1 + (next() % 512) as usize));
+                }
+                _ => {
+                    // A size field set huge: the first 4 bytes after a random offset.
+                    let i = (next() as usize) % n.saturating_sub(4).max(1);
+                    for k in 0..4.min(n - i) {
+                        d[i + k] = 0xFF;
+                    }
+                }
+            }
+            match decode(&ledger, &d, format) {
+                Ok(p) => {
+                    decoded += 1;
+                    assert!(
+                        p.frame.width() <= frame::MAX_SIDE && p.frame.height() <= frame::MAX_SIDE
+                    );
+                }
+                Err(e) => {
+                    assert_eq!(e.code, Code::ImageInvalid, "{format:?}: {e:?}");
+                    assert!(!e.message.contains(":\\"), "no path");
+                }
+            }
+        }
+    }
+    assert_eq!(ledger.live(), (0, 0), "every picture was freed");
+    assert!(
+        decoded > 0,
+        "some mutations still decode (tolerant formats)"
+    );
+}

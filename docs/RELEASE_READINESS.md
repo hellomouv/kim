@@ -18,6 +18,8 @@
 | 5a | Distributables: deterministic zips with licenses, notices, manifests | ✅ | `cargo xtask package kim|subak` (Step 40, RELEASING §1) |
 | 5b | Install, update while running, rollback, uninstall keeping data, offline | ✅ | `e2e/tests/step40_release.rs` (real Subak package), `crates/kim/tests/rollback.rs` |
 | 5c | One-step Windows installer (`Kim-Setup.exe`, only Kim) | ✅ headless; window path ⏳ maintainer | `crates/kim-setup/tests/setup.rs`, `e2e/tests/step43_setup.rs` (ADR 0072) |
+| 5d | Noeul distributable and Kim install flow (separate, selectable tool) | ✅ | `cargo xtask package noeul`; `e2e/tests/step62_noeul_agents_kim.rs` (install, interop, uninstall); no automatic update |
+| 5e | Noeul budgets, fuzzing, threat model, parity evidence | ✅ measured; physical acceptance ⏳ maintainer | `cargo xtask bench-noeul --check` (PERFORMANCE §5), SECURITY §9, [NOEUL_PARITY_REPORT](NOEUL_PARITY_REPORT.md), [NOEUL_ACCEPTANCE](NOEUL_ACCEPTANCE.md) |
 | 6 | Host survives closing every client, detach, GUI crash | ✅ | `session_lifecycle.rs`, `milestone_a.rs`, `gui_window.rs` |
 | 7 | Crash recovery without data loss or duplicates | ✅ | `milestone_c.rs`, `recovery.rs`, `state_persistence.rs` |
 | 8 | Lock, sleep, hibernate, reboot, power loss | ⏳ maintainer | #31, `scripts/recovery-matrix.ps1` |
@@ -32,7 +34,7 @@
 | 17 | Accessibility | ◐ | system controls and accessible names in the floating manager (`gui_float.rs`), Claude states in words not colour only, High Contrast theme; **Narrator pass pending — maintainer** (SUBAK_GUI) |
 | 18 | Offline mode | ✅ | Kim `offline_mode` refuses network commands (`offline_mode`, exit 6); every other tool works offline |
 | 19 | e2e suite daily | ✅ | `Daily` workflow; `e2e/LEDGER.md` |
-| 20 | Visible-window and real-device checks of earlier Steps | ⏳ maintainer | open issues #8, #14–#20, #55–#58, #61–#64, #71, #73–#80 (DEV_CHECKPOINT) |
+| 20 | Visible-window and real-device checks of earlier Steps | ⏳ maintainer | open issues #8, #14–#20, #55–#58, #61–#64, #66, #68, #71, #73–#80 (DEV_CHECKPOINT) |
 | 21 | Third-party security review | ❌ | not done |
 
 ## 2. Release rollback

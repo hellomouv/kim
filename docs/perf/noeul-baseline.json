@@ -1,0 +1,75 @@
+{
+  "budgets": [
+    {
+      "limit": 12.0,
+      "path": "/binary_mib",
+      "requirement": "NOEUL-NFR-006"
+    },
+    {
+      "limit": 300.0,
+      "path": "/instance_ready_ms",
+      "requirement": "NOEUL-NFR-006"
+    },
+    {
+      "limit": 10.0,
+      "path": "/idle_cpu_ms_per_10s",
+      "requirement": "NOEUL-NFR-001 (0.1 % of one core)"
+    },
+    {
+      "limit": 20.0,
+      "path": "/idle_private_mib",
+      "requirement": "NOEUL-NFR-002"
+    },
+    {
+      "limit": 150.0,
+      "path": "/overlay_first_frame_p95_ms/4k",
+      "requirement": "NOEUL-NFR-003"
+    },
+    {
+      "limit": 250.0,
+      "path": "/overlay_first_frame_p95_ms/3x4k",
+      "requirement": "NOEUL-NFR-003"
+    },
+    {
+      "limit": 5.0,
+      "path": "/overlay_memory_back_within_mib",
+      "requirement": "NOEUL-NFR-002"
+    },
+    {
+      "limit": 50.0,
+      "path": "/double_click_pin_p95_ms/1080p",
+      "requirement": "NOEUL-NFR-004"
+    },
+    {
+      "limit": 100.0,
+      "path": "/double_click_pin_p95_ms/4k",
+      "requirement": "NOEUL-NFR-004"
+    }
+  ],
+  "machine": {
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "processors": "20"
+  },
+  "measured": {
+    "binary_mib": 5.0,
+    "cli_status_ms": {
+      "median": 19.4,
+      "p95": 21.5
+    },
+    "double_click_pin_p95_ms": {
+      "1080p": 17.2,
+      "4k": 60.2
+    },
+    "idle_cpu_ms_per_10s": 0.0,
+    "idle_private_mib": 1.8,
+    "instance_ready_ms": 25.4,
+    "overlay_first_frame_p95_ms": {
+      "3x4k": 83.8,
+      "4k": 33.5
+    },
+    "overlay_memory_back_within_mib": 0.1
+  },
+  "recorded": "this machine",
+  "schema": "kim.bench.noeul",
+  "schema_version": 1
+}

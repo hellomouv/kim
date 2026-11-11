@@ -7,6 +7,9 @@
 //! cargo run --release -p noeul --example overlay_measure -- --double-click [--runs 50]
 //! ```
 //!
+//! `--synthetic-only` skips the real-desktop layout (nothing is read from the screen; the bench
+//! uses it), and `--json` prints one JSON line of the results after the table (Step 63).
+//!
 //! `--double-click` measures NOEUL-NFR-004 through the Step 51 gesture: from the second press of
 //! a double-click inside a 1920×1080 and a 3840×2160 selection to the pin shown (synthetic
 //! off-screen monitors, off-screen never-activated pin windows).
@@ -422,7 +425,7 @@ mod measure {
     /// the time from handing the second press to the core until it returns — the selection cut
     /// from the frozen picture, the pin window created, rendered and shown, the overlay window
     /// destroyed and the frozen picture freed. Pins are closed between runs.
-    fn double_click_latency(w: u32, h: u32, runs: usize) {
+    fn double_click_latency(w: u32, h: u32, runs: usize) -> (u64, u64) {
         let mon = vec![Monitor::new(
             Rect::new(OFF_SCREEN.0, OFF_SCREEN.1, w, h),
             true,
@@ -494,11 +497,9 @@ mod measure {
             std::thread::sleep(Duration::from_millis(50));
         }
         let _ = std::fs::remove_dir_all(&dir);
-        println!(
-            "| {w}×{h} | {} / {} ms |",
-            ms(pct(&mut samples.clone(), 50)),
-            ms(pct(&mut samples, 95))
-        );
+        let (p50, p95) = (pct(&mut samples.clone(), 50), pct(&mut samples, 95));
+        println!("| {w}×{h} | {} / {} ms |", ms(p50), ms(p95));
+        (p50, p95)
     }
 
     pub fn main() {
@@ -516,8 +517,14 @@ mod measure {
             println!("Second press of the double-click → pin shown, {runs} runs (NOEUL-NFR-004)");
             println!("| Selection | p50 / p95 |");
             println!("| --- | --- |");
-            double_click_latency(1920, 1080, runs);
-            double_click_latency(3840, 2160, runs);
+            let hd = double_click_latency(1920, 1080, runs);
+            let uhd = double_click_latency(3840, 2160, runs);
+            if std::env::args().any(|a| a == "--json") {
+                println!(
+                    "{}",
+                    serde_json::json!({"double_click_pin_us": {"1920x1080": {"p50": hd.0, "p95": hd.1}, "3840x2160": {"p50": uhd.0, "p95": uhd.1}}})
+                );
+            }
             return;
         }
         let runs = std::env::args()
@@ -546,21 +553,34 @@ mod measure {
                 if m.primary { " (primary)" } else { "" }
             );
         }
+        let synthetic_only = std::env::args().any(|a| a == "--synthetic-only");
         let rows: Vec<Row> = [
-            run(
-                "real",
-                Box::new(Shifted {
-                    dx: shift.0,
-                    dy: shift.1,
-                }),
-                runs,
-            ),
+            (!synthetic_only)
+                .then(|| {
+                    run(
+                        "real",
+                        Box::new(Shifted {
+                            dx: shift.0,
+                            dy: shift.1,
+                        }),
+                        runs,
+                    )
+                })
+                .flatten(),
             run("4k-150", Box::new(Synthetic::new(uhd(1))), runs),
             run("3x4k", Box::new(Synthetic::new(uhd(3))), runs),
         ]
         .into_iter()
         .flatten()
         .collect();
+        let json_rows: Vec<Value> = rows
+            .iter()
+            .map(|r| {
+                serde_json::json!({"layout": r.name, "first_frame_us": {"p50": r.total.0, "p95": r.total.1},
+                    "render_us": {"p50": r.render.0, "p95": r.render.1}, "drag_us": {"p50": r.drag.0, "p95": r.drag.1},
+                    "private_bytes": {"before": r.base, "peak": r.peak, "after": r.after, "after_10s": r.after10}})
+            })
+            .collect();
         println!();
         println!(
             "| Layout | Picture | First frame p50 / p95 (ms) | Capture p50 / p95 | Render p50 / p95 | Drag redraw p50 / p95 | Private MiB: before / peak / after / +10 s |"
@@ -584,6 +604,9 @@ mod measure {
                 mib(r.after),
                 mib(r.after10)
             );
+        }
+        if std::env::args().any(|a| a == "--json") {
+            println!("{}", serde_json::json!({"overlay": json_rows}));
         }
     }
 }

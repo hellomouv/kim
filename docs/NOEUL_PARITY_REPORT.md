@@ -1,0 +1,83 @@
+# Noeul parity report (Snipaste feature matrix)
+
+- **Status:** current (Step 63, 2026-11-12). Source of truth: [NOEUL_SNIPASTE_MATRIX](NOEUL_SNIPASTE_MATRIX.md)
+  (every row with its status and evidence; `cargo xtask docs-check` resolves every evidence path).
+  Performance: [PERFORMANCE §5](PERFORMANCE.md#5-noeul-step-63); security: [SECURITY §9](SECURITY.md#9-noeul-step-63);
+  the maintainer's physical acceptance script: [NOEUL_ACCEPTANCE](NOEUL_ACCEPTANCE.md).
+
+**No fabricated completeness.** Most rows are *partial*: the core of the feature works and is tested,
+and the row says exactly what is missing. *Implemented* means nothing the row describes is missing.
+*Not intended* rows are design decisions (each names its reason, e.g. no keyboard hook, no OCR
+service, no hot corners).
+
+## 1. Counts
+
+| Area | Rows | Implemented | Partial | Planned | Not intended |
+| --- | --- | --- | --- | --- | --- |
+| Starting a capture and selecting (`SNIP`) | 22 | 0 | 11 | 3 | 8 |
+| Detection, magnifier, precision (`DET`) | 12 | 0 | 10 | 2 | 0 |
+| Colour picker (`COLOR`) | 7 | 0 | 6 | 1 | 0 |
+| History (`HIST`) | 6 | 4 | 1 | 1 | 0 |
+| Output and clipboard writes (`OUT`) | 12 | 0 | 8 | 3 | 1 |
+| Annotation (`ANN`) | 17 | 0 | 14 | 3 | 0 |
+| Pins (`PIN`) | 30 | 2 | 17 | 9 | 2 |
+| Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
+| Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
+| Settings and shortcuts (`SET`) | 22 | 3 | 9 | 4 | 6 |
+| Command line (`CLI`) | 9 | 2 | 5 | 1 | 1 |
+| Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
+| **All** | **164** | **11** | **101** | **28** | **24** |
+
+## 2. The critical workflows
+
+| Workflow | State | Evidence (automated; real windows off-screen, posted input) |
+| --- | --- | --- |
+| `F1` → drag a region → **double-click inside → floating pin** (the signature flow) | works; p95 17 ms (1080p) / 60 ms (4K) from the second press to the pin (budget 50 / 100) | `crates/noeul/tests/double_click.rs`, `crates/noeul/src/app.rs` the_double_click_pins_exactly_the_selection_with_no_clipboard_or_file, `cargo xtask bench-noeul` |
+| `F3` pins the clipboard (image, files, colour, HTML, text) | works | `crates/noeul/tests/paste.rs`, `crates/noeul/src/app/paste_tests.rs` |
+| Smart selection: windows and UI elements, magnifier, pixel keys | works (partial rows: parent/child stepping, key swap) | `crates/noeul/tests/smart_selection.rs` |
+| Colour picker (`C`, `Shift+C`) | works | `crates/noeul/tests/color_picker.rs` |
+| Annotation and redaction on the overlay and on pins | works (missing: Pro shapes) | `crates/noeul/tests/annotation.rs`, `crates/noeul/src/app.rs` a_solid_redaction_is_shown_copied_and_saved_without_a_pixel_of_the_original |
+| Pin transforms: zoom, rotate, flip, opacity, thumbnail, click-through with a way back | works | `crates/noeul/tests/pin_transform.rs` |
+| History and recovery (in memory; opt-in disk history and pin backup) | works | `crates/noeul/tests/history_backup.rs`, `crates/noeul/src/app/keeping_tests.rs` |
+| Groups | works (missing: group manager window) | `crates/noeul/tests/pin_transform.rs` |
+| Monitors and DPI (mixed DPI, monitors removed, pins brought back) | works | `crates/noeul/tests/displays.rs` |
+| Customisation: every shortcut, gestures, settings window | works (missing: other settings sections) | `crates/noeul/tests/settings_window.rs`, `crates/noeul/tests/instance.rs` |
+| Install through Kim, CLI, agents (MCP), interop | works | `e2e/tests/step62_noeul_agents_kim.rs`, `crates/noeul/tests/mcp_adapter.rs` |
+
+**Not verified by the agents** (they never use the maintainer's screen, mouse or keyboard): the same
+workflows with a physical mouse and keyboard on visible windows, SmartScreen with a signed build,
+Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTANCE](NOEUL_ACCEPTANCE.md).
+
+## 3. Remaining planned rows (tracked)
+
+Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99); *partial* rows name their gap in the
+matrix.
+
+- `SNIP-10` Move the area while still dragging by holding `Space`
+- `SNIP-11` Delayed capture and a dialog for position, size and delay
+- `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
+- `DET-03` Step to the parent or child element with the mouse wheel (Pro)
+- `DET-09` Swap the roles of `W A S D` and the arrow keys (setting)
+- `COLOR-05` Edit the value of a color card (Pro)
+- `HIST-06` Automatically save every screenshot to a folder
+- `OUT-06` Copy the image as a file as well (Pro)
+- `OUT-07` Output quality setting
+- `OUT-12` Keep copies out of cloud clipboard sync
+- `ANN-12` Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro)
+- `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
+- `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes
+- `PIN-08` Free-size thumbnail by right-dragging (Pro)
+- `PIN-15` Group manager window (Pro)
+- `PIN-17` Snap to other images and windows while dragging with `Shift`
+- `PIN-20` Select several images with `Ctrl`+click, or all with `Ctrl+A` (Pro)
+- `PIN-21` Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro)
+- `PIN-22` Replace an image with the clipboard content (`Ctrl+V`)
+- `PIN-24` Magnifier and color picking on image windows
+- `PIN-27` Disable smooth scaling for sharp text
+- `PIN-28` Images on virtual desktops (Pro)
+- `SET-03` Run when the system starts
+- `SET-06` Customize the tray icon's mouse actions (Pro)
+- `SET-11` Hotkeys may not work while an elevated window has focus
+- `SET-21` Interface translations
+- `CLI-02` Delay before snipping
+- `APP-03` Windows, macOS and Linux editions

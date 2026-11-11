@@ -6,7 +6,7 @@
 ## 1. Build the distributable
 
 ```powershell
-cargo xtask package subak     # or: kim
+cargo xtask package subak     # or: kim, noeul
 ```
 
 builds the release binaries and writes to `target/dist/`:

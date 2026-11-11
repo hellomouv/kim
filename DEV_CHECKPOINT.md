@@ -8,16 +8,22 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 63** (#68) — harden Noeul performance, security and Windows release
+- Current Step: **Step 76** (#81) — the earliest unfinished Ddalgak Step (check its dependencies)
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #68 (Step 63). Step 62 (#67) done (privacy, capture --output, MCP, interop,
-  Noeul package, ADR 0076). Step 61 (#66) open for the maintainer's visible checks.
+- Next action: re-query open issues; read #81 (Step 76). Step 63 (#68) delivered (bench-noeul,
+  fuzz, threat model, parity report, follow-up #99); left OPEN for the maintainer's physical
+  acceptance (NOEUL_ACCEPTANCE). Step 61 (#66) open likewise.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 63 — `cargo xtask bench-noeul --record`: 9/9 budgets (5.0 MiB, ready 25 ms,
+  0 ms idle CPU / 10 s, 1.8 MiB private, overlay p95 33.5 / 83.8 ms, pin p95 17.2 / 60.2 ms);
+  fuzz tests 3/3 (images 4200 mutations, HTML 2000, DIB 3000); e2e step63 1/1; parity matrix
+  recounted (164 rows: 11 implemented, 101 partial, 28 planned, 24 not intended), #99 opened.
 
 - 2026-11-12: Step 62 — privacy_tests 3/3 (notify/allow/deny, agents off by default and never the
   clipboard, capture to a PNG file, no overwrite, no path echoed), mcp 2/2 + interop 1/1 unit,
@@ -134,4 +140,4 @@ checkpoint."*
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):
-  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #71, #73–#80.
+  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#80.

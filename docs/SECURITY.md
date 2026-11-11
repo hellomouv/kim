@@ -81,3 +81,25 @@ every network operation (`offline_mode`, exit 6).
 See [RELEASE_READINESS §3](RELEASE_READINESS.md#3-blockers-and-known-limitations): unsigned
 binaries and no release key ceremony yet; redaction is heuristic; the power-transition matrix
 (#31) is manual; no third-party security review yet.
+
+## 9. Noeul (Step 63)
+
+**Assets:** what is on the user's screen, the clipboard, the user's image files, the capture
+history and pin backup on disk, the user's settings and shortcuts.
+
+| Threat | Mitigation | Evidence |
+| --- | --- | --- |
+| A script or agent captures the screen silently | Every CLI or IPC capture shows a notice (`privacy.cli = notify`), `deny` refuses before capturing; agents (MCP) are refused unless the user turns on `privacy.mcp_captures`, and always announced; the check is in the instance (ADR 0076) | `crates/noeul/src/app/privacy_tests.rs`, `crates/noeul/tests/mcp_adapter.rs` |
+| The secure desktop, lock screen or UAC prompts are captured | No service, SYSTEM part, `UIAccess` or elevation; locked or foreign input desktop → `desktop_unavailable`, no overlay | `crates/noeul/src/app.rs` locked_desktops_capture_nothing, NOEUL-SEC-003 |
+| Clipboard leakage | Read only on a paste the user asked for (`F3`, `pin --clipboard`); never by agents; content marked private by its program is refused before reading (keeping Noeul's own copies out of clipboard history and cloud sync is planned, matrix `OUT-12`) | `crates/noeul/src/paste/tests.rs` private_content_is_refused_before_anything_is_read, `crates/noeul/tests/paste.rs` |
+| Malicious images (PNG, JPEG, GIF, BMP, ICO, TIFF, TGA, DIB) | Size and pixel limits before decoding, pure-Rust decoders, `image_invalid` without a crash or a partial pin; deterministic mutation fuzz | `crates/noeul/src/decode/tests.rs` mutated_pictures_never_panic_or_exceed_the_limits, `crates/noeul/src/dib.rs` mutated_bitmaps_never_panic_or_exceed_the_limits |
+| Malicious clipboard HTML | Noeul's own sanitizer: text and basic formatting only, no scripts, styles, handlers, `javascript:` links, remote resources or embedded browser; mutation fuzz, deep nesting | `crates/noeul/src/html/tests.rs` mutated_and_hostile_html_never_panics_or_leaks_active_content |
+| A pin traps the user (click-through, off-screen, covering the screen) | `Esc`, tray "Make all pins clickable" and "Bring pins on screen", `noeul pin set --all --click-through off`, a second start; restored pins are never click-through | `crates/noeul/tests/pin_transform.rs`, `crates/noeul/tests/displays.rs` |
+| Pictures left on disk | Nothing is written unless asked (save, quick save, `--output`, opt-in history or backup); no temporary image files; history and backup in the user-only data folder, atomic, checked by SHA-256, cleared on request even without Noeul running; redactions never stored over the pixels they hide | `crates/noeul/tests/pins.rs` (no files), `crates/noeul/src/app/keeping_tests.rs`, `crates/noeul/tests/history_backup.rs` |
+| Saved screenshots leak metadata | PNG without text chunks, titles, paths or program names | `crates/noeul/src/output.rs` tests (NOEUL-SEC-006) |
+| Another user's process drives Noeul | Per-user pipe with an owner-only DACL, verified peer, no network listener | `crates/noeul/src/win/pipe.rs` pipe_dacl_is_owner_only_and_denies_network, `crates/noeul/tests/instance.rs` |
+| Logs or JSON leak content | IDs, geometry and codes only; never pixels, clipboard text, titles or image paths (also not the `--output` path) | `crates/noeul/src/app.rs` status_reports_ids_and_geometry_only, privacy_tests |
+| Input capture | `RegisterHotKey` only, no keyboard or mouse hook, no synthetic input to other programs | NOEUL-SEC-012 |
+
+**Open:** no third-party review; the physical acceptance script ([NOEUL_ACCEPTANCE](NOEUL_ACCEPTANCE.md))
+is the maintainer's; unsigned binaries until a certificate exists.

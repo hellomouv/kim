@@ -194,4 +194,48 @@ mod tests {
         }
         assert_eq!(ledger.live(), (0, 0));
     }
+
+    /// Step 63 (NOEUL-SEC-009): mutated clipboard bitmaps (`CF_DIB`/`CF_DIBV5`) never panic and
+    /// never exceed the limits; a fixed seed, 3000 mutations of a real `CF_DIBV5`.
+    #[test]
+    fn mutated_bitmaps_never_panic_or_exceed_the_limits() {
+        let ledger = Ledger::new();
+        let mut px = Vec::new();
+        for i in 0..(9 * 7) {
+            px.extend_from_slice(&[(i * 3) as u8, (i * 5) as u8, (i * 7) as u8, 255]);
+        }
+        let f = Frame::new(&ledger, Rect::new(0, 0, 9, 7), px).unwrap();
+        let good = crate::output::dib_v5(&f);
+        drop(f);
+        let mut seed: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..3000 {
+            let mut d = good.clone();
+            let n = d.len();
+            match next() % 3 {
+                0 => {
+                    for _ in 0..1 + next() % 6 {
+                        let i = (next() as usize) % n.min(140);
+                        d[i] = (next() & 0xFF) as u8;
+                    }
+                }
+                1 => d.truncate((next() as usize) % n),
+                _ => {
+                    let i = (next() as usize) % 40;
+                    d[i..i + 4].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0x7F]);
+                }
+            }
+            if let Ok(p) = decode(&ledger, &d) {
+                assert!(
+                    p.width() <= crate::frame::MAX_SIDE && p.height() <= crate::frame::MAX_SIDE
+                );
+            }
+        }
+        assert_eq!(ledger.live(), (0, 0));
+    }
 }

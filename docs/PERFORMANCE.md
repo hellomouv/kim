@@ -80,3 +80,28 @@ frames in 2.5 s, no tray update per frame. Details: [SUBAK_BRAND §5](SUBAK_BRAN
 - **Lock/sleep/hibernate** behaviour (#31, maintainer runs `scripts/recovery-matrix.ps1`).
 - **Long soaks** beyond the bench's cycles; run the bench repeatedly or raise its cycle counts
   locally.
+
+## 5. Noeul (Step 63)
+
+`cargo xtask bench-noeul [--record|--check]` measures the release build against the budgets of
+`NOEUL-NFR-001`…`006` (absolute, from the requirements) and records `docs/perf/noeul-baseline.json`.
+Nothing is visible and nothing is read from the screen: the instance runs with `--no-tray
+--no-hotkeys` in a private profile, and the overlay and pin latencies run the instance core on
+synthetic off-screen monitors (`overlay_measure --synthetic-only`).
+
+| Measurement | Baseline | Budget | Requirement |
+| --- | --- | --- | --- |
+| `noeul.exe` size | 5.0 MiB | 12 MiB | NOEUL-NFR-006 |
+| Launch to ready (`noeul run` until `health` answers) | 25.4 ms | 300 ms | NOEUL-NFR-006 |
+| Idle CPU over 10 s | 0.0 ms | 10 ms (0.1 % of a core) | NOEUL-NFR-001 |
+| Idle private memory | 1.8 MiB | 20 MiB | NOEUL-NFR-002 |
+| `F1` first overlay frame p95, one 4K monitor at 150 % / three 4K | 33.5 / 83.8 ms | 150 / 250 ms | NOEUL-NFR-003 |
+| Memory back after the overlay closed (+10 s) | 0.1 MiB | 5 MiB | NOEUL-NFR-002 |
+| Double-click to pin p95, 1920×1080 / 3840×2160 | 17.2 / 60.2 ms | 50 / 100 ms | NOEUL-NFR-004 |
+| `noeul status` without an instance, median / p95 | 19.4 / 21.5 ms | — | NOEUL-FR-110 |
+
+A 4K pin costs its picture once (`crates/noeul/tests/pin_memory.rs`, NOEUL-NFR-002). No bottleneck
+needed optimising in this Step: every measurement is well inside its budget. **Not measured here:**
+the real-desktop capture stage on the maintainer's monitors (`overlay_measure` without
+`--synthetic-only` does it, reading the screen into memory only), paste latency of large PNGs
+(NOEUL-NFR-005), twenty 1080p pins dragged at the refresh rate (NOEUL-NFR-007, a visible check).

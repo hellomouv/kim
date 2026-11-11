@@ -255,3 +255,64 @@ fn colours_parse_like_css_but_never_translucent() {
     assert_eq!(css_color("#00000080"), None);
     assert_eq!(css_color("currentColor"), None);
 }
+
+/// Step 63 (NOEUL-SEC-009): hostile clipboard HTML yields no script, style sheet, event handler,
+/// `javascript:` link or remote address as content, and 2000 deterministic mutations of it, deep
+/// nesting and long runs never panic (broken markup may become plain text, which is only shown).
+#[test]
+fn mutated_and_hostile_html_never_panics_or_leaks_active_content() {
+    let base = "<html><head><style>body{x:url(http://e/x)}</style><script>alert(1)</script></head>\
+        <body onload=\"steal()\"><h1>Title</h1><p>Text &amp; <b>bold</b> <a href=\"javascript:x\">link</a></p>\
+        <img src=\"http://example.com/t.png\" onerror=\"x()\"><table><tr><td>a</td></tr></table>\
+        <iframe src=\"http://e\"></iframe><svg><script>y()</script></svg><!-- c --></body></html>";
+    let mut seed: u64 = 0xD1B5_4A32_D192_ED03;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    let tokens = [
+        "<", ">", "</", "<script>", "\"", "'", "&#", "&", "=", "<!--", "-->", "<style>", "\u{0}",
+        "é",
+    ];
+    for _ in 0..2000 {
+        let mut s = base.to_string();
+        for _ in 0..1 + next() % 6 {
+            let chars: Vec<char> = s.chars().collect();
+            let i = (next() as usize) % chars.len().max(1);
+            let head: String = chars[..i].iter().collect();
+            let tail: String = chars[i..].iter().collect();
+            s = match next() % 3 {
+                0 => format!("{head}{}{tail}", tokens[(next() as usize) % tokens.len()]),
+                1 => format!(
+                    "{head}{}",
+                    tail.chars()
+                        .skip(1 + (next() % 8) as usize)
+                        .collect::<String>()
+                ),
+                _ => format!("{tail}{head}"),
+            };
+        }
+        // Broken markup may become plain text (shown, never fetched or run): only no panic.
+        let _ = parse(&s);
+    }
+    // The intact hostile document: no script, style, handler, javascript: link or remote
+    // address survives as content.
+    let text = format!("{:?}", parse(base));
+    for bad in [
+        "alert(",
+        "steal()",
+        "y()",
+        "javascript:",
+        "http://",
+        "x:url",
+    ] {
+        assert!(!text.contains(bad), "{bad} leaked: {text}");
+    }
+    // Deep nesting and long runs stay bounded.
+    let deep = "<div>".repeat(20_000) + "x" + &"</div>".repeat(20_000);
+    let _ = parse(&deep);
+    let long = "a".repeat(2_000_000);
+    let _ = parse(&format!("<p>{long}</p>"));
+}

@@ -42,6 +42,7 @@ without touching them.
 | --- | --- |
 | `kim-<version>-windows-x86_64.zip` | `kim.exe` (CLI), `kim-manager.exe` (window), licenses, notices, `capabilities.json` |
 | `subak-<version>-windows-x86_64.zip` | `subak.exe` (CLI and Host), `subak-gui.exe` (window), licenses, notices, `capabilities.json` |
+| `noeul-<version>-windows-x86_64.zip` | `noeul.exe` (the resident screenshot-and-pin app, its CLI, the optional MCP adapter and the Kim interop provider), licenses, notices, `capabilities.json` |
 
 Every package is a zip with a SHA-256 in the signed catalog; Kim checks size, hash and the
 catalog's Ed25519 signature before activating anything. Authenticode signatures of the programs

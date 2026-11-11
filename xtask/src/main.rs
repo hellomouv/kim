@@ -5,6 +5,7 @@
 //! shipped to users.
 
 mod bench;
+mod bench_noeul;
 mod catalog_tools;
 mod ddalgak;
 mod deps;
@@ -46,6 +47,7 @@ COMMANDS:
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
     package <kim|subak|noeul> [--skip-build]
+    bench-noeul [--record|--check]   Noeul's budgets (NOEUL-NFR-001…006), release build, nothing visible
                       Build the Windows release zip (programs, capabilities.json, licenses,
                       third-party notices, README) deterministically into target/dist, with a
                       release manifest (size, SHA-256, build, catalog entry); never uploads
@@ -80,6 +82,7 @@ fn main() -> ExitCode {
         Some("schema-check") => run_schema_check(&root, args.iter().any(|a| a == "--verbose")),
         Some("ci") => run_ci(&root),
         Some("bench") => bench::run(&root, &args[1..]),
+        Some("bench-noeul") => bench_noeul::run(&root, &args[1..]),
         Some("package") => package::run(&root, &args[1..]),
         Some("e2e") => run_e2e(
             &root,
