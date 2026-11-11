@@ -1034,3 +1034,30 @@ the held modifiers: a failure with physical input is retried (at most five times
 failure without is a real failure, and all-disturbed is reported as skipped. Key states are awaited
 instead of read once: the hook counts an event before Windows updates the async key state, which
 is what failed the Step 74 merge gate.
+
+## 18. App and window conditions (Step 77)
+
+[ADR 0078](adr/0078-ddalgak-app-conditions.md). A rule's `when` is compiled by
+`crates/ddalgak/src/context.rs` (`Cond`, shared with the validator, the simulator and the editor)
+and checked by the core only after the rule's trigger matched, at most once per event, through a
+`Foreground`: on Windows `win::context::WinForeground`, whose process-path cache the focus watcher
+warms on `EVENT_SYSTEM_FOREGROUND` and the hook re-reads when the foreground moved before the
+watcher saw it. The title is read only for a matched title condition (`InternalGetWindowText`) and
+never kept. A window whose process cannot be read (higher integrity, protected, Ddalgak's own, the
+secure desktop, none) matches no condition: the rule stays quiet and the key goes on.
+
+| Evidence | What it shows |
+| --- | --- |
+| `context::tests` | names and paths ignoring case, except_apps, titles, unknown never matches, refused conditions, 32 matchers × 10 000 checks well under a second |
+| `core::tests::the_same_key_fires_per_app_…`, `…an_unknown_foreground_fails_safe`, `…asked_only_when_a_condition_needs_it`, `…hotstrings_respect_conditions` | per-app winners with a global fallback over 200 rapid focus switches; no ask without a matched conditioned rule |
+| `rules::tests::conditions_rank_after_the_mode_and_before_priority` | §7.1 step 6 |
+| `win::context::tests::the_condition_reader_…` | Ddalgak's own window is unknown; the shell window resolves to `explorer.exe` |
+| `e2e/tests/step77_ddalgak_conditions.rs` | `explain --context` per app, unknown context, the running engine loads conditioned rules as active |
+
+**Manual check (maintainer, real desktop).** With the app running and these rules — `Ctrl+Alt+Shift+F21`
+types `C` in `Code.exe` (`when.apps`), types `N` in `notepad.exe`, and types `G` everywhere else —
+focus VS Code and press the chord: `C`; Notepad: `N`; the editor's search box or any other program:
+`G`. Run an elevated Command Prompt and press it there: nothing is typed (unknown never matches,
+and the global typing rule steps aside for elevated windows). Switch quickly between Notepad and
+VS Code with `Alt+Tab` and press the chord after each switch: always the right letter.
+`ddalgak status` and the activity list name rule IDs only — no program path or title.
