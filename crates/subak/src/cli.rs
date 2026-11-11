@@ -115,6 +115,15 @@ pub enum Cmd {
     SshCredentialStatus,
     SshCredentialSave,
     SshCredentialForget,
+    /// Step 35 (ADR 0068): SFTP and transfer jobs.
+    SftpLs,
+    SftpGet,
+    SftpPut,
+    SftpMkdir,
+    SftpRm,
+    TransferList,
+    TransferStatus,
+    TransferCancel,
 }
 
 impl Cmd {
@@ -200,6 +209,14 @@ impl Cmd {
             Self::SshCredentialStatus => "ssh.credential.status",
             Self::SshCredentialSave => "ssh.credential.save",
             Self::SshCredentialForget => "ssh.credential.forget",
+            Self::SftpLs => "sftp.ls",
+            Self::SftpGet => "sftp.get",
+            Self::SftpPut => "sftp.put",
+            Self::SftpMkdir => "sftp.mkdir",
+            Self::SftpRm => "sftp.rm",
+            Self::TransferList => "transfer.list",
+            Self::TransferStatus => "transfer.status",
+            Self::TransferCancel => "transfer.cancel",
         }
     }
 
@@ -246,6 +263,21 @@ impl Cmd {
         matches!(
             self,
             Self::SshCredentialStatus | Self::SshCredentialSave | Self::SshCredentialForget
+        )
+    }
+
+    /// Step 35: `sftp` and `transfer` talk to SSH servers or read job files (no Host).
+    pub fn is_remote(&self) -> bool {
+        matches!(
+            self,
+            Self::SftpLs
+                | Self::SftpGet
+                | Self::SftpPut
+                | Self::SftpMkdir
+                | Self::SftpRm
+                | Self::TransferList
+                | Self::TransferStatus
+                | Self::TransferCancel
         )
     }
 
@@ -334,6 +366,11 @@ impl Cmd {
                 (&["[user@]host[:port]"], 1)
             }
             Self::WindowLayout => (&["window or terminal", "layout"], 2),
+            Self::SftpLs => (&["[user@]host[:port]", "remote path"], 1),
+            Self::SftpGet => (&["[user@]host[:port]", "remote path", "local path"], 2),
+            Self::SftpPut => (&["[user@]host[:port]", "local path", "remote path"], 2),
+            Self::SftpMkdir | Self::SftpRm => (&["[user@]host[:port]", "remote path"], 2),
+            Self::TransferStatus | Self::TransferCancel => (&["transfer id"], 1),
             _ => (&[], 0),
         }
     }
@@ -486,13 +523,65 @@ impl Cmd {
                 "--endpoint",
                 "--identity",
                 "--option",
+                "--ssh-config",
+                "--jump",
+                "--forward",
+                "--allow-public-bind",
+                "--no-shell",
+                "--agent-forward",
+                "--x11",
+                "--proxy",
+                "--login-script",
+                "--env",
                 "--cwd",
                 "--attach",
                 "--no-start",
                 "--dry-run",
             ],
-            Self::SshCredentialStatus => &["--option"],
-            Self::SshCredentialSave | Self::SshCredentialForget => &["--option", "--dry-run"],
+            Self::SftpLs => &[
+                "--identity",
+                "--option",
+                "--ssh-config",
+                "--jump",
+                "--proxy",
+            ],
+            Self::SftpGet | Self::SftpPut => &[
+                "--identity",
+                "--option",
+                "--ssh-config",
+                "--jump",
+                "--proxy",
+                "--recursive",
+                "--overwrite",
+                "--resume",
+                "--private",
+                "--background",
+                "--dry-run",
+            ],
+            Self::SftpMkdir => &[
+                "--identity",
+                "--option",
+                "--ssh-config",
+                "--jump",
+                "--proxy",
+                "--private",
+                "--dry-run",
+            ],
+            Self::SftpRm => &[
+                "--identity",
+                "--option",
+                "--ssh-config",
+                "--jump",
+                "--proxy",
+                "--yes",
+                "--dry-run",
+            ],
+            Self::TransferList | Self::TransferStatus => &[],
+            Self::TransferCancel => &["--dry-run"],
+            Self::SshCredentialStatus => &["--option", "--ssh-config"],
+            Self::SshCredentialSave | Self::SshCredentialForget => {
+                &["--option", "--ssh-config", "--dry-run"]
+            }
             Self::ShellIntegrationInstall | Self::ShellIntegrationUninstall => {
                 &["--profile-file", "--dry-run"]
             }
@@ -541,6 +630,25 @@ pub struct Args {
     pub identity: Option<String>,
     /// Step 34: `ssh … --option Key=Value`, in the order given.
     pub ssh_options: Vec<String>,
+    /// Step 35: `--ssh-config <file>` (`ssh -F`).
+    pub ssh_config: Option<String>,
+    /// Step 35: `--jump [user@]host[:port]`, in order (ProxyJump).
+    pub jumps: Vec<String>,
+    /// Step 35: `--forward L:…|R:…|D:…`, in order.
+    pub forwards: Vec<String>,
+    pub allow_public_bind: bool,
+    pub agent_forward: bool,
+    pub x11: bool,
+    /// Step 35: `--proxy socks5://host:port|http://host:port`.
+    pub proxy: Option<String>,
+    /// Step 35: `ssh connect --login-script <file>`.
+    pub login_script: Option<String>,
+    /// Step 35: `sftp get|put --recursive|--overwrite|--resume|--private|--background`.
+    pub recursive: bool,
+    pub overwrite: bool,
+    pub resume: bool,
+    pub private: bool,
+    pub background: bool,
     pub remain_on_exit: bool,
     pub keep_on_failure: bool,
     /// `new --command-line <line>`: a verbatim Windows command line (ADR 0027 §4).
@@ -1158,6 +1266,68 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                     }
                 }
             }
+            "--ssh-config" => {
+                opts.push("--ssh-config");
+                if let Some(v) = value("--ssh-config") {
+                    a.ssh_config = Some(v);
+                }
+            }
+            "--jump" => {
+                opts.push("--jump");
+                if let Some(v) = value("--jump") {
+                    a.jumps.push(v);
+                }
+            }
+            "--forward" => {
+                opts.push("--forward");
+                if let Some(v) = value("--forward") {
+                    a.forwards.push(v);
+                }
+            }
+            "--proxy" => {
+                opts.push("--proxy");
+                if let Some(v) = value("--proxy") {
+                    a.proxy = Some(v);
+                }
+            }
+            "--login-script" => {
+                opts.push("--login-script");
+                if let Some(v) = value("--login-script") {
+                    a.login_script = Some(v);
+                }
+            }
+            "--allow-public-bind" => {
+                a.allow_public_bind = true;
+                opts.push("--allow-public-bind");
+            }
+            "--agent-forward" => {
+                a.agent_forward = true;
+                opts.push("--agent-forward");
+            }
+            "--x11" => {
+                a.x11 = true;
+                opts.push("--x11");
+            }
+            "--recursive" => {
+                a.recursive = true;
+                opts.push("--recursive");
+            }
+            "--overwrite" => {
+                a.overwrite = true;
+                opts.push("--overwrite");
+            }
+            "--resume" => {
+                a.resume = true;
+                opts.push("--resume");
+            }
+            "--private" => {
+                a.private = true;
+                opts.push("--private");
+            }
+            "--background" => {
+                a.background = true;
+                opts.push("--background");
+            }
             "--profile-file" => {
                 // Step 33: `shell-integration … --profile-file <ps1>` (kept in `settings`).
                 opts.push("--profile-file");
@@ -1375,6 +1545,14 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["ssh", "credential", "status", ..] => (Cmd::SshCredentialStatus, 3),
         ["ssh", "credential", "save", ..] => (Cmd::SshCredentialSave, 3),
         ["ssh", "credential", "forget", ..] => (Cmd::SshCredentialForget, 3),
+        ["sftp", "ls", ..] => (Cmd::SftpLs, 2),
+        ["sftp", "get", ..] => (Cmd::SftpGet, 2),
+        ["sftp", "put", ..] => (Cmd::SftpPut, 2),
+        ["sftp", "mkdir", ..] => (Cmd::SftpMkdir, 2),
+        ["sftp", "rm", ..] => (Cmd::SftpRm, 2),
+        ["transfer", "list" | "ls", ..] => (Cmd::TransferList, 2),
+        ["transfer", "status", ..] => (Cmd::TransferStatus, 2),
+        ["transfer", "cancel", ..] => (Cmd::TransferCancel, 2),
         ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
         ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),

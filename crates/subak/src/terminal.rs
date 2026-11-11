@@ -51,7 +51,7 @@ fn connect(endpoint: &str) -> Result<Option<Session>, CliError> {
     }
 }
 
-fn require(endpoint: &str) -> Result<Session, CliError> {
+pub(crate) fn require(endpoint: &str) -> Result<Session, CliError> {
     connect(endpoint)?.ok_or_else(|| host_not_running(endpoint))
 }
 
@@ -219,6 +219,7 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
     let title = profile.as_ref().and_then(|p| p.title.clone());
     // Step 34: an SSH profile runs Windows' OpenSSH client (ADR 0067).
     let mut ssh_info = None;
+    let mut login = None;
     let eff = match profile
         .as_ref()
         .and_then(|p| p.ssh.as_ref().map(|s| (p, s)))
@@ -227,7 +228,11 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
             let t = crate::ssh::Target::parse(s).map_err(CliError::usage)?;
             let mut base = with_profile(a, Some(p));
             base.command.clear();
-            let (eff, info) = crate::ssh::apply(&base, &t, p.identity.as_deref())?;
+            let conn = crate::ssh::Conn::from_args(&base, true)?.with_profile(p)?;
+            if let Some(l) = &p.login_script {
+                login = Some(crate::ssh::LoginScript::load(Path::new(l))?);
+            }
+            let (eff, info) = crate::ssh::apply(&base, &t, &conn)?;
             ssh_info = Some(info);
             eff
         }
@@ -301,7 +306,13 @@ pub fn new(a: &Args, endpoint: &str) -> Result<Value, CliError> {
         r => r?,
     };
     created["host"] = json!({"pid": session.host_pid, "started": started.is_some()});
-    let created = with_name(created);
+    let mut created = with_name(created);
+    // Step 35: an SSH profile's login script runs once the pane exists (before an attach).
+    if let Some(l) = &login {
+        drop(session);
+        created["login_script"] = l.run(endpoint, &created["terminal_id"])?;
+        session = require(endpoint)?;
+    }
     if !a.attach {
         return Ok(created);
     }

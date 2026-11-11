@@ -235,7 +235,15 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "ssh.connect",
             "ssh.credential.status",
             "ssh.credential.save",
-            "ssh.credential.forget"
+            "ssh.credential.forget",
+            "sftp.ls",
+            "sftp.get",
+            "sftp.put",
+            "sftp.mkdir",
+            "sftp.rm",
+            "transfer.list",
+            "transfer.status",
+            "transfer.cancel"
         ],
         "only commands that really exist"
     );
@@ -251,6 +259,7 @@ fn capabilities_are_honest_and_follow_the_contract() {
                 | "config.reset"
                 | "window.kill"
                 | "pane.kill"
+                | "sftp.rm"
         );
         assert_eq!(c["effect"] == "destructive", destructive, "{c}");
         // `recover` (Step 30) is not destructive but starts processes: it needs --yes too.
@@ -265,8 +274,13 @@ fn capabilities_are_honest_and_follow_the_contract() {
             .as_array()
             .unwrap()
             .iter()
-            // Step 34: only `ssh connect` reaches the network — the connection the user asked for.
-            .all(|c| c["opens_window"] == false && c["network"] == (c["name"] == "ssh.connect"))
+            // Step 34/35: only `ssh connect` and `sftp` reach the network — the servers the user
+            // named.
+            .all(|c| {
+                let net = c["name"] == "ssh.connect"
+                    || c["name"].as_str().is_some_and(|n| n.starts_with("sftp."));
+                c["opens_window"] == false && c["network"] == net
+            })
     );
 
     let example: Value = serde_json::from_slice(

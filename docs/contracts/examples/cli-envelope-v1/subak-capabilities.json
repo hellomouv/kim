@@ -750,8 +750,8 @@
         "network": true,
         "opens_window": false,
         "requires_yes": false,
-        "summary": "A Terminal whose pane runs Windows' OpenSSH client: strict host-key checking (the user answers a new host), no agent forwarding, a saved secret only for a verified host",
-        "usage": "subak ssh connect <[user@]host[:port]> [<name>] [--identity <key>] [--option Key=Value]... [--cwd <dir>] [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]"
+        "summary": "A Terminal whose pane runs Windows' OpenSSH client: strict host-key checking (the user answers a new host), jump hosts, loopback port forwards, agent and X11 forwarding only when asked (with a warning), a SOCKS5 or HTTP proxy, an auditable login script, a saved secret only for a verified host",
+        "usage": "subak ssh connect <[user@]host[:port]> [<name>] [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--forward L:[bind:]port:host:port|R:[bind:]port:host:port|D:[bind:]port]... [--allow-public-bind] [--no-shell] [--agent-forward] [--x11] [--proxy socks5://host:port|http://host:port] [--login-script <file>] [--env NAME[=VALUE]]... [--cwd <dir>] [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]"
       },
       {
         "dry_run": false,
@@ -761,7 +761,7 @@
         "opens_window": false,
         "requires_yes": false,
         "summary": "Whether a password or passphrase is saved in Windows Credential Manager and whether the host is in known_hosts (never the secret)",
-        "usage": "subak ssh credential status <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--json]"
+        "usage": "subak ssh credential status <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--ssh-config <file>] [--json]"
       },
       {
         "dry_run": true,
@@ -771,7 +771,7 @@
         "opens_window": false,
         "requires_yes": false,
         "summary": "Save a password or key passphrase in Windows Credential Manager, for a host already in known_hosts; read without echo or from one stdin line, never printed",
-        "usage": "subak ssh credential save <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--dry-run] [--json]"
+        "usage": "subak ssh credential save <[user@]host[:port]> [--option UserKnownHostsFile=<file>] [--ssh-config <file>] [--dry-run] [--json]"
       },
       {
         "dry_run": true,
@@ -781,7 +781,87 @@
         "opens_window": false,
         "requires_yes": false,
         "summary": "Remove the saved secret of a destination from Windows Credential Manager",
-        "usage": "subak ssh credential forget <[user@]host[:port]> [--dry-run] [--json]"
+        "usage": "subak ssh credential forget <[user@]host[:port]> [--ssh-config <file>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "sftp.ls",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "List a remote directory over SFTP (the host must be in known_hosts; never a prompt)",
+        "usage": "subak sftp ls <[user@]host[:port]> [<remote path>] [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--proxy <url>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "sftp.get",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Download a file or folder: a *.subak-part file renamed when complete, existing files kept unless --overwrite, unsafe remote names refused, links never followed",
+        "usage": "subak sftp get <[user@]host[:port]> <remote path> [<local path>] [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--proxy <url>] [--recursive] [--overwrite|--resume] [--background] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "sftp.put",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Upload a file or folder (0644/0755, --private 0600/0700) through a *.subak-part file; existing files kept unless --overwrite",
+        "usage": "subak sftp put <[user@]host[:port]> <local path> [<remote path>] [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--proxy <url>] [--recursive] [--overwrite|--resume] [--private] [--background] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "sftp.mkdir",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Create a remote directory",
+        "usage": "subak sftp mkdir <[user@]host[:port]> <remote path> [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--proxy <url>] [--private] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "destructive",
+        "name": "sftp.rm",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": true,
+        "summary": "Delete a remote file or empty directory (needs --yes)",
+        "usage": "subak sftp rm <[user@]host[:port]> <remote path> [--identity <key>] [--option Key=Value]... [--ssh-config <file>] [--jump <[user@]host[:port]>]... [--proxy <url>] [--yes] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "transfer.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Background transfers and their state and progress (never a secret)",
+        "usage": "subak transfer list [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "transfer.status",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "One background transfer: state, bytes and files done, its error",
+        "usage": "subak transfer status <id> [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "transfer.cancel",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Stop a background transfer between chunks; the partial file is kept for --resume",
+        "usage": "subak transfer cancel <id> [--dry-run] [--json]"
       }
     ],
     "implementation": "implemented",

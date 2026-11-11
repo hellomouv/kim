@@ -21,7 +21,7 @@ use serde_json::Value;
 use std::io::Write;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 const NO_WINDOW: u32 = 0x0800_0000;
@@ -41,29 +41,25 @@ fn fwd(p: &Path) -> String {
 struct Server {
     exe: PathBuf,
     config: PathBuf,
-    child: Option<Child>,
+    pid: Option<u32>,
 }
 
 impl Server {
+    /// On the test's private desktop (Step 35): sshd's session programs may open console
+    /// windows, which must never reach the user's screen.
     fn start(&mut self) {
-        let child = Command::new(&self.exe)
-            .args(["-D", "-e", "-f"])
-            .arg(&self.config)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(NO_WINDOW)
-            .spawn()
-            .unwrap();
-        self.child = Some(child);
+        self.pid = Some(hidden::spawn(
+            &self.exe,
+            &["-D".into(), "-f".into(), self.config.display().to_string()],
+        ));
         std::thread::sleep(Duration::from_millis(800));
     }
 
     fn stop(&mut self) {
-        if let Some(mut c) = self.child.take() {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Some(pid) = self.pid.take() {
+            hidden::kill_tree(pid);
         }
+        std::thread::sleep(Duration::from_millis(300));
     }
 }
 
@@ -253,7 +249,7 @@ fn ssh_sessions_trust_hosts_explicitly_and_keep_secrets_in_credential_manager() 
     let mut server = Server {
         exe: bin.join("sshd.exe"),
         config: cfg,
-        child: None,
+        pid: None,
     };
     server.start();
     let user = std::env::var("USERNAME").unwrap().to_lowercase();

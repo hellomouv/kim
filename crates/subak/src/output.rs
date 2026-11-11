@@ -48,11 +48,17 @@ pub enum Code {
     // The `state` commands (Step 29, ADR 0063).
     StateCorrupt,
     StateFromNewerVersion,
+    // SSH forwarding and SFTP (Step 35, ADR 0068).
+    SshFailed,
+    RemoteError,
+    FileExists,
+    PortInUse,
+    UnsafePath,
 }
 
 impl Code {
     #[cfg(test)]
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 41] = [
         Self::Io,
         Self::Internal,
         Self::PermissionDenied,
@@ -89,6 +95,11 @@ impl Code {
         Self::SecretInConfig,
         Self::StateCorrupt,
         Self::StateFromNewerVersion,
+        Self::SshFailed,
+        Self::RemoteError,
+        Self::FileExists,
+        Self::PortInUse,
+        Self::UnsafePath,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -129,13 +140,22 @@ impl Code {
             Self::SecretInConfig => "secret_in_config",
             Self::StateCorrupt => "state_corrupt",
             Self::StateFromNewerVersion => "state_from_newer_version",
+            Self::SshFailed => "ssh_failed",
+            Self::RemoteError => "remote_error",
+            Self::FileExists => "file_exists",
+            Self::PortInUse => "port_in_use",
+            Self::UnsafePath => "unsafe_path",
         }
     }
 
     /// The exit class (docs/CLI_CONTRACT.md §5).
     pub fn exit_code(self) -> u8 {
         match self {
-            Self::Io | Self::Internal | Self::PermissionDenied | Self::SpawnFailed => 1,
+            Self::Io
+            | Self::Internal
+            | Self::PermissionDenied
+            | Self::SpawnFailed
+            | Self::RemoteError => 1,
             Self::Usage
             | Self::InvalidName
             | Self::AmbiguousTarget
@@ -150,7 +170,8 @@ impl Code {
             | Self::HotkeysInvalid
             | Self::ConfigInvalid
             | Self::SecretInConfig
-            | Self::StateCorrupt => 4,
+            | Self::StateCorrupt
+            | Self::UnsafePath => 4,
             Self::UnsupportedPlatform
             | Self::HostTooOld
             | Self::HostTooNew
@@ -158,13 +179,15 @@ impl Code {
             | Self::HotkeysFromNewerVersion
             | Self::ConfigFromNewerVersion
             | Self::StateFromNewerVersion => 5,
-            Self::HostDisconnected | Self::HostUnresponsive | Self::Timeout => 6,
+            Self::HostDisconnected | Self::HostUnresponsive | Self::Timeout | Self::SshFailed => 6,
             Self::HostAlreadyRunning
             | Self::NameConflict
             | Self::InvalidState
             | Self::TerminalsRunning
             | Self::ConfirmationRequired
-            | Self::HotkeyConflict => 7,
+            | Self::HotkeyConflict
+            | Self::FileExists
+            | Self::PortInUse => 7,
             Self::Cancelled => 8,
         }
     }

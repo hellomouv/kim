@@ -273,6 +273,12 @@ pub struct Profile {
     pub ssh: Option<String>,
     /// Step 34: the SSH private key file (`ssh -i`), absolute.
     pub identity: Option<String>,
+    /// Step 35 (ADR 0068): jump hosts in order, forwards (`L:…`, `R:…`, `D:…`, loopback only),
+    /// agent forwarding (off unless set; warned about) and a login script (absolute path).
+    pub jump: Vec<String>,
+    pub forwards: Vec<String>,
+    pub agent_forward: bool,
+    pub login_script: Option<String>,
     /// The 1-based line of its `[[profiles]]` header (messages).
     pub line: Option<usize>,
 }
@@ -487,6 +493,10 @@ impl Profile {
             "title": self.title,
             "ssh": self.ssh,
             "identity": self.identity,
+            "jump": self.jump,
+            "forwards": self.forwards,
+            "agent_forward": self.agent_forward,
+            "login_script": self.login_script,
             "source": if self.detected { "detected" } else { "config" },
             "secret_env": self.secret_env(),
             "default": default,
@@ -1186,6 +1196,68 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             ));
         }
     }
+    // Step 35: the other SSH fields.
+    let list = |field: &'static str| -> Result<Vec<String>, (Option<&'static str>, String)> {
+        match t.get(field) {
+            None => Ok(Vec::new()),
+            Some(toml::Value::Array(a)) if a.len() <= 32 => a
+                .iter()
+                .map(|x| x.as_str().map(String::from))
+                .collect::<Option<Vec<_>>>()
+                .ok_or((Some(field), format!("`{field}` must be a list of strings"))),
+            Some(_) => Err((
+                Some(field),
+                format!("`{field}` must be a list of at most 32 strings"),
+            )),
+        }
+    };
+    let jump = list("jump")?;
+    for j in &jump {
+        crate::ssh::Target::parse(j).map_err(|m| (Some("jump"), m))?;
+    }
+    let forwards = list("forwards")?;
+    for f in &forwards {
+        let fw = crate::ssh::Forward::parse(f).map_err(|m| (Some("forwards"), m))?;
+        if fw.public() {
+            return Err((
+                Some("forwards"),
+                format!(
+                    "`{f}` listens beyond loopback; a profile forward binds 127.0.0.1 (use --allow-public-bind on the command line)"
+                ),
+            ));
+        }
+    }
+    let agent_forward = match t.get("agent_forward") {
+        None => false,
+        Some(toml::Value::Boolean(b)) => *b,
+        Some(_) => {
+            return Err((
+                Some("agent_forward"),
+                "`agent_forward` must be true or false".into(),
+            ));
+        }
+    };
+    let login_script = text("login_script", false)?;
+    if let Some(l) = &login_script
+        && !Path::new(l).is_absolute()
+    {
+        return Err((
+            Some("login_script"),
+            format!("`login_script` must be an absolute path (`{l}` is not)"),
+        ));
+    }
+    if ssh.is_none() {
+        for (f, set) in [
+            ("jump", !jump.is_empty()),
+            ("forwards", !forwards.is_empty()),
+            ("agent_forward", t.contains_key("agent_forward")),
+            ("login_script", login_script.is_some()),
+        ] {
+            if set {
+                return Err((Some(f), format!("`{f}` belongs to an SSH profile (`ssh`)")));
+            }
+        }
+    }
     let program = if ssh.is_some() {
         "ssh.exe".to_string()
     } else {
@@ -1278,13 +1350,17 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             "title",
             "ssh",
             "identity",
+            "jump",
+            "forwards",
+            "agent_forward",
+            "login_script",
         ]
         .contains(&k.as_str())
     }) {
         return Err((
             None,
             format!(
-                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity)"
+                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity, jump, forwards, agent_forward, login_script)"
             ),
         ));
     }
@@ -1308,6 +1384,10 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         detected: false,
         ssh,
         identity,
+        jump,
+        forwards,
+        agent_forward,
+        login_script,
         line: None,
     })
 }
@@ -2500,6 +2580,10 @@ args = ["/k", "--password", "hunter2"]
             detected: false,
             ssh: None,
             identity: None,
+            jump: Vec::new(),
+            forwards: Vec::new(),
+            agent_forward: false,
+            login_script: None,
             line: None,
         });
         let d: Vec<String> = differences(&a, &b).iter().map(|c| c.key.clone()).collect();

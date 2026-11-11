@@ -23,8 +23,9 @@
 // Step 27: Claude Code hooks (settings merge, the reporter's input) and session states.
 mod claude;
 // Step 33: the local shells found on this PC (profiles that need no configuration).
-mod shells;
 /// Step 34: SSH sessions in panes, saved secrets in Credential Manager (ADR 0067).
+mod sftp;
+mod shells;
 mod ssh;
 // Step 33: the optional shell integration (the shell reports its folder).
 mod cli;
@@ -281,6 +282,22 @@ SETTINGS AND PROFILES (docs/SUBAK_CLI.md §3.13, docs/SUBAK_GUI.md §13):
     changes when it gets the focus, and a profile is used only when a Terminal is created
     (`new --profile <name>`, Ctrl+T, the window's New Terminal menu).
 
+SSH AND FILE TRANSFERS (Windows' own OpenSSH client; docs/SUBAK_CLI.md §3.22-3.23):
+    ssh connect <[user@]host[:port]> [<name>]   A Terminal whose pane runs ssh. A new host's
+                  fingerprint is yours to confirm; a changed key is refused. Options:
+                  --identity <key>, --option Key=Value, --ssh-config <file>, --jump <host>
+                  (repeat for more hops), --forward L:[bind:]port:host:port | R:... | D:port
+                  (loopback unless --allow-public-bind), --no-shell (forwards only),
+                  --agent-forward and --x11 (off by default, warned about), --proxy
+                  socks5://host:port | http://host:port, --login-script <file.toml>.
+    ssh credential status|save|forget <dest>   A password or passphrase in Windows
+                  Credential Manager, only for a host in known_hosts; never printed.
+    sftp ls|get|put|mkdir|rm <dest> ...   Files over SFTP, without a window or a prompt:
+                  the host must be in known_hosts. get/put: --recursive, --overwrite,
+                  --resume (continue a partial `*.subak-part`), --private (0600), --background.
+                  rm needs --yes. Remote names that could escape the folder are refused.
+    transfer list|status|cancel <id>   Background transfers (progress; never a secret).
+
 HOST (Windows only; docs/contracts/IPC_PROTOCOL.md, docs/CONPTY_PROOF.md):
     host start    Start a detached per-user Host, unless one already serves the endpoint
                   (`host_already_running`). Starters take a per-endpoint lock, so several at
@@ -341,7 +358,8 @@ OPTIONS:
 The window is a separate program, `subak-gui` (docs/SUBAK_GUI.md); no command here starts it.
 Pre-alpha: no windows/panes splits, persistence or recovery yet (docs/PRODUCT_REQUIREMENTS.md);
 history is never persisted.
-No command opens a window, installs anything or uses the network; no Windows service exists.
+No command opens a window or installs anything; only `ssh connect` and `sftp` reach the
+network (the servers you name); no Windows service exists.
 ";
 
 /// The capabilities document (`kim.capabilities` v1). Its `version` must equal the package
@@ -356,6 +374,10 @@ pub fn cli_main() -> ExitCode {
     // only inside an SSH pane Subak started (ADR 0067).
     if std::env::var_os("SUBAK_ASKPASS").is_some_and(|v| v == "1") && raw.len() == 1 {
         return ssh::askpass_main(&raw[0]);
+    }
+    // Step 35: the ProxyCommand Subak sets for `--proxy` (ADR 0068).
+    if raw.first().is_some_and(|a| a == "__proxy-relay") {
+        return ssh::proxy_relay(&raw[1..]);
     }
     let json_flag = raw
         .iter()
@@ -426,10 +448,13 @@ pub fn cli_main() -> ExitCode {
         _ if cmd.is_claude_hooks()
             || cmd.is_state()
             || cmd.is_integration()
-            || cmd.is_ssh_credential() =>
+            || cmd.is_ssh_credential()
+            || cmd.is_remote() =>
         {
             drop(out);
-            let ran = if cmd.is_ssh_credential() {
+            let ran = if cmd.is_remote() {
+                sftp::run(cmd, &args)
+            } else if cmd.is_ssh_credential() {
                 ssh::credential(cmd, &args)
             } else if cmd.is_integration() {
                 integration::run(cmd, &args)

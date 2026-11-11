@@ -17,6 +17,10 @@ fn profile(name: &str, program: &Path, args: &[&str]) -> Profile {
         detected: true,
         ssh: None,
         identity: None,
+        jump: Vec::new(),
+        forwards: Vec::new(),
+        agent_forward: false,
+        login_script: None,
         line: None,
     }
 }

@@ -127,10 +127,25 @@
     {"$ref": "#/$defs/ok_recover"},
     {"$ref": "#/$defs/ok_shell_integration"},
     {"$ref": "#/$defs/ok_ssh_connect"},
-    {"$ref": "#/$defs/ok_ssh_credential"}
+    {"$ref": "#/$defs/ok_ssh_credential"},
+    {"$ref": "#/$defs/ok_sftp_ls"},
+    {"$ref": "#/$defs/ok_sftp_change"},
+    {"$ref": "#/$defs/ok_sftp_transfer"},
+    {"$ref": "#/$defs/ok_transfer_list"},
+    {"$ref": "#/$defs/ok_transfer_job"}
   ],
   "$defs": {
-    "ssh_plan": {"description": "Step 34 (ADR 0067): how the SSH pane connects — Windows' OpenSSH client with strict host keys and no agent forwarding; whether the destination is in known_hosts and a saved secret answers the password or passphrase prompt (never the secret itself; `env` lists names only).", "type": "object", "required": ["target", "program", "args", "saved_secret_used", "host_verified"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "saved_secret_used": {"type": "boolean"}, "host_verified": {"type": "boolean"}, "why": {"type": "string"}, "env": {"type": "array", "items": {"type": "string"}}}},
+    "ssh_plan": {"description": "Step 34 (ADR 0067): how the SSH pane connects — Windows' OpenSSH client with strict host keys and no agent forwarding; whether the destination is in known_hosts and a saved secret answers the password or passphrase prompt (never the secret itself; `env` lists names only).", "type": "object", "required": ["target", "program", "args", "saved_secret_used", "host_verified"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "saved_secret_used": {"type": "boolean"}, "host_verified": {"type": "boolean"}, "why": {"type": "string"}, "env": {"type": "array", "items": {"type": "string"}}, "jumps": {"description": "Step 35 (ADR 0068): jump hosts in order.", "type": "array", "items": {"type": "string"}}, "forwards": {"type": "array", "items": {"$ref": "#/$defs/ssh_forward"}}, "agent_forward": {"type": "boolean"}, "x11": {"type": "boolean"}, "proxy": {"type": ["string", "null"]}, "warnings": {"description": "Step 35: what the user must know (agent or X11 forwarding, a forward beyond loopback); also printed on stderr.", "type": "array", "items": {"type": "string"}}}},
+    "ssh_forward": {"description": "Step 35: one port forward.", "type": "object", "required": ["kind", "listen", "port", "to", "public"], "additionalProperties": false, "properties": {"kind": {"enum": ["local", "remote", "dynamic"]}, "listen": {"type": ["string", "null"]}, "port": {"type": "integer", "minimum": 1, "maximum": 65535}, "to": {"type": ["string", "null"]}, "public": {"type": "boolean"}}},
+    "login_script_result": {"description": "Step 35: what a login script did, step by step (the text sent is never a secret).", "type": "object", "required": ["path", "completed", "steps"], "additionalProperties": false, "properties": {"path": {"type": "string"}, "completed": {"type": "boolean"}, "steps": {"type": "array", "items": {"type": "object", "required": ["expect", "matched", "waited_ms"], "additionalProperties": false, "properties": {"expect": {"type": "string"}, "matched": {"type": "boolean"}, "sent": {"type": "string"}, "enter": {"type": "boolean"}, "waited_ms": {"type": "integer", "minimum": 0}}}}}},
+    "sftp_progress": {"type": "object", "required": ["bytes_total", "bytes_done", "files_total", "files_done", "current"], "additionalProperties": false, "properties": {"bytes_total": {"type": "integer", "minimum": 0}, "bytes_done": {"type": "integer", "minimum": 0}, "files_total": {"type": "integer", "minimum": 0}, "files_done": {"type": "integer", "minimum": 0}, "current": {"type": "string"}}},
+    "sftp_result": {"type": "object", "required": ["direction", "remote", "local", "files", "bytes", "resumed_bytes", "skipped", "seconds"], "additionalProperties": false, "properties": {"direction": {"enum": ["get", "put"]}, "remote": {"type": "string"}, "local": {"type": "string"}, "files": {"type": "integer", "minimum": 0}, "bytes": {"type": "integer", "minimum": 0}, "resumed_bytes": {"type": "integer", "minimum": 0}, "skipped": {"description": "Links and special files that were not copied.", "type": "array", "items": {"type": "string"}}, "seconds": {"type": "number", "minimum": 0}}},
+    "transfer_job": {"description": "Step 35: a background transfer (`%APPDATA%\\mouv\\subak\\transfers\\<id>.json`); never a secret.", "type": "object", "required": ["id", "state", "direction", "target", "remote", "local", "progress"], "properties": {"id": {"type": "string", "pattern": "^xfer-[0-9a-f-]+$"}, "state": {"enum": ["queued", "running", "done", "failed", "cancelled", "interrupted"]}, "direction": {"enum": ["get", "put"]}, "target": {"type": "string"}, "remote": {"type": "string"}, "local": {"type": "string"}, "recursive": {"type": "boolean"}, "overwrite": {"type": "boolean"}, "resume": {"type": "boolean"}, "pid": {"type": "integer"}, "started": {"type": "integer"}, "updated": {"type": "integer"}, "finished": {"type": "integer"}, "progress": {"$ref": "#/$defs/sftp_progress"}, "result": {"$ref": "#/$defs/sftp_result"}, "error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "hint": {"type": ["string", "null"]}}}}},
+    "ok_sftp_ls": {"description": "Step 35: `subak sftp ls <dest> [<path>]` — the directory as the server lists it.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "sftp.ls"}, "data": {"type": "object", "required": ["target", "path", "entries"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "entries": {"type": "array", "items": {"type": "object", "required": ["name", "type", "size", "mode", "mtime"], "additionalProperties": false, "properties": {"name": {"type": "string"}, "type": {"enum": ["file", "dir", "link", "other", "unknown"]}, "size": {"type": ["integer", "null"]}, "mode": {"type": ["string", "null"]}, "mtime": {"type": ["integer", "null"]}}}}}}}}]},
+    "ok_sftp_change": {"description": "Step 35: `subak sftp mkdir|rm <dest> <path>`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["sftp.mkdir", "sftp.rm"]}, "data": {"type": "object", "required": ["target", "path", "dry_run"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "dry_run": {"type": "boolean"}}}}}]},
+    "ok_sftp_transfer": {"description": "Step 35: `subak sftp get|put` — the finished transfer (`result`), its dry run, or with --background the queued job.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["sftp.get", "sftp.put"]}, "data": {"type": "object", "required": ["target", "direction", "remote", "local", "recursive", "overwrite", "resume"], "properties": {"target": {"type": "string"}, "direction": {"enum": ["get", "put"]}, "remote": {"type": "string"}, "local": {"type": "string"}, "recursive": {"type": "boolean"}, "overwrite": {"type": "boolean"}, "resume": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "result": {"$ref": "#/$defs/sftp_result"}, "id": {"type": "string"}, "state": {"type": "string"}, "pid": {"type": "integer"}, "started": {"type": "integer"}, "progress": {"$ref": "#/$defs/sftp_progress"}}}}}]},
+    "ok_transfer_list": {"description": "Step 35: `subak transfer list`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "transfer.list"}, "data": {"type": "object", "required": ["transfers"], "additionalProperties": false, "properties": {"transfers": {"type": "array", "items": {"$ref": "#/$defs/transfer_job"}}}}}}]},
+    "ok_transfer_job": {"description": "Step 35: `subak transfer status|cancel <id>`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["transfer.status", "transfer.cancel"]}, "data": {"oneOf": [{"$ref": "#/$defs/transfer_job"}, {"type": "object", "required": ["id", "state", "dry_run", "cancelled"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "state": {"type": "string"}, "dry_run": {"type": "boolean"}, "cancelled": {"type": "boolean"}}}]}}}]},
     "ok_ssh_connect": {"description": "Step 34: `subak ssh connect <[user@]host[:port]> [<name>]` — the `new` result of a Terminal whose pane runs ssh, with `ssh`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "ssh.connect"}, "data": {"$ref": "#/$defs/data_new"}}}]},
     "ok_ssh_credential": {"description": "Step 34: `subak ssh credential status|save|forget <[user@]host[:port]>` — the Credential Manager entry, whether a secret is saved and whether the host is in known_hosts. Never the secret.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["ssh.credential.status", "ssh.credential.save", "ssh.credential.forget"]}, "data": {"type": "object", "required": ["target", "credential", "host_verified", "saved"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "credential": {"type": "string", "pattern": "^mouv-subak:ssh:"}, "host_verified": {"type": "boolean"}, "saved": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "removed": {"type": "boolean"}}}}}]},
     "ok_shell_integration": {"description": "Step 33: `subak shell-integration status|install|uninstall [powershell|pwsh|cmd]` — the PowerShell profile file and whether Subak's block is in it (install and uninstall: what changed and the backup written first); cmd: the per-profile opt-in, nothing installed.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["shell-integration.status", "shell-integration.install", "shell-integration.uninstall"]}, "data": {"type": "object", "required": ["shell", "installed"], "additionalProperties": false, "properties": {"shell": {"enum": ["powershell", "pwsh", "cmd"]}, "file": {"type": ["string", "null"]}, "exists": {"type": "boolean"}, "installed": {"type": "boolean"}, "changed": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "backup": {"type": ["string", "null"]}, "opt_in": {"type": "object"}, "note": {"type": "string"}}}}}]},
@@ -2255,7 +2270,12 @@
         "state_from_newer_version",
         "config_from_newer_version",
         "profile_not_found",
-        "secret_in_config"
+        "secret_in_config",
+        "ssh_failed",
+        "remote_error",
+        "file_exists",
+        "port_in_use",
+        "unsafe_path"
       ]
     },
     "error": {
@@ -2305,7 +2325,8 @@
                 "io",
                 "internal",
                 "permission_denied",
-                "spawn_failed"
+                "spawn_failed",
+                "remote_error"
               ]
             }
           }
@@ -2353,7 +2374,8 @@
                 "hotkeys_invalid",
                 "config_invalid",
                 "secret_in_config",
-                "state_corrupt"
+                "state_corrupt",
+                "unsafe_path"
               ]
             }
           }
@@ -2385,7 +2407,8 @@
               "enum": [
                 "host_disconnected",
                 "host_unresponsive",
-                "timeout"
+                "timeout",
+                "ssh_failed"
               ]
             }
           }
@@ -2402,7 +2425,9 @@
                 "invalid_state",
                 "terminals_running",
                 "confirmation_required",
-                "hotkey_conflict"
+                "hotkey_conflict",
+                "file_exists",
+                "port_in_use"
               ]
             }
           }
@@ -2779,6 +2804,7 @@
               }
             },
             "ssh": {"$ref": "#/$defs/ssh_plan"},
+            "login_script": {"$ref": "#/$defs/login_script_result"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -2807,6 +2833,7 @@
               "type": "boolean"
             },
             "ssh": {"$ref": "#/$defs/ssh_plan"},
+            "login_script": {"$ref": "#/$defs/login_script_result"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -3895,6 +3922,10 @@
         "title": {"type": ["string", "null"]},
         "ssh": {"type": ["string", "null"]},
         "identity": {"type": ["string", "null"]},
+        "jump": {"type": "array", "items": {"type": "string"}},
+        "forwards": {"type": "array", "items": {"type": "string"}},
+        "agent_forward": {"type": "boolean"},
+        "login_script": {"type": ["string", "null"]},
         "source": {"enum": ["config", "detected"]},
         "secret_env": {
           "type": "array",

@@ -6,12 +6,16 @@
 //! after the host is known), connects again without typing it, and sees a changed host key
 //! refused. Windows only; a private endpoint; an `APPDATA` sandbox; the credential is removed.
 #![cfg(windows)]
+#![allow(unsafe_code)]
 
 use serde_json::Value;
 use std::io::Write;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
+
+#[path = "../../crates/subak/tests/common/hidden.rs"]
+mod hidden;
 use std::time::{Duration, Instant};
 
 const NO_WINDOW: u32 = 0x0800_0000;
@@ -21,7 +25,7 @@ struct Env {
     ep: String,
     appdata: PathBuf,
     dir: PathBuf,
-    sshd: Option<Child>,
+    sshd: Option<u32>,
     cred_target: Option<String>,
 }
 
@@ -90,25 +94,23 @@ impl Env {
         self.ok(&["command", "--target", t, "send-keys Enter"]);
     }
 
+    /// On a private desktop (Step 35): sshd's session programs may open console windows,
+    /// which must never reach the user's screen.
     fn start_sshd(&mut self, bin: &Path) {
-        self.sshd = Some(
-            Command::new(bin.join("sshd.exe"))
-                .args(["-D", "-e", "-f"])
-                .arg(self.dir.join("sshd_config"))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .creation_flags(NO_WINDOW)
-                .spawn()
-                .unwrap(),
-        );
+        self.sshd = Some(hidden::spawn(
+            &bin.join("sshd.exe"),
+            &[
+                "-D".into(),
+                "-f".into(),
+                self.dir.join("sshd_config").display().to_string(),
+            ],
+        ));
         std::thread::sleep(Duration::from_millis(800));
     }
 
     fn stop_sshd(&mut self) {
-        if let Some(mut c) = self.sshd.take() {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Some(pid) = self.sshd.take() {
+            hidden::kill_tree(pid);
         }
     }
 }

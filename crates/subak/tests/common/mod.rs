@@ -4,6 +4,8 @@
 //! CLI runs whose `--json` envelopes are validated, and process inspection. Nothing here opens a
 //! window; every Host and child it starts is stopped or killed on drop.
 #![allow(dead_code, unsafe_code)]
+pub mod hidden;
+
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};

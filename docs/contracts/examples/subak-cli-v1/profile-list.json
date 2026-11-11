@@ -5,6 +5,7 @@
     "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\subak\\config.toml",
     "profiles": [
       {
+        "agent_forward": false,
         "args": [
           "-NoLogo",
           "-NoProfile"
@@ -14,7 +15,10 @@
         "env": {
           "RUST_BACKTRACE": "1"
         },
+        "forwards": [],
         "identity": null,
+        "jump": [],
+        "login_script": null,
         "name": "PowerShell",
         "program": "powershell.exe",
         "secret_env": [],
@@ -24,6 +28,7 @@
         "unset_env": []
       },
       {
+        "agent_forward": false,
         "args": [
           "/k"
         ],
@@ -33,7 +38,10 @@
           "GITHUB_TOKEN": "***",
           "MODE": "fast"
         },
+        "forwards": [],
         "identity": null,
+        "jump": [],
+        "login_script": null,
         "name": "dev",
         "program": "cmd.exe",
         "secret_env": [

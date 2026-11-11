@@ -507,6 +507,36 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.23 SFTP, jump hosts, forwarding, proxies and login scripts (Step 35)
+
+[ADR 0068](adr/0068-sftp-forwarding-and-jump-hosts.md). Every `sftp` command takes the connection
+options `--identity`, `--option`, `--ssh-config <file>` (`ssh -F`), `--jump <host>` (repeatable)
+and `--proxy`. It never prompts and never trusts a new host: connect once with `ssh connect` first.
+
+| Command | Effect |
+| --- | --- |
+| `subak sftp ls <dest> [<path>]` | the directory (`entries`: name, type, size, mode, mtime) |
+| `subak sftp get <dest> <remote> [<local>] [--recursive] [--overwrite\|--resume] [--background]` | download; `*.subak-part` until complete; `file_exists` (exit 7) unless `--overwrite`; `unsafe_path` (exit 4) for a remote name that could escape the folder |
+| `subak sftp put <dest> <local> [<remote>] [--recursive] [--overwrite\|--resume] [--private] [--background]` | upload (`0644`/`0755`, `--private` `0600`/`0700`) |
+| `subak sftp mkdir <dest> <path> [--private] [--dry-run]` / `sftp rm <dest> <path> --yes` | create a directory / delete a file or empty directory |
+| `subak transfer list` / `transfer status <id>` / `transfer cancel <id>` | background transfers: `queued`, `running`, `done`, `failed`, `cancelled`, `interrupted`, with bytes and files done |
+
+`ssh connect` (and SSH profiles: `jump = [...]`, `forwards = [...]`, `agent_forward`,
+`login_script`) adds:
+
+| Option | Effect |
+| --- | --- |
+| `--jump [user@]host[:port]` (repeat) | ProxyJump through each hop in order; a saved password answers only the prompt of the host it was saved for |
+| `--forward L:[bind:]port:host:port`, `R:…`, `D:[bind:]port` (repeat) | local, remote and SOCKS forwards on loopback; a taken port is `port_in_use`; beyond loopback only with `--allow-public-bind` (warned) |
+| `--no-shell` | forwards only (`ssh -N`); kill the Terminal to end them |
+| `--agent-forward`, `--x11` | off by default; a warning in `data.ssh.warnings` and on stderr; X11 needs `DISPLAY` and your X server |
+| `--proxy socks5://host:port` \| `http://host:port` | through a SOCKS5 or HTTP CONNECT proxy (no proxy credentials; not with `--jump`) |
+| `--login-script <file.toml>` | `[[step]] expect = "…" send = "…"` (`enter`, `timeout` optional) typed after the expected text; `data.login_script` lists each step; secret-looking text is refused |
+
+Not available yet: Zmodem, the window's SFTP panel and drag and drop, editing remote files
+locally, adding forwards to a live session, connection reuse, WinSCP (Step 36; see the Tabby
+matrix).
+
 ### 3.22 SSH sessions and saved secrets (Step 34)
 
 [ADR 0067](adr/0067-ssh-through-windows-openssh-and-credential-manager.md): an SSH pane runs

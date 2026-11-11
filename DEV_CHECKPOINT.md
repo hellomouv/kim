@@ -8,15 +8,23 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 35** (#35) — advanced SSH and file transfers
+- Current Step: **Step 36** (#36) — extended terminal features and parity review
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #35 (SFTP, jump hosts, forwarding; Tabby rows for 35); the SSH transport is Windows' OpenSSH (ADR 0067), the test sshd comes from scripts/fetch-test-sshd.ps1
+- Next action: read #36 (Tabby rows moved to 36: SFTP panel, Zmodem, live forwards, Reconnect…);
+  test sshd servers must run on a private desktop (`crates/subak/tests/common/hidden.rs`): the
+  portable sshd opens a console window per SFTP session otherwise
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-11: Step 35 — ssh/sftp unit tests (hostile SFTP listing, per-host askpass, forwards,
+  login scripts), ssh_transfers 1/1 against three real sshd servers (tree, 64 MiB, overwrite,
+  cancel+resume, server killed+resume, jumps 1 and 2 hops, L/R/D, SOCKS5/HTTP proxy, port
+  collision, guards), e2e step34+35 2/2 on a hidden desktop (no window); not tested: real X11,
+  agent forwarding with a running agent.
 
 - 2026-11-11: Step 34 — ssh unit tests 6/6, ssh_sessions 1/1 against a real local sshd (first
   trust, saved passphrase, wrong secret, changed key, offline, SSH profiles, leak scan), e2e

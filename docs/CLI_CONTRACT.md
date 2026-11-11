@@ -181,6 +181,17 @@ and one code of their own:
 | `state_from_newer_version` | 5 | `state.json` was written by a newer Subak; it is read-only and never rewritten (Step 29). |
 | `secret_in_config` | 4 | The settings to write hold a secret-looking profile value (an environment variable named like a token or password, a value shaped like a token or a URL password, a `--password` argument, or a `***` from an export); Subak never writes secrets into `config.toml`, so nothing was written. |
 
+Since Step 35 the `sftp`, `transfer` and `ssh connect` forwarding options
+([SUBAK_CLI §3.23](SUBAK_CLI.md), [ADR 0068](adr/0068-sftp-forwarding-and-jump-hosts.md)) add:
+
+| Code | Exit | Meaning |
+| --- | --- | --- |
+| `remote_error` | 1 | The SSH server refused an SFTP operation (no such file, permission denied, a failure); `details` carry its status name. |
+| `unsafe_path` | 4 | The server listed a file name that is not safe as a local name (`..`, a separator or drive, a Windows device name); nothing was transferred. |
+| `ssh_failed` | 6 | ssh could not connect, verify the host key (transfers never trust a new host), or authenticate, or the connection broke off; the message carries ssh's own words. |
+| `file_exists` | 7 | The destination of a transfer or `sftp mkdir` already exists; pass `--overwrite` or `--resume`. Nothing was changed. |
+| `port_in_use` | 7 | A local port of `--forward` is already taken; nothing was started. |
+
 **Noeul codes** (Step 49 foundation: the resident instance, Noeul IPC v1, region pins requested
 from the CLI, `F3` image paste; [ADR 0023](adr/0023-noeul-app-foundation.md). Step 50's
 `noeul capture --interactive`/`--cancel` and IPC `capture.region`/`capture.cancel` add no code:
