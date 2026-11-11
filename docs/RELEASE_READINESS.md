@@ -36,6 +36,8 @@
 | 19 | e2e suite daily | ✅ | `Daily` workflow; `e2e/LEDGER.md` |
 | 20 | Visible-window and real-device checks of earlier Steps | ⏳ maintainer | open issues #8, #14–#20, #55–#58, #61–#64, #66, #68, #71, #73–#80 (DEV_CHECKPOINT) |
 | 21 | Third-party security review | ❌ | not done |
+| 22 | Ddalgak: budgets, threat model, acceptance script, user docs | ◐ | `cargo xtask bench-ddalgak` (8/8 budgets; memory on the debug host informational), [SECURITY §10](SECURITY.md), [DDALGAK_ACCEPTANCE](DDALGAK_ACCEPTANCE.md) (maintainer run pending), [DDALGAK_GUIDE](DDALGAK_GUIDE.md), [DDALGAK_AHK_MATRIX](DDALGAK_AHK_MATRIX.md) |
+| 23 | Ddalgak published through Kim | ❌ blocked | needs the maintainer's acceptance run, a signing certificate and the release catalog key (§3); `cargo xtask package ddalgak` and Kim's install are verified (e2e step81) |
 
 ## 2. Release rollback
 

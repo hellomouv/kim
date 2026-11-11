@@ -8,17 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 82** (#87) — the earliest unfinished Ddalgak Step (check its dependencies)
+- Current Step: none eligible — the remaining open issues are blocked (Linux, maintainer checks, follow-ups); see the loop directive — the earliest unfinished Ddalgak Step (check its dependencies)
 - Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #87 (Step 82). Step 81 (#86) delivered and closed (MCP, interop, package). Step 80 (#85) delivered (AutoHotkey import, guide). Step 79 (#84) delivered (window, clipboard, notify, tool, schedules; follow-up #102). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81), 77 (#82), 78 (#83) and 79 (#84) stay OPEN
+- Next action: re-query open issues. Step 82 (#87) delivered (bench-ddalgak 8/8, reload fix, threat model, acceptance script, guide); OPEN for the maintainer's acceptance run and the release. Step 81 (#86) delivered and closed (MCP, interop, package). Step 80 (#85) delivered (AutoHotkey import, guide). Step 79 (#84) delivered (window, clipboard, notify, tool, schedules; follow-up #102). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81), 77 (#82), 78 (#83), 79 (#84) and 82 (#87) stay OPEN
   for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-12: Step 82 — `cargo xtask bench-ddalgak --record`: 8/8 budgets (0 ms CPU and 0
+  wakeups / 10 s at 100 and 1000 rules, hook p99 ≤ 100 µs, 1000 rules checked in 78 ms, profile
+  switch 510 ms after the reload fix, CLI 4.9 MiB; debug-host memory 31 MiB informational);
+  e2e step82 1/1; `cargo xtask ci` EXIT 0.
 - 2026-11-12: Step 81 — `mcp_cmd::tests` 3/3, e2e step81 1/1 (Kim installs, discovers and
   invokes Ddalgak; MCP session with grants, refusals and audit); `cargo xtask ci` EXIT 0.
 - 2026-11-12: Step 80 — `ahk::tests` 4/4 (fixtures and goldens), editor wizard flow test,
@@ -156,4 +160,4 @@ checkpoint."*
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):
-  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#84.
+  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#84, #87.

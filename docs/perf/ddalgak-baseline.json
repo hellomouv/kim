@@ -1,0 +1,106 @@
+{
+  "budgets": [
+    {
+      "limit": 10.0,
+      "path": "/hosts/100/idle_cpu_ms_per_10s",
+      "requirement": "DDALGAK-NFR-001 (0.1 % of one core, 100 rules)"
+    },
+    {
+      "limit": 10.0,
+      "path": "/hosts/1000/idle_cpu_ms_per_10s",
+      "requirement": "DDALGAK-NFR-001 (and with 1000 rules)"
+    },
+    {
+      "limit": 2.0,
+      "path": "/hosts/100/idle_wakeups_per_10s",
+      "requirement": "DDALGAK-NFR-001 (no periodic timers)"
+    },
+    {
+      "limit": 1000.0,
+      "path": "/hosts/1000/hook_p99_us",
+      "requirement": "DDALGAK-NFR-002 (p99 < 1 ms)"
+    },
+    {
+      "limit": 300.0,
+      "path": "/check_1000_rules_ms",
+      "requirement": "DDALGAK-NFR-004 (1000 rules loaded and checked, cold CLI)"
+    },
+    {
+      "limit": 1500.0,
+      "path": "/hosts/1000/ready_ms",
+      "requirement": "DDALGAK-NFR-004 (1000 rules and the hook, debug test host start)"
+    },
+    {
+      "limit": 1000.0,
+      "path": "/hosts/1000/profile_switch_ms",
+      "requirement": "DDALGAK-FR-030 (an atomic switch of 1000 rules, saved and reloaded)"
+    },
+    {
+      "limit": 12.0,
+      "path": "/binary_mib/cli",
+      "requirement": "release size"
+    }
+  ],
+  "informational": [
+    {
+      "path": "/hosts/100/working_set_mib",
+      "release_limit": 25.0,
+      "requirement": "DDALGAK-NFR-003 (release tray app; this is the debug test host)",
+      "verified": false
+    },
+    {
+      "path": "/hosts/1000/working_set_mib",
+      "release_limit": 25.0,
+      "requirement": "DDALGAK-NFR-003 (release tray app; this is the debug test host)",
+      "verified": false
+    }
+  ],
+  "machine": {
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "processors": "20"
+  },
+  "measured": {
+    "binary_mib": {
+      "app": 3.4,
+      "cli": 4.9,
+      "editor": 10.2
+    },
+    "check_1000_rules_ms": 78.2,
+    "hosts": {
+      "0": {
+        "idle_cpu_ms_per_10s": 0.0,
+        "idle_wakeups_per_10s": 0.0,
+        "private_mib": 18.7,
+        "ready_ms": 29.5,
+        "working_set_mib": 28.6
+      },
+      "10": {
+        "idle_cpu_ms_per_10s": 0.0,
+        "idle_wakeups_per_10s": 0.0,
+        "private_mib": 20.1,
+        "ready_ms": 37.8,
+        "working_set_mib": 30.5
+      },
+      "100": {
+        "idle_cpu_ms_per_10s": 0.0,
+        "idle_wakeups_per_10s": 0.0,
+        "private_mib": 20.6,
+        "ready_ms": 68.1,
+        "working_set_mib": 31.2
+      },
+      "1000": {
+        "burst_events": 192,
+        "hook_max_us": 65,
+        "hook_p99_us": 100,
+        "idle_cpu_ms_per_10s": 0.0,
+        "idle_wakeups_per_10s": 0.0,
+        "private_mib": 23.8,
+        "profile_switch_ms": 510.3,
+        "ready_ms": 447.8,
+        "working_set_mib": 33.0
+      }
+    }
+  },
+  "schema": "kim.bench.ddalgak",
+  "schema_version": 1
+}

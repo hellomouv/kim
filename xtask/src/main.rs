@@ -5,6 +5,7 @@
 //! shipped to users.
 
 mod bench;
+mod bench_ddalgak;
 mod bench_noeul;
 mod catalog_tools;
 mod ddalgak;
@@ -48,6 +49,7 @@ COMMANDS:
     e2e-status        Print how many Step issues were processed since the last recorded run
     package <kim|subak|noeul> [--skip-build]
     bench-noeul [--record|--check]   Noeul's budgets (NOEUL-NFR-001…006), release build, nothing visible
+    bench-ddalgak [--record|--check] Ddalgak's budgets (DDALGAK-NFR-001…004), the test host, nothing visible
                       Build the Windows release zip (programs, capabilities.json, licenses,
                       third-party notices, README) deterministically into target/dist, with a
                       release manifest (size, SHA-256, build, catalog entry); never uploads
@@ -83,6 +85,7 @@ fn main() -> ExitCode {
         Some("ci") => run_ci(&root),
         Some("bench") => bench::run(&root, &args[1..]),
         Some("bench-noeul") => bench_noeul::run(&root, &args[1..]),
+        Some("bench-ddalgak") => bench_ddalgak::run(&root, &args[1..]),
         Some("package") => package::run(&root, &args[1..]),
         Some("e2e") => run_e2e(
             &root,

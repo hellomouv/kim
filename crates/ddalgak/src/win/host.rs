@@ -162,6 +162,10 @@ struct Host {
     /// The saved file hash of the last `kept_previous` notice (one notice per bad version).
     noticed: u64,
     folder_watch: Option<FolderWatcher>,
+    /// Step 82: the (file bytes, validation context) the active rules were checked for, so the
+    /// several change notifications of one save, and the CLI's own reload after it, cost one
+    /// full check instead of one each.
+    reload_key: Option<(u64, u64)>,
     generation: u32,
     shared: Arc<hook::Shared>,
     stats: Arc<Stats>,
@@ -393,7 +397,20 @@ impl Host {
     /// Reads `rules.json` again and applies it if it is usable and changed (`DDALGAK-FR-009`).
     /// An unusable file keeps the previous active rules (`kept_previous`).
     fn reload(&mut self, origin: &'static str, dry_run: bool) -> Value {
-        let next = rules::load_with(&self.opts.paths.rules(), &self.ctx());
+        let ctx = self.ctx();
+        let key = std::fs::read(self.opts.paths.rules()).ok().map(|b| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&ctx.shortcuts, &mut h);
+            (store::content_hash(&b), std::hash::Hasher::finish(&h))
+        });
+        let next = if key.is_some() && key == self.reload_key && self.loaded.state.usable() {
+            self.loaded.clone()
+        } else {
+            rules::load_with(&self.opts.paths.rules(), &ctx)
+        };
+        if !dry_run && next.state.usable() {
+            self.reload_key = key;
+        }
         let outcome = if !next.state.usable() {
             "kept_previous"
         } else if next.hash == self.loaded.hash && next.state == self.loaded.state {
@@ -1404,6 +1421,7 @@ pub fn run(opts: Options) -> Result<(), RunError> {
             last_reload: None,
             noticed: 0,
             folder_watch,
+            reload_key: None,
             generation: 0,
             shared,
             stats: Arc::clone(&stats),

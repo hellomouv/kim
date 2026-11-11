@@ -103,3 +103,25 @@ history and pin backup on disk, the user's settings and shortcuts.
 
 **Open:** no third-party review; the physical acceptance script ([NOEUL_ACCEPTANCE](NOEUL_ACCEPTANCE.md))
 is the maintainer's; unsigned binaries until a certificate exists.
+
+## 10. Ddalgak (Step 82)
+
+**Assets:** what the user types (keys, text, passwords), the clipboard, the programs and websites
+rules may open, the user's windows, the rules and profiles on disk, and the user's control of their
+own keyboard.
+
+| Threat | Mitigation | Evidence |
+| --- | --- | --- |
+| Keylogging by the hook | The hook decides from precomputed tables and keeps no keys: no history, no log; hotstrings keep only a bounded buffer in memory, never in password fields, cleared on focus changes; the activity list holds rule IDs and outcome codes only (DDALGAK-SEC-001) | `core::tests` (hotstring buffer), `worker::tests` (activity has no text), e2e step76/step79 (no content in outputs) |
+| Losing control of the keyboard (lockout) | `Ctrl+Alt+Shift+Esc` is checked first on physical key state, cannot be remapped, removes the hook and releases every held key; the primary mouse buttons are never triggers; a pause keeps engine-control rules working (DDALGAK-SEC-003) | `core::tests` emergency, e2e step73, acceptance row 14 |
+| Keys stuck after a crash or a switch | Held outputs are on a ledger released on pause, stop, reload, profile switch, session lock, elevation of the foreground, the emergency chord and the worker's end; a crash marker makes the next start release and stay off (`unclean_exit`) (DDALGAK-SEC-005) | `worker::tests::held_outputs_are_released…`, recovery tests, e2e step73/75, acceptance row 15 |
+| Injection loops and recursion | Ddalgak's own events carry a marker and are invisible to rules; rules accept other programs' input only with `injected: accept` and then never inject; output equal to the trigger is refused; a per-rule rate limit; macros are bounded (32 steps × `times` ≤ 1000 stages, 60 s) (§7.4) | `core::tests`, `rules::tests`, `worker::tests` macro tests |
+| Typing into the wrong place | Typing stops when focus changes, never types into password fields, elevated windows, the secure desktop or during an IME composition; a macro keeps the focus between its typing steps | `run::tests`, e2e step69 |
+| Surprise program or website launches | `launch-programs` consent bound to a fingerprint of the exact targets; shells and script hosts refused; URLs limited to http/https without credentials; the playground opens only after a per-step confirmation; imports never carry consent | launch tests, e2e step70, step76, step80 |
+| Window and clipboard misuse | `window-control` and `clipboard` consent per rule; never elevated or locked-session windows; clipboard content never logged or previewed; texts excluded from clipboard history | `actions::tests`, `win::desktop::tests`, e2e step79 |
+| The recorder as a keylogger | Records only keys typed into the editor's own window, after an explicit start, behind a banner; no hook; reviewed before saving | `recorder::tests`, flows macro test |
+| Malicious imports (profiles, AutoHotkey scripts) | Imports are validated, never active, every rule off and without consent; `.ahk` is read, never run; unknown constructs reported, never approximated | profile import tests, `ahk::tests`, e2e step75/step80 |
+| Agents or other programs drive Ddalgak | Per-user pipe with an owner-only DACL and a verified server; the MCP adapter offers reading only unless the user grants an area; agents never grant consent, run rules or turn the engine on; arguments validated; calls audited | `mcp_cmd::tests`, pipe tests, e2e step81 |
+| Elevation | Ddalgak refuses to turn its engine on as administrator (`engine_elevated`); no service, no `UIAccess` | lifecycle tests |
+| Power and session changes | Session lock, sleep and the secure desktop cancel runs and release keys; schedules never catch up missed times | worker schedule logic, acceptance rows 15–16 |
+| Unwanted startup or updates | Start at sign-in only on request; no self-update; Kim updates only when asked (KIM-SEC-001) | startup tests, e2e step82 |

@@ -24,6 +24,8 @@ did.
 | [DDALGAK_AHK_MATRIX.md](DDALGAK_AHK_MATRIX.md) | current (inventory, matrix v4, AutoHotkey v2.0.31; remap rows implemented in Step 68, hotstring and sending rows in Step 69, `Run` rows in Step 70, `MouseMove`/`Click`/wheel rows in Step 71, `#HotIf`-style mode rows in Step 72, `Suspend`/`Pause` and tray rows in Step 73, the editor rows in Step 74; matrix v4, the profile row in Step 75) | AutoHotkey v2 comparison with sources: supported, partial, planned, not intended |
 | [DDALGAK_AHK_MIGRATION.md](DDALGAK_AHK_MIGRATION.md) | current (Step 80) | Moving from AutoHotkey: importing a v2 script (what converts, what needs manual migration, never run), after the import, what Ddalgak adds, what it does not claim |
 | [DDALGAK_MCP.md](DDALGAK_MCP.md) | current (Step 81) | Ddalgak for scripts, agents and Kim: the headless CLI by area, the opt-in MCP adapter (read always, changes by grant, audit), the Kim interop capabilities |
+| [DDALGAK_GUIDE.md](DDALGAK_GUIDE.md) | current (Step 82) | The Ddalgak user guide: first run, the emergency chord, rules, modes, programs, schedules, profiles, the playground, privacy, scripts and agents, limits |
+| [DDALGAK_ACCEPTANCE.md](DDALGAK_ACCEPTANCE.md) | current (Step 82) | The real Windows acceptance script (20 rows) with the automated evidence of each |
 
 ## Architecture and compatibility
 

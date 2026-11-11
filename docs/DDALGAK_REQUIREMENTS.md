@@ -151,10 +151,10 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 
 | ID | Requirement | Pri | MS | Verify |
 | --- | --- | --- | --- | --- |
-| DDALGAK-NFR-001 | **Idle cost.** With the engine running, 100 rules and no input, the app averages < 0.1 % of one core over 60 s and has no periodic timers; with the engine off it holds no hook. | P0 | D6 | M |
-| DDALGAK-NFR-002 | **Hook latency.** The hook callback returns in < 1 ms (p99) for any key, matched or not; matching side effects run on a worker thread. The engine never relies on the system's `LowLevelHooksTimeout` (at most 1000 ms on Windows 10 1709 and later). | P0 | D2 | T, M |
-| DDALGAK-NFR-003 | **Memory.** Tray app with the engine running and no window open: < 25 MB working set; editor open: < 80 MB. | P1 | D6 | M |
-| DDALGAK-NFR-004 | **Load time.** Loading and validating 1000 rules and installing the hook takes < 100 ms on a typical machine. | P1 | D2 | T, M |
+| DDALGAK-NFR-001 | **Idle cost.** With the engine running, 100 rules and no input, the app averages < 0.1 % of one core over 60 s and has no periodic timers; with the engine off it holds no hook. Step 82: measured by `cargo xtask bench-ddalgak` (0 ms CPU and 0 wakeups per 10 s with 100 and 1000 rules, debug test host); the release tray app check is manual. | P0 | D6 | M |
+| DDALGAK-NFR-002 | **Hook latency.** The hook callback returns in < 1 ms (p99) for any key, matched or not; matching side effects run on a worker thread. The engine never relies on the system's `LowLevelHooksTimeout` (at most 1000 ms on Windows 10 1709 and later). Step 82: p99 ≤ 100 µs with 1000 rules (bench-ddalgak). | P0 | D2 | T, M |
+| DDALGAK-NFR-003 | **Memory.** Tray app with the engine running and no window open: < 25 MB working set; editor open: < 80 MB. Step 82: the debug test host measures ~31 MiB (informational); the release figure is checked by hand (DDALGAK_ACCEPTANCE row 17). | P1 | D6 | M |
+| DDALGAK-NFR-004 | **Load time.** Loading and validating 1000 rules and installing the hook takes < 100 ms on a typical machine. Step 82: 1000 rules loaded and checked in ~78 ms by a cold CLI (bench-ddalgak). | P1 | D2 | T, M |
 | DDALGAK-NFR-005 | **Portable rules.** Stored keys use the contract's names, never virtual-key numbers; paths may use known-folder tokens; the file is UTF-8 JSON. | P0 | D2 | T, I |
 | DDALGAK-NFR-006 | **Layouts and IME.** Logical, physical and character keys behave as in [HOTKEY_CONTRACT §6](HOTKEY_CONTRACT.md); no rule fires during an IME composition; typed text is independent of the active layout. Verified with the US layout and Korean 2-set IME. | P0 | D3 | T, M |
 | DDALGAK-NFR-007 | **Accessibility.** The editor and playground are fully keyboard-operable, announce captured keys and errors to screen readers and meet `KIM-NFR-012`. | P0 | D4 | T, M |

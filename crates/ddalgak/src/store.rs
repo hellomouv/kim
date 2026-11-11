@@ -160,6 +160,11 @@ impl Loaded {
     }
 }
 
+/// The content hash a loaded document carries (`Loaded::hash`).
+pub fn content_hash(bytes: &[u8]) -> u64 {
+    hash(bytes)
+}
+
 fn hash(bytes: &[u8]) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     bytes.hash(&mut h);

@@ -2873,10 +2873,12 @@ fn claude_marks_move_per_terminal_only_while_shown() {
     }
     let f1 = m(&gui.dump())["frames"].as_u64().unwrap();
     // Bounded by the time that really passed between the two dumps (longer on a busy machine).
+    // A test dump may also repaint, so a few frames more than ticks are fine; a free-running
+    // animation would draw ~60 per second (about 180 here).
     let ticks = (span.elapsed().as_millis() / 300) as u64;
     let frames = f1 - f0;
     assert!(
-        (ticks * 2 / 3..=ticks + 2).contains(&frames),
+        (ticks * 2 / 3..=ticks * 2 + 2).contains(&frames),
         "{frames} frames in {ticks} ticks of 300 ms"
     );
     assert!(seen.len() >= 3, "the mark turns: {seen:?}");

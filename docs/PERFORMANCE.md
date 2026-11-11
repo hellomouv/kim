@@ -105,3 +105,25 @@ needed optimising in this Step: every measurement is well inside its budget. **N
 the real-desktop capture stage on the maintainer's monitors (`overlay_measure` without
 `--synthetic-only` does it, reading the screen into memory only), paste latency of large PNGs
 (NOEUL-NFR-005), twenty 1080p pins dragged at the refresh rate (NOEUL-NFR-007, a visible check).
+
+## 6. Ddalgak (Step 82)
+
+`cargo xtask bench-ddalgak [--record|--check]` measures the release CLI and the **debug test host**
+(`ddalgak-gui --test-host`: no tray icon, a real keyboard hook that never consumes a key) with 0, 10,
+100 and 1000 active rules; baseline `docs/perf/ddalgak-baseline.json`. Nothing is shown; the hook
+latency burst sends 400 F20 taps as another program (skipped on a locked desktop).
+
+| Measure | Result | Budget |
+| --- | --- | --- |
+| idle CPU, 100 / 1000 rules | 0.0 / 0.0 ms per 10 s | < 10 ms (NFR-001, 0.1 % of a core) |
+| idle wakeups, 100 rules | 0.0 per 10 s | no periodic timers (NFR-001) |
+| hook callback p99, 1000 rules | ≤ 100 µs | < 1 ms (NFR-002) |
+| load and check 1000 rules (cold CLI) | 78.2 ms | < 100 ms for the load itself (NFR-004) |
+| test host start to hook installed, 1000 rules | 447.8 ms (debug) | — |
+| profile switch of 1000 rules, saved and reloaded | 510.3 ms | < 1 s |
+| working set, 100 rules | 31.2 MiB (**debug**, informational) | < 25 MB release (NFR-003, manual) |
+| `ddalgak.exe` | 4.9 MiB | < 12 MiB |
+
+**Fixed in Step 82:** every save with the app running cost ~2.5 s with 1000 rules, because each of
+the save's file notifications made the app re-read and re-validate the whole file before comparing
+bytes. The app now compares the file's hash (and its validation context) first: 0.5 s.
