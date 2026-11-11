@@ -167,6 +167,8 @@ enum Dialog {
         path: String,
         plan: Option<Box<ddalgak::profile::ImportPlan>>,
         error: Option<String>,
+        /// Step 80: what an AutoHotkey script became (its report), when the file is one.
+        ahk: Option<serde_json::Value>,
     },
     History {
         id: String,

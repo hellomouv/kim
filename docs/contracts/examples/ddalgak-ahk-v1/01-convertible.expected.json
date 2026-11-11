@@ -1,0 +1,470 @@
+{
+  "document": {
+    "active_profile": "ahk",
+    "hotkey_contract": 1,
+    "profiles": [
+      {
+        "default_mode": "base",
+        "description": "Imported from an AutoHotkey v2 script; every rule arrives turned off.",
+        "id": "ahk",
+        "modes": [
+          {
+            "id": "base",
+            "title": "Base"
+          }
+        ],
+        "rules": [
+          {
+            "enabled": false,
+            "id": "ahk-8",
+            "steps": [
+              {
+                "to": "LCtrl",
+                "type": "remap"
+              }
+            ],
+            "title": "AHK line 8: CapsLock → remap",
+            "trigger": {
+              "keys": "CapsLock"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-9",
+            "steps": [
+              {
+                "to": "RCtrl",
+                "type": "remap"
+              }
+            ],
+            "title": "AHK line 9: RAlt → remap",
+            "trigger": {
+              "keys": "RAlt"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-10",
+            "steps": [
+              {
+                "type": "block"
+              }
+            ],
+            "title": "AHK line 10: Insert → block",
+            "trigger": {
+              "keys": "Insert"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-13",
+            "steps": [
+              {
+                "keys": "Down",
+                "type": "send_keys"
+              }
+            ],
+            "title": "AHK line 13: Ctrl+Alt+J → send keys",
+            "trigger": {
+              "keys": "Ctrl+Alt+J"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-14",
+            "steps": [
+              {
+                "keys": "Ctrl+C Tab Ctrl+V",
+                "type": "send_keys"
+              }
+            ],
+            "title": "AHK line 14: Ctrl+Shift+V → send keys",
+            "trigger": {
+              "keys": "Ctrl+Shift+V"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-15",
+            "steps": [
+              {
+                "text": "Kind regards,\nKim",
+                "type": "type_text"
+              }
+            ],
+            "title": "AHK line 15: Ctrl+Alt+S → type text",
+            "trigger": {
+              "keys": "Ctrl+Alt+S"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-16",
+            "steps": [
+              {
+                "keys": "Enter Enter",
+                "type": "send_keys"
+              }
+            ],
+            "title": "AHK line 16: F14 → send keys",
+            "trigger": {
+              "keys": "F14",
+              "pass_through": true
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-17",
+            "steps": [
+              {
+                "keys": "End",
+                "type": "send_keys"
+              }
+            ],
+            "title": "AHK line 17: Ctrl+F15 → send keys",
+            "trigger": {
+              "keys": "Ctrl+F15",
+              "on": "release"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-20",
+            "steps": [
+              {
+                "type": "open_url",
+                "url": "https://github.com/"
+              }
+            ],
+            "title": "AHK line 20: Ctrl+Alt+G → open url",
+            "trigger": {
+              "keys": "Ctrl+Alt+G"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-21",
+            "steps": [
+              {
+                "path": "%SystemRoot%\\System32\\notepad.exe",
+                "type": "open_program"
+              }
+            ],
+            "title": "AHK line 21: Ctrl+Alt+N → open program",
+            "trigger": {
+              "keys": "Ctrl+Alt+N"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-24",
+            "steps": [
+              {
+                "keys": "Ctrl+A",
+                "type": "send_keys"
+              },
+              {
+                "ms": 200,
+                "type": "delay"
+              },
+              {
+                "text": "replaced",
+                "type": "type_text"
+              },
+              {
+                "body": "Done",
+                "title": "Ddalgak",
+                "type": "notify"
+              }
+            ],
+            "title": "AHK line 24: Ctrl+Alt+M → 4 steps",
+            "trigger": {
+              "keys": "Ctrl+Alt+M"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-33",
+            "steps": [
+              {
+                "op": "maximize",
+                "type": "window"
+              }
+            ],
+            "title": "AHK line 33: Ctrl+Alt+Up → window",
+            "trigger": {
+              "keys": "Ctrl+Alt+Up"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-34",
+            "steps": [
+              {
+                "op": "minimize",
+                "type": "window"
+              }
+            ],
+            "title": "AHK line 34: Ctrl+Alt+Down → window",
+            "trigger": {
+              "keys": "Ctrl+Alt+Down"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-35",
+            "steps": [
+              {
+                "op": "set",
+                "text": "copied by a rule",
+                "type": "clipboard"
+              }
+            ],
+            "title": "AHK line 35: Ctrl+Alt+C → clipboard",
+            "trigger": {
+              "keys": "Ctrl+Alt+C"
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-38",
+            "steps": [
+              {
+                "text": "by the way",
+                "type": "type_text"
+              }
+            ],
+            "title": "AHK line 38: ::btw → type text",
+            "trigger": {
+              "hotstring": {
+                "abbreviation": "btw"
+              }
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-39",
+            "steps": [
+              {
+                "text": "Best regards\nKim",
+                "type": "type_text"
+              }
+            ],
+            "title": "AHK line 39: ::;sig → type text",
+            "trigger": {
+              "hotstring": {
+                "abbreviation": ";sig",
+                "immediate": true
+              }
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-40",
+            "steps": [
+              {
+                "text": "AutoHotkey",
+                "type": "type_text"
+              }
+            ],
+            "title": "AHK line 40: ::AHK → type text",
+            "trigger": {
+              "hotstring": {
+                "abbreviation": "AHK",
+                "case": "sensitive"
+              }
+            }
+          },
+          {
+            "enabled": false,
+            "id": "ahk-44",
+            "steps": [
+              {
+                "keys": "Ctrl+Shift+P",
+                "type": "send_keys"
+              }
+            ],
+            "title": "AHK line 44: Ctrl+Alt+P → send keys",
+            "trigger": {
+              "keys": "Ctrl+Alt+P"
+            },
+            "when": {
+              "apps": [
+                {
+                  "exe": "Code.exe"
+                }
+              ]
+            }
+          }
+        ],
+        "title": "Imported from 01-convertible.ahk"
+      }
+    ],
+    "schema": "ddalgak.rules",
+    "schema_version": 1
+  },
+  "report": {
+    "converted": 19,
+    "diagnostics": [
+      {
+        "code": "directive",
+        "column": 1,
+        "level": "ignored",
+        "line": 1,
+        "message": "#Requires: nothing to convert"
+      },
+      {
+        "code": "directive",
+        "column": 1,
+        "level": "ignored",
+        "line": 2,
+        "message": "#SingleInstance: Ddalgak needs nothing for it"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 8,
+        "message": "became rule ahk-8"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 9,
+        "message": "became rule ahk-9"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 10,
+        "message": "became rule ahk-10"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 13,
+        "message": "became rule ahk-13"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 14,
+        "message": "became rule ahk-14"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 15,
+        "message": "became rule ahk-15"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 16,
+        "message": "became rule ahk-16"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 17,
+        "message": "became rule ahk-17"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 20,
+        "message": "became rule ahk-20"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 21,
+        "message": "became rule ahk-21"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 24,
+        "message": "became rule ahk-24"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 33,
+        "message": "became rule ahk-33"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 34,
+        "message": "became rule ahk-34"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 35,
+        "message": "became rule ahk-35"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 38,
+        "message": "became rule ahk-38"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 39,
+        "message": "became rule ahk-39"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 40,
+        "message": "became rule ahk-40"
+      },
+      {
+        "code": "condition",
+        "column": 1,
+        "level": "converted",
+        "line": 43,
+        "message": "the following hotkeys apply only in Code.exe"
+      },
+      {
+        "code": "converted",
+        "column": 1,
+        "level": "converted",
+        "line": 44,
+        "message": "became rule ahk-44"
+      },
+      {
+        "code": "directive",
+        "column": 1,
+        "level": "ignored",
+        "line": 45,
+        "message": "#HotIf ends the condition"
+      }
+    ],
+    "ignored": 3,
+    "manual": 0,
+    "rules": 18,
+    "source": "01-convertible.ahk",
+    "warnings": 0
+  }
+}

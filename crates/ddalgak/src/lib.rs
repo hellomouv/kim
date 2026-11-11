@@ -46,6 +46,7 @@
 //! and are tested everywhere.
 
 pub mod actions;
+pub mod ahk;
 pub mod context;
 pub mod core;
 pub mod edit;

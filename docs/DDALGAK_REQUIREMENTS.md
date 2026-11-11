@@ -133,7 +133,7 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | DDALGAK-FR-060 | `ddalgak` follows the Kim CLI contract for `rule`, `profile`, `mode`, `test`, `explain`, `status`, `pause`, `resume`, `engine`, `hotkeys` and `capabilities`, with `--json`. No CLI command opens a window or tray icon, starts the app or installs a hook. | P0 | D6 | T |
 | DDALGAK-FR-061 | Ddalgak conforms to the hotkey contract: its manifest ([example](contracts/examples/kim-hotkey-manifest-v1/ddalgak.json)), `hotkeys.json`, the `hotkeys` commands, rule triggers listed as read-only `rule.<id>` actions and `hook_overrides_global` reported ([HOTKEY_CONTRACT §13.4](HOTKEY_CONTRACT.md)). | P0 | D2 | T |
 | DDALGAK-FR-062 | An opt-in local MCP adapter offers read-only inspection, explain and simulation; changes need explicitly granted permissions. It cannot turn the engine on, run live tests or grant consent. | P2 | D6 | T |
-| DDALGAK-FR-063 | An AutoHotkey v2 importer previews and converts a declarative subset into disabled rules with a line-by-line coverage report; it never executes or evaluates the script. | P2 | D5 | T |
+| DDALGAK-FR-063 | An AutoHotkey v2 importer previews and converts a declarative subset into disabled rules with a line-by-line coverage report; it never executes or evaluates the script. Step 80: implemented (`ddalgak profile import file.ahk`, the editor's *Import profile…*; ADR 0081, [migration guide](DDALGAK_AHK_MIGRATION.md)). | P2 | D5 | T |
 
 ### 2.8 Later capabilities (tracked)
 

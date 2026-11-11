@@ -196,7 +196,7 @@ Where a page did not state something, the row says so instead of filling the gap
 | 8.2 | `DllCall`, COM, file reading and writing | CO | — | not intended | — | — |
 | 8.3 | `#Include` libraries | SC | — | not intended | — | — |
 | 8.4 | Compiling scripts into executables (Ahk2Exe) | SC | — | not intended | — | — |
-| 8.5 | Running `.ahk` scripts | SC | **Never.** An importer converts a declarative subset into disabled rules with a coverage report, without executing anything | partial | 80 | — |
+| 8.5 | Running `.ahk` scripts | SC | **Never.** `ddalgak profile import file.ahk` converts a declarative subset into one profile of disabled rules with a line/column report; everything else is reported for manual migration ([migration guide](DDALGAK_AHK_MIGRATION.md)) | supported | 80 | Step 80: `ahk::tests` (fixtures `docs/contracts/examples/ddalgak-ahk-v1`), `flows::an_autohotkey_script_is_imported_…`, `e2e/tests/step80_ddalgak_ahk_import.rs` |
 
 ## 9. Limitations and environment
 
@@ -234,3 +234,4 @@ Where a page did not state something, the row says so instead of filling the gap
 | v2 | 2026-11-04 | v2.0.31 | Steps 68–73 filled in the evidence of the rows they implemented; Step 73: `Suspend`, `Pause` and the tray row (7.2 is `partial` until the editor of Step 74). |
 | v3 | 2026-11-04 | v2.0.31 | Step 74: the editor rows (1.12, 7.3, 10.1) gained evidence; the tray row 7.2 is `supported` (the tray opens the editor). |
 | v4 | 2026-11-04 | v2.0.31 | Step 75: the profiles row 10.6 is implemented (switch, versions, rollback, export, import), with evidence. |
+| v5 | 2026-11-12 | v2.0.31 | Steps 76–80: the playground (10.2), app conditions (5.1–5.4), macros, window/clipboard/notify steps and schedules (4.20, 4.22, 6.1) and the AutoHotkey import (8.5), with evidence. |

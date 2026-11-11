@@ -1325,3 +1325,65 @@ fn a_macro_is_built_recorded_reordered_and_saved() {
     let l = ddalgak::rules::load(&sb.paths.rules());
     assert!(l.inactive.is_empty(), "{:?}", l.inactive);
 }
+
+/// Step 80 (J7, ADR 0081): an AutoHotkey v2 script imported through the same preview — the
+/// report counts its rules and lists the lines that need manual migration; the rules arrive in a
+/// new profile, never active, every rule off and without consent; a script with nothing
+/// convertible is refused with its lines. Nothing is run.
+#[test]
+fn an_autohotkey_script_is_imported_through_the_preview_without_running() {
+    let sb = Sandbox::new("ahk");
+    sb.write_rules(&three_rules());
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake));
+    settle(&mut h);
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/contracts/examples/ddalgak-ahk-v1");
+    click(&mut h, "Profiles");
+    click(&mut h, "Import profile…");
+    h.get_by_label("File")
+        .set_text_value_accesskit(&fixtures.join("02-manual.ahk").display().to_string());
+    h.run();
+    click(&mut h, "Check the file");
+    assert!(
+        h.query_all_by_label_contains("Nothing in the script converts")
+            .next()
+            .is_some()
+    );
+    assert!(
+        h.query_all_by_label_contains("Manual, line 9:1")
+            .next()
+            .is_some(),
+        "line and column"
+    );
+    assert!(h.query_by_label("Add them, not active").is_none());
+    h.get_by_label("File")
+        .set_text_value_accesskit(&fixtures.join("01-convertible.ahk").display().to_string());
+    h.run();
+    click(&mut h, "Check the file");
+    assert!(h.query_all_by_label_contains("Rules: 18").next().is_some());
+    assert!(
+        h.query_all_by_label_contains("read, never run")
+            .next()
+            .is_some()
+    );
+    click(&mut h, "Add them, not active");
+    settle(&mut h);
+    let d = sb.rules();
+    assert_eq!(
+        d["active_profile"], "work",
+        "an import is never switched to"
+    );
+    let profiles = d["profiles"].as_array().unwrap();
+    let p = profiles
+        .iter()
+        .find(|p| p["title"] == "Imported from 01-convertible.ahk")
+        .unwrap_or_else(|| panic!("imported: {:#}", d["profiles"]));
+    assert_eq!(p["title"], "Imported from 01-convertible.ahk");
+    let rules = p["rules"].as_array().unwrap();
+    assert_eq!(rules.len(), 18);
+    for r in rules {
+        assert_eq!(r["enabled"], false);
+        assert!(r.get("consent").is_none());
+    }
+}

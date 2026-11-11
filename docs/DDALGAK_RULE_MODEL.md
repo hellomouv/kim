@@ -894,6 +894,14 @@ do not block an unrelated change.
   would keep it inactive; launch targets are shown only with `--show-targets` (always in the
   editor's preview). Profiles arrive **not active, every rule off, without consent**.
 
+## 10.1 Importing AutoHotkey v2 scripts (Step 80)
+
+`ddalgak profile import file.ahk [--dry-run]` and the editor's *Import profile…* convert the
+declarative subset of an AutoHotkey v2 script into one profile (read, never run) and import it like
+any profile file: never active, every rule off and without consent. The output's `ahk` report lists
+every line as converted, converted with a warning, needs manual migration or ignored, with line and
+column. [DDALGAK_AHK_MIGRATION](DDALGAK_AHK_MIGRATION.md), [ADR 0081](adr/0081-ddalgak-autohotkey-import.md).
+
 ## 11. Test playground and simulation
 
 The playground is where users try rules safely ([GUI_JOURNEYS J5](DDALGAK_GUI_JOURNEYS.md)).

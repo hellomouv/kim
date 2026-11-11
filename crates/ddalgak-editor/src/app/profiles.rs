@@ -394,6 +394,7 @@ impl EditorApp {
                 mut path,
                 plan,
                 error,
+                ahk,
             } => {
                 title(ui, lang.t("dialog.import_profile"));
                 ui.label(small(lang.t("dialog.import_profile_text"), c.text_muted));
@@ -403,22 +404,15 @@ impl EditorApp {
                 if focus {
                     r.request_focus();
                 }
-                let mut next = (plan.clone(), error.clone());
+                let mut next = (plan.clone(), error.clone(), ahk.clone());
                 if ui.button(lang.t("dialog.check")).clicked() {
                     next = match self.plan_profile_import(&path) {
-                        Ok(p) => (Some(Box::new(p)), None),
-                        Err(e) => (None, Some(e)),
+                        Ok((p, r)) => (Some(Box::new(p)), None, r),
+                        Err((e, r)) => (None, Some(e), r),
                     };
                 }
-                if let Some(e) = &error {
-                    ui.label(egui::RichText::new(format!("✕ {e}")).color(c.danger));
-                }
-                if let Some(p) = &plan {
-                    egui::ScrollArea::vertical()
-                        .id_salt("import-preview")
-                        .max_height(320.0)
-                        .show(ui, |ui| self.import_preview(ui, p));
-                }
+                // The buttons come before the (long) report and preview, so they stay reachable
+                // in a small window.
                 ui.horizontal(|ui| {
                     if cancel_button(ui, lang.t("btn.cancel"), false) {
                         self.acts.push(Act::CloseDialog);
@@ -429,15 +423,78 @@ impl EditorApp {
                         self.acts.push(Act::ImportProfiles(p.clone()));
                     }
                 });
+                if let Some(e) = &error {
+                    ui.label(egui::RichText::new(format!("✕ {e}")).color(c.danger));
+                }
+                // Step 80: the AutoHotkey report, manual lines first (the script is never run).
+                if let Some(r) = &ahk {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {} · {} {} · {} {} · {} {}",
+                            lang.t("ahk.rules"),
+                            r["rules"],
+                            lang.t("ahk.converted"),
+                            r["converted"],
+                            lang.t("ahk.warnings"),
+                            r["warnings"],
+                            lang.t("ahk.manual"),
+                            r["manual"]
+                        ))
+                        .strong(),
+                    );
+                    ui.label(small(lang.t("ahk.never_run"), c.text_muted));
+                    egui::ScrollArea::vertical()
+                        .id_salt("ahk-report")
+                        .max_height(160.0)
+                        .show(ui, |ui| {
+                            for lvl in ["manual", "warning"] {
+                                for d in r["diagnostics"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter(|d| d["level"] == lvl)
+                                {
+                                    let color = if lvl == "manual" {
+                                        c.warning
+                                    } else {
+                                        c.text_secondary
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} {}:{} — {}",
+                                            lang.t(if lvl == "manual" {
+                                                "ahk.manual_line"
+                                            } else {
+                                                "ahk.warning_line"
+                                            }),
+                                            d["line"],
+                                            d["column"],
+                                            d["message"].as_str().unwrap_or("")
+                                        ))
+                                        .color(color),
+                                    );
+                                }
+                            }
+                        });
+                }
+                if let Some(p) = &plan {
+                    egui::ScrollArea::vertical()
+                        .id_salt("import-preview")
+                        .max_height(320.0)
+                        .show(ui, |ui| self.import_preview(ui, p));
+                }
+
                 if let Some(Dialog::ImportProfile {
                     path: pp,
                     plan: pl,
                     error: er,
+                    ahk: ak,
                 }) = &mut self.dialog
                 {
                     *pp = path;
                     *pl = next.0;
                     *er = next.1;
+                    *ak = next.2;
                 }
             }
             Dialog::History {
@@ -649,11 +706,44 @@ impl EditorApp {
         }
     }
 
-    fn plan_profile_import(&self, path: &str) -> Result<profile::ImportPlan, String> {
-        let bytes = std::fs::read(path.trim()).map_err(|e| format!("cannot read {path}: {e}"))?;
-        let doc = self.loaded.doc.as_ref().ok_or("rules.json is not usable")?;
+    /// The import's plan, and for an AutoHotkey script (Step 80) its conversion report.
+    #[allow(clippy::type_complexity)]
+    fn plan_profile_import(
+        &self,
+        path: &str,
+    ) -> Result<(profile::ImportPlan, Option<serde_json::Value>), (String, Option<serde_json::Value>)>
+    {
+        let p = std::path::Path::new(path.trim());
+        let mut bytes = std::fs::read(p).map_err(|e| (format!("cannot read {path}: {e}"), None))?;
+        let doc = self
+            .loaded
+            .doc
+            .as_ref()
+            .ok_or(("rules.json is not usable".to_string(), None))?;
+        let mut report = None;
+        if ddalgak::ahk::is_ahk(p) {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let text = String::from_utf8(
+                bytes
+                    .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
+                    .unwrap_or(&bytes)
+                    .to_vec(),
+            )
+            .map_err(|_| ("the script is not UTF-8 text".to_string(), None))?;
+            let c = ddalgak::ahk::convert(&text, &format!("Imported from {name}"));
+            let r = c.report(&name);
+            if c.rules == 0 {
+                return Err((self.t("ahk.nothing").to_string(), Some(r)));
+            }
+            bytes = serde_json::to_vec(&c.document).unwrap_or_default();
+            report = Some(r);
+        }
         profile::plan_import(&bytes, doc, &self.repo.context(), &ImportOptions::default())
-            .map_err(|e| e.to_string())
+            .map(|plan| (plan, report.clone()))
+            .map_err(|e| (e.to_string(), report))
     }
 
     /// Applies one of the profile acts.
@@ -801,6 +891,7 @@ impl EditorApp {
                     path: String::new(),
                     plan: None,
                     error: None,
+                    ahk: None,
                 });
                 self.dialog_focus = true;
             }

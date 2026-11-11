@@ -338,7 +338,7 @@ fn export(a: &Args, files: &Files, ctx: &Context) -> Outcome {
 /// `profile import <file> [--id <id>] [--title <name>]`: `--dry-run` is the validation preview.
 fn import(cmd: Cmd, a: &Args, files: &Files, ctx: &Context, notify: Notify<'_>) -> Outcome {
     let path = PathBuf::from(&a.positional[0]);
-    let bytes = std::fs::read(&path).map_err(|e| {
+    let mut bytes = std::fs::read(&path).map_err(|e| {
         let code = if e.kind() == std::io::ErrorKind::PermissionDenied {
             Code::PermissionDenied
         } else {
@@ -346,10 +346,43 @@ fn import(cmd: Cmd, a: &Args, files: &Files, ctx: &Context, notify: Notify<'_>) 
         };
         CliError::new(code, format!("cannot read {}: {e}", path.display()))
     })?;
-    let opts = ImportOptions {
+    let mut opts = ImportOptions {
         id: a.get("--id").map(str::to_string),
         title: a.get("--title").map(str::to_string),
     };
+    // Step 80: an AutoHotkey v2 script is converted (read, never run) into one profile first.
+    let mut ahk_report = None;
+    if ddalgak::ahk::is_ahk(&path) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let text = String::from_utf8(
+            bytes
+                .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
+                .unwrap_or(&bytes)
+                .to_vec(),
+        )
+        .map_err(|_| {
+            CliError::new(
+                Code::ImportInvalid,
+                "the script is not UTF-8 text (AutoHotkey v2 saves UTF-8)",
+            )
+        })?;
+        let c = ddalgak::ahk::convert(&text, &format!("Imported from {name}"));
+        if c.rules == 0 && !a.dry_run {
+            return Err(CliError::new(
+                Code::ImportInvalid,
+                "nothing in the script converts to a Ddalgak rule",
+            )
+            .hint("`--dry-run --json` lists every line that needs manual migration"));
+        }
+        opts.title = opts
+            .title
+            .or_else(|| Some(format!("Imported from {name}").chars().take(80).collect()));
+        bytes = serde_json::to_vec(&c.document).unwrap_or_default();
+        ahk_report = Some(c.report(&name));
+    }
     // Checked first against the saved rules, so a bad file is refused before any lock.
     let l = rule_cmd::saved(files, ctx)?;
     profile::plan_import(&bytes, l.doc.as_ref().expect("usable"), ctx, &opts)
@@ -378,6 +411,9 @@ fn import(cmd: Cmd, a: &Args, files: &Files, ctx: &Context, notify: Notify<'_>) 
         (data.as_object_mut(), plan.to_json(a.has("--show-targets")))
     {
         o.extend(p);
+    }
+    if let (Some(o), Some(r)) = (data.as_object_mut(), ahk_report) {
+        o.insert("ahk".into(), r);
     }
     Ok((data, warnings))
 }
@@ -742,6 +778,35 @@ pub fn human(cmd: Cmd, d: &Value) -> String {
             ));
         }
         Cmd::ProfileImport => {
+            // Step 80: what an AutoHotkey script became, line by line (manual lines first).
+            if let Some(r) = d.get("ahk") {
+                o.push_str(&format!(
+                    "{}: {} rule(s); {} line(s) converted, {} with a warning, {} need manual migration, {} ignored (the script was read, never run)
+",
+                    s(&r["source"]),
+                    s(&r["rules"]),
+                    s(&r["converted"]),
+                    s(&r["warnings"]),
+                    s(&r["manual"]),
+                    s(&r["ignored"])
+                ));
+                for lvl in ["manual", "warning"] {
+                    for x in r["diagnostics"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|x| x["level"] == lvl)
+                    {
+                        o.push_str(&format!(
+                            "  line {}:{} {lvl}: {}
+",
+                            s(&x["line"]),
+                            s(&x["column"]),
+                            s(&x["message"])
+                        ));
+                    }
+                }
+            }
             let c = &d["counts"];
             o.push_str(&format!(
                 "{} {} profile(s) with {} rule(s){}\n",

@@ -1,0 +1,145 @@
+{
+  "document": {
+    "active_profile": "ahk",
+    "hotkey_contract": 1,
+    "profiles": [
+      {
+        "default_mode": "base",
+        "description": "Imported from an AutoHotkey v2 script; every rule arrives turned off.",
+        "id": "ahk",
+        "modes": [
+          {
+            "id": "base",
+            "title": "Base"
+          }
+        ],
+        "rules": [],
+        "title": "Imported from 02-manual.ahk"
+      }
+    ],
+    "schema": "ddalgak.rules",
+    "schema_version": 1
+  },
+  "report": {
+    "converted": 0,
+    "diagnostics": [
+      {
+        "code": "directive",
+        "column": 1,
+        "level": "ignored",
+        "line": 1,
+        "message": "#Requires: nothing to convert"
+      },
+      {
+        "code": "directive_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 3,
+        "message": "#Include is not converted"
+      },
+      {
+        "code": "code",
+        "column": 1,
+        "level": "manual",
+        "line": 5,
+        "message": "code outside a hotkey (variables, functions, expressions) needs manual migration"
+      },
+      {
+        "code": "win_shortcut",
+        "column": 1,
+        "level": "manual",
+        "line": 7,
+        "message": "Win shortcuts belong to Windows; Ddalgak does not take them (choose another key)"
+      },
+      {
+        "code": "keys_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 8,
+        "message": "custom combinations (`a & b`) have no Ddalgak equivalent"
+      },
+      {
+        "code": "command_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 9,
+        "message": "`DllCall` has side effects Ddalgak does not imitate; the hotkey on line 9 needs manual migration"
+      },
+      {
+        "code": "command_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 10,
+        "message": "`FileAppend` has side effects Ddalgak does not imitate; the hotkey on line 10 needs manual migration"
+      },
+      {
+        "code": "command_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 11,
+        "message": "Run \"mytool.exe\" by name: Ddalgak opens programs by their full path (choose it in the editor); the hotkey on line 11 needs manual migration"
+      },
+      {
+        "code": "command_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 12,
+        "message": "`{Shift down}` holds a key down; Ddalgak sends whole key presses; the hotkey on line 12 needs manual migration"
+      },
+      {
+        "code": "hotstring_code",
+        "column": 1,
+        "level": "manual",
+        "line": 13,
+        "message": "a hotstring that runs code needs manual migration"
+      },
+      {
+        "code": "condition_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 15,
+        "message": "only #HotIf WinActive(\"ahk_exe name.exe\") converts; the hotkeys below it need manual migration"
+      },
+      {
+        "code": "condition_unsupported",
+        "column": 1,
+        "level": "manual",
+        "line": 16,
+        "message": "under a #HotIf that does not convert"
+      },
+      {
+        "code": "directive",
+        "column": 1,
+        "level": "ignored",
+        "line": 17,
+        "message": "#HotIf ends the condition"
+      },
+      {
+        "code": "code",
+        "column": 1,
+        "level": "manual",
+        "line": 19,
+        "message": "code outside a hotkey (variables, functions, expressions) needs manual migration"
+      },
+      {
+        "code": "code",
+        "column": 5,
+        "level": "manual",
+        "line": 20,
+        "message": "code outside a hotkey (variables, functions, expressions) needs manual migration"
+      },
+      {
+        "code": "code",
+        "column": 1,
+        "level": "manual",
+        "line": 21,
+        "message": "code outside a hotkey (variables, functions, expressions) needs manual migration"
+      }
+    ],
+    "ignored": 2,
+    "manual": 14,
+    "rules": 0,
+    "source": "02-manual.ahk",
+    "warnings": 0
+  }
+}

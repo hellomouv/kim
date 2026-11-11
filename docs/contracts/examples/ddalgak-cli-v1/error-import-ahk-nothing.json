@@ -1,0 +1,12 @@
+{
+  "command": "profile.import",
+  "error": {
+    "code": "import_invalid",
+    "details": [],
+    "exit_code": 4,
+    "hint": "`--dry-run --json` lists every line that needs manual migration",
+    "message": "nothing in the script converts to a Ddalgak rule"
+  },
+  "ok": false,
+  "schema_version": 1
+}
