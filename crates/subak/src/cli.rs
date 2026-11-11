@@ -124,6 +124,11 @@ pub enum Cmd {
     TransferList,
     TransferStatus,
     TransferCancel,
+    /// Step 36 (ADR 0069): Telnet and serial panes, the hosts of an ssh config.
+    TelnetConnect,
+    SerialList,
+    SerialConnect,
+    SshHosts,
 }
 
 impl Cmd {
@@ -217,6 +222,10 @@ impl Cmd {
             Self::TransferList => "transfer.list",
             Self::TransferStatus => "transfer.status",
             Self::TransferCancel => "transfer.cancel",
+            Self::TelnetConnect => "telnet.connect",
+            Self::SerialList => "serial.list",
+            Self::SerialConnect => "serial.connect",
+            Self::SshHosts => "ssh.hosts",
         }
     }
 
@@ -278,6 +287,8 @@ impl Cmd {
                 | Self::TransferList
                 | Self::TransferStatus
                 | Self::TransferCancel
+                | Self::SerialList
+                | Self::SshHosts
         )
     }
 
@@ -316,7 +327,9 @@ impl Cmd {
     pub fn streams(&self, a: &Args) -> bool {
         match self {
             Self::HostAttach | Self::Attach => !a.dry_run,
-            Self::New | Self::SshConnect => a.attach && !a.dry_run,
+            Self::New | Self::SshConnect | Self::TelnetConnect | Self::SerialConnect => {
+                a.attach && !a.dry_run
+            }
             _ => false,
         }
     }
@@ -371,6 +384,8 @@ impl Cmd {
             Self::SftpPut => (&["[user@]host[:port]", "local path", "remote path"], 2),
             Self::SftpMkdir | Self::SftpRm => (&["[user@]host[:port]", "remote path"], 2),
             Self::TransferStatus | Self::TransferCancel => (&["transfer id"], 1),
+            Self::TelnetConnect => (&["host[:port]", "name"], 1),
+            Self::SerialConnect => (&["COMn", "name"], 1),
             _ => (&[], 0),
         }
     }
@@ -576,7 +591,28 @@ impl Cmd {
                 "--yes",
                 "--dry-run",
             ],
-            Self::TransferList | Self::TransferStatus => &[],
+            Self::TransferList | Self::TransferStatus | Self::SerialList => &[],
+            Self::SshHosts => &["--ssh-config"],
+            Self::TelnetConnect => &[
+                "--endpoint",
+                "--allow-insecure",
+                "--attach",
+                "--no-start",
+                "--dry-run",
+            ],
+            Self::SerialConnect => &[
+                "--endpoint",
+                "--baud",
+                "--data-bits",
+                "--parity",
+                "--stop-bits",
+                "--flow",
+                "--newline",
+                "--local-echo",
+                "--attach",
+                "--no-start",
+                "--dry-run",
+            ],
             Self::TransferCancel => &["--dry-run"],
             Self::SshCredentialStatus => &["--option", "--ssh-config"],
             Self::SshCredentialSave | Self::SshCredentialForget => {
@@ -649,6 +685,10 @@ pub struct Args {
     pub resume: bool,
     pub private: bool,
     pub background: bool,
+    /// Step 36: `telnet connect --allow-insecure`.
+    pub allow_insecure: bool,
+    /// Step 36: `serial connect` line settings.
+    pub serial: SerialArgs,
     pub remain_on_exit: bool,
     pub keep_on_failure: bool,
     /// `new --command-line <line>`: a verbatim Windows command line (ADR 0027 §4).
@@ -726,6 +766,19 @@ pub struct Args {
     pub percent: Option<u64>,
     /// `window new|pane new --no-select`: do not make it the active one (tmux `-d`).
     pub no_select: bool,
+}
+
+/// Step 36: `serial connect --baud --data-bits --parity --stop-bits --flow --newline
+/// --local-echo`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SerialArgs {
+    pub baud: Option<u32>,
+    pub data_bits: Option<u8>,
+    pub parity: Option<String>,
+    pub stop_bits: Option<String>,
+    pub flow: Option<String>,
+    pub newline: Option<String>,
+    pub local_echo: bool,
 }
 
 /// A line of `capture --start/--end`: a number (history lines are negative) or `-`, the oldest
@@ -1328,6 +1381,51 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.background = true;
                 opts.push("--background");
             }
+            "--allow-insecure" => {
+                a.allow_insecure = true;
+                opts.push("--allow-insecure");
+            }
+            "--local-echo" => {
+                a.serial.local_echo = true;
+                opts.push("--local-echo");
+            }
+            "--baud" | "--data-bits" => {
+                let name: &'static str = if flag == "--baud" {
+                    "--baud"
+                } else {
+                    "--data-bits"
+                };
+                opts.push(name);
+                if let Some(v) = value(name) {
+                    match (name, v.parse::<u32>()) {
+                        ("--baud", Ok(n)) => a.serial.baud = Some(n),
+                        (_, Ok(n)) if n <= 255 => a.serial.data_bits = u8::try_from(n).ok(),
+                        _ => {
+                            bad.get_or_insert(CliError::usage(format!(
+                                "{name} `{v}` is not a number"
+                            )));
+                        }
+                    }
+                }
+            }
+            "--parity" | "--stop-bits" | "--flow" | "--newline" => {
+                let name: &'static str = match flag {
+                    "--parity" => "--parity",
+                    "--stop-bits" => "--stop-bits",
+                    "--flow" => "--flow",
+                    _ => "--newline",
+                };
+                opts.push(name);
+                if let Some(v) = value(name) {
+                    let v = Some(v.to_ascii_lowercase());
+                    match name {
+                        "--parity" => a.serial.parity = v,
+                        "--stop-bits" => a.serial.stop_bits = v,
+                        "--flow" => a.serial.flow = v,
+                        _ => a.serial.newline = v,
+                    }
+                }
+            }
             "--profile-file" => {
                 // Step 33: `shell-integration … --profile-file <ps1>` (kept in `settings`).
                 opts.push("--profile-file");
@@ -1553,6 +1651,10 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["transfer", "list" | "ls", ..] => (Cmd::TransferList, 2),
         ["transfer", "status", ..] => (Cmd::TransferStatus, 2),
         ["transfer", "cancel", ..] => (Cmd::TransferCancel, 2),
+        ["telnet", "connect", ..] => (Cmd::TelnetConnect, 2),
+        ["serial", "list" | "ls", ..] => (Cmd::SerialList, 2),
+        ["serial", "connect", ..] => (Cmd::SerialConnect, 2),
+        ["ssh", "hosts", ..] => (Cmd::SshHosts, 2),
         ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
         ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),

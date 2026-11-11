@@ -69,6 +69,7 @@
         "jump": { "description": "Step 35 (ADR 0068): an SSH profile's jump hosts, in order (`[user@]host[:port]`; ProxyJump).", "type": "array", "items": { "type": "string" }, "maxItems": 32 },
         "forwards": { "description": "Step 35: an SSH profile's port forwards (`L:port:host:port`, `R:…`, `D:port`); they listen on loopback only.", "type": "array", "items": { "type": "string" }, "maxItems": 32 },
         "agent_forward": { "description": "Step 35: forward the SSH agent (off unless set; every connection warns about it).", "type": "boolean" },
+        "group": { "description": "Step 36 (ADR 0069): the group the profile is listed under; detected shells are in `Detected`.", "type": ["string", "null"] },
         "login_script": { "description": "Step 35: an SSH profile's login script (absolute path; `[[step]] expect`/`send`, never a secret).", "type": ["string", "null"] },
         "source": { "description": "Step 33, shown by Subak: `config` (config.toml) or `detected` (found on this PC; never written).", "enum": ["config", "detected"] },
         "secret_env": { "description": "Shown by Subak (not in the file): the variables whose name or value looks secret.", "type": "array", "items": { "type": "string" } },

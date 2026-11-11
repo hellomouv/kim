@@ -279,6 +279,8 @@ pub struct Profile {
     pub forwards: Vec<String>,
     pub agent_forward: bool,
     pub login_script: Option<String>,
+    /// Step 36: the group the profile belongs to (`profile list` shows it; detected shells: `Detected`).
+    pub group: Option<String>,
     /// The 1-based line of its `[[profiles]]` header (messages).
     pub line: Option<usize>,
 }
@@ -497,6 +499,7 @@ impl Profile {
             "forwards": self.forwards,
             "agent_forward": self.agent_forward,
             "login_script": self.login_script,
+            "group": self.group,
             "source": if self.detected { "detected" } else { "config" },
             "secret_env": self.secret_env(),
             "default": default,
@@ -1258,6 +1261,17 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             }
         }
     }
+    let group = match text("group", false)? {
+        Some(g)
+            if g.trim().is_empty() || g.chars().count() > 64 || g.chars().any(char::is_control) =>
+        {
+            return Err((
+                Some("group"),
+                "`group` must be 1 to 64 characters without control characters".into(),
+            ));
+        }
+        g => g.map(|g| g.trim().to_string()),
+    };
     let program = if ssh.is_some() {
         "ssh.exe".to_string()
     } else {
@@ -1354,13 +1368,14 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             "forwards",
             "agent_forward",
             "login_script",
+            "group",
         ]
         .contains(&k.as_str())
     }) {
         return Err((
             None,
             format!(
-                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity, jump, forwards, agent_forward, login_script)"
+                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity, jump, forwards, agent_forward, login_script, group)"
             ),
         ));
     }
@@ -1388,6 +1403,7 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         forwards,
         agent_forward,
         login_script,
+        group,
         line: None,
     })
 }
@@ -2584,6 +2600,7 @@ args = ["/k", "--password", "hunter2"]
             forwards: Vec::new(),
             agent_forward: false,
             login_script: None,
+            group: None,
             line: None,
         });
         let d: Vec<String> = differences(&a, &b).iter().map(|c| c.key.clone()).collect();
@@ -2668,5 +2685,42 @@ args = ["/k", "--password", "hunter2"]
         assert_eq!(format_number(15.0), "15");
         assert_eq!(trailing_comment("a = \"x # y\"  # real"), "  # real");
         assert_eq!(trailing_comment("a = 1"), "");
+    }
+
+    #[test]
+    fn profiles_can_be_grouped_and_ssh_fields_belong_to_ssh_profiles() {
+        let p = parse(
+            "[[profiles]]
+name = \"Prod\"
+ssh = \"ops@prod:22\"
+group = \"Servers\"
+jump = [\"bastion\"]
+forwards = [\"L:15432:db:5432\"]
+
+[[profiles]]
+name = \"Bad\"
+program = \"cmd.exe\"
+jump = [\"x\"]
+
+[[profiles]]
+name = \"Open\"
+ssh = \"h\"
+forwards = [\"L:0.0.0.0:1:h:2\"]
+",
+        );
+        let ok = &p.settings.profiles;
+        assert_eq!(ok.len(), 1, "{:?}", p.problems);
+        assert_eq!(ok[0].group.as_deref(), Some("Servers"));
+        assert_eq!(ok[0].to_json(false)["group"], "Servers");
+        assert!(
+            p.problems
+                .iter()
+                .any(|x| x.message.contains("belongs to an SSH profile"))
+        );
+        assert!(
+            p.problems
+                .iter()
+                .any(|x| x.message.contains("beyond loopback"))
+        );
     }
 }

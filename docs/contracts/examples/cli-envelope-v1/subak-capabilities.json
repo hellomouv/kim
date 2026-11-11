@@ -862,6 +862,46 @@
         "requires_yes": false,
         "summary": "Stop a background transfer between chunks; the partial file is kept for --resume",
         "usage": "subak transfer cancel <id> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "telnet.connect",
+        "network": true,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "A Terminal running Subak's Telnet bridge; off by default (needs --allow-insecure) and always warned about because it is unencrypted",
+        "usage": "subak telnet connect <host[:port]> [<name>] --allow-insecure [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "serial.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The serial ports Windows lists (read only)",
+        "usage": "subak serial list [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "serial.connect",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "A Terminal running Subak's serial bridge on a COM port with the line settings given",
+        "usage": "subak serial connect <COMn> [<name>] [--baud <n>] [--data-bits 5-8] [--parity none|odd|even|mark|space] [--stop-bits 1|1.5|2] [--flow none|rtscts|xonxoff] [--newline cr|lf|crlf] [--local-echo] [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "ssh.hosts",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The Host entries of ~/.ssh/config (HostName, User, Port, IdentityFile, ProxyJump), read only",
+        "usage": "subak ssh hosts [--ssh-config <file>] [--json]"
       }
     ],
     "implementation": "implemented",

@@ -6,6 +6,7 @@ pub mod conpty;
 pub mod console;
 pub mod launch;
 pub mod pipe;
+pub mod serial;
 pub mod spawn;
 
 use std::ffi::{OsStr, c_void};

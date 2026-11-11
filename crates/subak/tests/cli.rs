@@ -243,7 +243,11 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "sftp.rm",
             "transfer.list",
             "transfer.status",
-            "transfer.cancel"
+            "transfer.cancel",
+            "telnet.connect",
+            "serial.list",
+            "serial.connect",
+            "ssh.hosts"
         ],
         "only commands that really exist"
     );
@@ -278,6 +282,7 @@ fn capabilities_are_honest_and_follow_the_contract() {
             // named.
             .all(|c| {
                 let net = c["name"] == "ssh.connect"
+                    || c["name"] == "telnet.connect"
                     || c["name"].as_str().is_some_and(|n| n.starts_with("sftp."));
                 c["opens_window"] == false && c["network"] == net
             })

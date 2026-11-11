@@ -8,17 +8,22 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 36** (#36) — extended terminal features and parity review
+- Current Step: **Step 37** (#37) — Subak MCP server and AI guide
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #36 (Tabby rows moved to 36: SFTP panel, Zmodem, live forwards, Reconnect…);
-  test sshd servers must run on a private desktop (`crates/subak/tests/common/hidden.rs`): the
-  portable sshd opens a console window per SFTP session otherwise
+- Next action: read #37 (MCP server and AI guide). Tabby leftovers are follow-up #98 (T1–T6);
+  test sshd servers must run on a private desktop (`crates/subak/tests/common/hidden.rs`)
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-11: Step 36 — remote/ssh/config unit tests (Telnet state machine, serial newlines and
+  DCB bits, ssh config hosts, profile groups), telnet_serial 1/1 (opt-in, negotiation, login,
+  hang-up, missing COM port, ssh hosts), e2e step36 1/1; idle resources: Host 7.5 MiB / 0 ms CPU
+  with 9 panes, Telnet bridge 5.3 MiB / 0 ms; parity report + follow-up #98; not tested: real
+  serial hardware.
 
 - 2026-11-11: Step 35 — ssh/sftp unit tests (hostile SFTP listing, per-host askpass, forwards,
   login scripts), ssh_transfers 1/1 against three real sshd servers (tree, 64 MiB, overwrite,

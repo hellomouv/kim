@@ -867,6 +867,46 @@
       "dry_run": true,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "telnet.connect",
+      "usage": "subak telnet connect <host[:port]> [<name>] --allow-insecure [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]",
+      "summary": "A Terminal running Subak's Telnet bridge; off by default (needs --allow-insecure) and always warned about because it is unencrypted",
+      "effect": "write",
+      "network": true,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "serial.list",
+      "usage": "subak serial list [--json]",
+      "summary": "The serial ports Windows lists (read only)",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "serial.connect",
+      "usage": "subak serial connect <COMn> [<name>] [--baud <n>] [--data-bits 5-8] [--parity none|odd|even|mark|space] [--stop-bits 1|1.5|2] [--flow none|rtscts|xonxoff] [--newline cr|lf|crlf] [--local-echo] [--attach] [--no-start] [--dry-run] [--endpoint <name>] [--json]",
+      "summary": "A Terminal running Subak's serial bridge on a COM port with the line settings given",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "ssh.hosts",
+      "usage": "subak ssh hosts [--ssh-config <file>] [--json]",
+      "summary": "The Host entries of ~/.ssh/config (HostName, User, Port, IdentityFile, ProxyJump), read only",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

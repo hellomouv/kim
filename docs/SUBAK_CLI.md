@@ -507,6 +507,21 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.24 Telnet, serial ports and ssh config hosts (Step 36)
+
+[ADR 0069](adr/0069-telnet-serial-and-the-parity-review.md). Telnet and serial Terminals are panes
+whose program is Subak's own bridge; they detach and survive closing the window like any other.
+
+| Command | Effect |
+| --- | --- |
+| `subak telnet connect <host[:port]> [<name>] --allow-insecure` | a Telnet pane (default port 23); refused without `--allow-insecure` (`invalid_state`, exit 7) and always warned about: it is unencrypted |
+| `subak serial list` | the COM ports Windows lists (read only) |
+| `subak serial connect COMn [<name>] [--baud 9600] [--data-bits 8] [--parity none\|odd\|even\|mark\|space] [--stop-bits 1\|1.5\|2] [--flow none\|rtscts\|xonxoff] [--newline cr\|lf\|crlf] [--local-echo]` | a serial pane; a missing or busy port is reported in the pane |
+| `subak ssh hosts [--ssh-config <file>]` | the `Host` entries of `~/.ssh/config` (HostName, User, Port, IdentityFile, ProxyJump); `ssh connect <alias>` connects to one |
+
+A profile may have `group = "…"` (`profile list` shows it). What Tabby has and Subak does not yet:
+[TABBY_PARITY_REPORT](TABBY_PARITY_REPORT.md) and follow-up #98.
+
 ### 3.23 SFTP, jump hosts, forwarding, proxies and login scripts (Step 35)
 
 [ADR 0068](adr/0068-sftp-forwarding-and-jump-hosts.md). Every `sftp` command takes the connection

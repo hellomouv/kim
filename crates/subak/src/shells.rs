@@ -21,6 +21,7 @@ fn profile(name: &str, program: &Path, args: &[&str]) -> Profile {
         forwards: Vec::new(),
         agent_forward: false,
         login_script: None,
+        group: Some("Detected".into()),
         line: None,
     }
 }

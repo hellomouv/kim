@@ -24,6 +24,7 @@
 mod claude;
 // Step 33: the local shells found on this PC (profiles that need no configuration).
 /// Step 34: SSH sessions in panes, saved secrets in Credential Manager (ADR 0067).
+mod remote;
 mod sftp;
 mod shells;
 mod ssh;
@@ -297,6 +298,11 @@ SSH AND FILE TRANSFERS (Windows' own OpenSSH client; docs/SUBAK_CLI.md §3.22-3.
                   --resume (continue a partial `*.subak-part`), --private (0600), --background.
                   rm needs --yes. Remote names that could escape the folder are refused.
     transfer list|status|cancel <id>   Background transfers (progress; never a secret).
+    ssh hosts     The Host entries of ~/.ssh/config (or --ssh-config), read only.
+    telnet connect <host[:port]> [<name>] --allow-insecure   A Telnet pane. Off by default:
+                  it is unencrypted, and every connection says so.
+    serial list | serial connect COMn [<name>]   Serial ports: --baud, --data-bits, --parity,
+                  --stop-bits, --flow none|rtscts|xonxoff, --newline cr|lf|crlf, --local-echo.
 
 HOST (Windows only; docs/contracts/IPC_PROTOCOL.md, docs/CONPTY_PROOF.md):
     host start    Start a detached per-user Host, unless one already serves the endpoint
@@ -359,7 +365,8 @@ The window is a separate program, `subak-gui` (docs/SUBAK_GUI.md); no command he
 Pre-alpha: no windows/panes splits, persistence or recovery yet (docs/PRODUCT_REQUIREMENTS.md);
 history is never persisted.
 No command opens a window or installs anything; only `ssh connect` and `sftp` reach the
-network (the servers you name); no Windows service exists.
+network (the servers you name), `telnet connect` too, `serial` a COM port;
+no Windows service exists.
 ";
 
 /// The capabilities document (`kim.capabilities` v1). Its `version` must equal the package
@@ -378,6 +385,14 @@ pub fn cli_main() -> ExitCode {
     // Step 35: the ProxyCommand Subak sets for `--proxy` (ADR 0068).
     if raw.first().is_some_and(|a| a == "__proxy-relay") {
         return ssh::proxy_relay(&raw[1..]);
+    }
+    // Step 36: the program of a Telnet or serial pane (ADR 0069).
+    if raw
+        .first()
+        .is_some_and(|a| a == "__telnet" || a == "__serial")
+        && std::env::var_os("SUBAK_BRIDGE").is_some_and(|v| v == "1")
+    {
+        return remote::bridge_main(&raw);
     }
     let json_flag = raw
         .iter()
@@ -452,7 +467,11 @@ pub fn cli_main() -> ExitCode {
             || cmd.is_remote() =>
         {
             drop(out);
-            let ran = if cmd.is_remote() {
+            let ran = if cmd == Cmd::SerialList {
+                Ok(remote::serial_list())
+            } else if cmd == Cmd::SshHosts {
+                ssh::hosts(&args)
+            } else if cmd.is_remote() {
                 sftp::run(cmd, &args)
             } else if cmd.is_ssh_credential() {
                 ssh::credential(cmd, &args)
@@ -581,6 +600,8 @@ fn run_host(cmd: Cmd, a: &Args) -> Result<Value, CliError> {
         Cmd::HostAttach => client::attach(a, &endpoint, None),
         Cmd::New => terminal::new(a, &endpoint),
         Cmd::SshConnect => ssh::connect(a, &endpoint),
+        Cmd::TelnetConnect => remote::telnet_connect(a, &endpoint),
+        Cmd::SerialConnect => remote::serial_connect(a, &endpoint),
         Cmd::Ls => terminal::list(&endpoint),
         Cmd::Status => terminal::status(&endpoint),
         Cmd::Info => terminal::info(a, &endpoint),
@@ -1059,7 +1080,7 @@ fn human(cmd: Cmd, d: &Value, a: &Args) {
             }
             Ok(())
         }
-        Cmd::New | Cmd::SshConnect => {
+        Cmd::New | Cmd::SshConnect | Cmd::TelnetConnect | Cmd::SerialConnect => {
             let t = &d["terminal"];
             let pane = &t["windows"][0]["panes"][0];
             writeln!(

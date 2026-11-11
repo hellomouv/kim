@@ -132,7 +132,10 @@
     {"$ref": "#/$defs/ok_sftp_change"},
     {"$ref": "#/$defs/ok_sftp_transfer"},
     {"$ref": "#/$defs/ok_transfer_list"},
-    {"$ref": "#/$defs/ok_transfer_job"}
+    {"$ref": "#/$defs/ok_transfer_job"},
+    {"$ref": "#/$defs/ok_bridge_connect"},
+    {"$ref": "#/$defs/ok_serial_list"},
+    {"$ref": "#/$defs/ok_ssh_hosts"}
   ],
   "$defs": {
     "ssh_plan": {"description": "Step 34 (ADR 0067): how the SSH pane connects — Windows' OpenSSH client with strict host keys and no agent forwarding; whether the destination is in known_hosts and a saved secret answers the password or passphrase prompt (never the secret itself; `env` lists names only).", "type": "object", "required": ["target", "program", "args", "saved_secret_used", "host_verified"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "saved_secret_used": {"type": "boolean"}, "host_verified": {"type": "boolean"}, "why": {"type": "string"}, "env": {"type": "array", "items": {"type": "string"}}, "jumps": {"description": "Step 35 (ADR 0068): jump hosts in order.", "type": "array", "items": {"type": "string"}}, "forwards": {"type": "array", "items": {"$ref": "#/$defs/ssh_forward"}}, "agent_forward": {"type": "boolean"}, "x11": {"type": "boolean"}, "proxy": {"type": ["string", "null"]}, "warnings": {"description": "Step 35: what the user must know (agent or X11 forwarding, a forward beyond loopback); also printed on stderr.", "type": "array", "items": {"type": "string"}}}},
@@ -141,6 +144,11 @@
     "sftp_progress": {"type": "object", "required": ["bytes_total", "bytes_done", "files_total", "files_done", "current"], "additionalProperties": false, "properties": {"bytes_total": {"type": "integer", "minimum": 0}, "bytes_done": {"type": "integer", "minimum": 0}, "files_total": {"type": "integer", "minimum": 0}, "files_done": {"type": "integer", "minimum": 0}, "current": {"type": "string"}}},
     "sftp_result": {"type": "object", "required": ["direction", "remote", "local", "files", "bytes", "resumed_bytes", "skipped", "seconds"], "additionalProperties": false, "properties": {"direction": {"enum": ["get", "put"]}, "remote": {"type": "string"}, "local": {"type": "string"}, "files": {"type": "integer", "minimum": 0}, "bytes": {"type": "integer", "minimum": 0}, "resumed_bytes": {"type": "integer", "minimum": 0}, "skipped": {"description": "Links and special files that were not copied.", "type": "array", "items": {"type": "string"}}, "seconds": {"type": "number", "minimum": 0}}},
     "transfer_job": {"description": "Step 35: a background transfer (`%APPDATA%\\mouv\\subak\\transfers\\<id>.json`); never a secret.", "type": "object", "required": ["id", "state", "direction", "target", "remote", "local", "progress"], "properties": {"id": {"type": "string", "pattern": "^xfer-[0-9a-f-]+$"}, "state": {"enum": ["queued", "running", "done", "failed", "cancelled", "interrupted"]}, "direction": {"enum": ["get", "put"]}, "target": {"type": "string"}, "remote": {"type": "string"}, "local": {"type": "string"}, "recursive": {"type": "boolean"}, "overwrite": {"type": "boolean"}, "resume": {"type": "boolean"}, "pid": {"type": "integer"}, "started": {"type": "integer"}, "updated": {"type": "integer"}, "finished": {"type": "integer"}, "progress": {"$ref": "#/$defs/sftp_progress"}, "result": {"$ref": "#/$defs/sftp_result"}, "error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "hint": {"type": ["string", "null"]}}}}},
+    "telnet_plan": {"description": "Step 36 (ADR 0069): a Telnet pane — off by default, always warned about.", "type": "object", "required": ["host", "port", "warnings"], "additionalProperties": false, "properties": {"host": {"type": "string"}, "port": {"type": "integer", "minimum": 1, "maximum": 65535}, "warnings": {"type": "array", "items": {"type": "string"}}}},
+    "serial_plan": {"description": "Step 36: a serial pane's line settings.", "type": "object", "required": ["port", "baud", "data_bits", "parity", "stop_bits", "flow", "newline", "local_echo"], "additionalProperties": false, "properties": {"port": {"type": "string", "pattern": "^COM[0-9]+$"}, "baud": {"type": "integer"}, "data_bits": {"type": "integer", "minimum": 5, "maximum": 8}, "parity": {"enum": ["none", "odd", "even", "mark", "space"]}, "stop_bits": {"enum": ["1", "1.5", "2"]}, "flow": {"enum": ["none", "rtscts", "xonxoff"]}, "newline": {"enum": ["cr", "lf", "crlf"]}, "local_echo": {"type": "boolean"}}},
+    "ok_bridge_connect": {"description": "Step 36: `subak telnet connect` / `subak serial connect` — the `new` result of a Terminal whose pane runs Subak's Telnet or serial bridge.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["telnet.connect", "serial.connect"]}, "data": {"$ref": "#/$defs/data_new"}}}]},
+    "ok_serial_list": {"description": "Step 36: `subak serial list` — the serial ports Windows lists (read only).", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "serial.list"}, "data": {"type": "object", "required": ["ports"], "additionalProperties": false, "properties": {"ports": {"type": "array", "items": {"type": "object", "required": ["port", "driver"], "additionalProperties": false, "properties": {"port": {"type": "string"}, "driver": {"type": "string"}}}}}}}}]},
+    "ok_ssh_hosts": {"description": "Step 36: `subak ssh hosts` — the concrete Host entries of an ssh config (read only).", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "ssh.hosts"}, "data": {"type": "object", "required": ["file", "hosts"], "additionalProperties": false, "properties": {"file": {"type": ["string", "null"]}, "hosts": {"type": "array", "items": {"type": "object", "required": ["alias", "hostname", "user", "port", "identity", "jump"], "additionalProperties": false, "properties": {"alias": {"type": "string"}, "hostname": {"type": ["string", "null"]}, "user": {"type": ["string", "null"]}, "port": {"type": ["integer", "null"]}, "identity": {"type": ["string", "null"]}, "jump": {"type": ["string", "null"]}}}}}}}}]},
     "ok_sftp_ls": {"description": "Step 35: `subak sftp ls <dest> [<path>]` — the directory as the server lists it.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"const": "sftp.ls"}, "data": {"type": "object", "required": ["target", "path", "entries"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "entries": {"type": "array", "items": {"type": "object", "required": ["name", "type", "size", "mode", "mtime"], "additionalProperties": false, "properties": {"name": {"type": "string"}, "type": {"enum": ["file", "dir", "link", "other", "unknown"]}, "size": {"type": ["integer", "null"]}, "mode": {"type": ["string", "null"]}, "mtime": {"type": ["integer", "null"]}}}}}}}}]},
     "ok_sftp_change": {"description": "Step 35: `subak sftp mkdir|rm <dest> <path>`.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["sftp.mkdir", "sftp.rm"]}, "data": {"type": "object", "required": ["target", "path", "dry_run"], "additionalProperties": false, "properties": {"target": {"type": "string"}, "path": {"type": "string"}, "dry_run": {"type": "boolean"}}}}}]},
     "ok_sftp_transfer": {"description": "Step 35: `subak sftp get|put` — the finished transfer (`result`), its dry run, or with --background the queued job.", "allOf": [{"$ref": "#/$defs/success"}, {"properties": {"command": {"enum": ["sftp.get", "sftp.put"]}, "data": {"type": "object", "required": ["target", "direction", "remote", "local", "recursive", "overwrite", "resume"], "properties": {"target": {"type": "string"}, "direction": {"enum": ["get", "put"]}, "remote": {"type": "string"}, "local": {"type": "string"}, "recursive": {"type": "boolean"}, "overwrite": {"type": "boolean"}, "resume": {"type": "boolean"}, "dry_run": {"type": "boolean"}, "result": {"$ref": "#/$defs/sftp_result"}, "id": {"type": "string"}, "state": {"type": "string"}, "pid": {"type": "integer"}, "started": {"type": "integer"}, "progress": {"$ref": "#/$defs/sftp_progress"}}}}}]},
@@ -2805,6 +2813,8 @@
             },
             "ssh": {"$ref": "#/$defs/ssh_plan"},
             "login_script": {"$ref": "#/$defs/login_script_result"},
+            "telnet": {"$ref": "#/$defs/telnet_plan"},
+            "serial": {"$ref": "#/$defs/serial_plan"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -2834,6 +2844,8 @@
             },
             "ssh": {"$ref": "#/$defs/ssh_plan"},
             "login_script": {"$ref": "#/$defs/login_script_result"},
+            "telnet": {"$ref": "#/$defs/telnet_plan"},
+            "serial": {"$ref": "#/$defs/serial_plan"},
             "profile": {
               "description": "Step 20: the shell profile of config.toml that was used (--profile or the default profile); absent when none was.",
               "type": [
@@ -3926,6 +3938,7 @@
         "forwards": {"type": "array", "items": {"type": "string"}},
         "agent_forward": {"type": "boolean"},
         "login_script": {"type": ["string", "null"]},
+        "group": {"type": ["string", "null"]},
         "source": {"enum": ["config", "detected"]},
         "secret_env": {
           "type": "array",

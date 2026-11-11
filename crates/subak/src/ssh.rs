@@ -1276,6 +1276,118 @@ pub fn credential(cmd: Cmd, a: &Args) -> Result<(Value, String), CliError> {
     }
 }
 
+/// Step 36: one `Host` entry of an ssh config file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HostEntry {
+    pub alias: String,
+    pub hostname: Option<String>,
+    pub user: Option<String>,
+    pub port: Option<u16>,
+    pub identity: Option<String>,
+    pub jump: Option<String>,
+}
+
+/// The concrete `Host` aliases of an ssh config (patterns with `*`, `?` or `!` are not
+/// destinations and are left out; `Match` blocks and `Include` are not followed). The first
+/// value of each key wins, as in OpenSSH.
+pub fn parse_hosts(text: &str) -> Vec<HostEntry> {
+    let mut out: Vec<HostEntry> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for l in text.lines() {
+        let l = l.trim();
+        if l.is_empty() || l.starts_with('#') {
+            continue;
+        }
+        let (k, v) = l
+            .split_once(|c: char| c == '=' || c.is_whitespace())
+            .map_or((l, ""), |(k, v)| {
+                (
+                    k,
+                    v.trim_start_matches(|c: char| c == '=' || c.is_whitespace()),
+                )
+            });
+        let v = v.trim().trim_matches('"');
+        match k.to_ascii_lowercase().as_str() {
+            "host" => {
+                current.clear();
+                for alias in v.split_whitespace() {
+                    if alias.contains(['*', '?', '!']) || out.len() >= 1000 {
+                        continue;
+                    }
+                    current.push(out.len());
+                    out.push(HostEntry {
+                        alias: alias.to_string(),
+                        ..HostEntry::default()
+                    });
+                }
+            }
+            "match" => current.clear(),
+            key => {
+                for &i in &current {
+                    let e = &mut out[i];
+                    let set = |f: &mut Option<String>| {
+                        if f.is_none() {
+                            *f = Some(v.to_string());
+                        }
+                    };
+                    match key {
+                        "hostname" => set(&mut e.hostname),
+                        "user" => set(&mut e.user),
+                        "identityfile" => set(&mut e.identity),
+                        "proxyjump" => set(&mut e.jump),
+                        "port" if e.port.is_none() => e.port = v.parse().ok(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `subak ssh hosts [--ssh-config <file>]`: the destinations of `~/.ssh/config` (or the file
+/// given), read only. `subak ssh connect <alias>` connects to one (ssh resolves the alias).
+pub fn hosts(a: &Args) -> Result<(Value, String), CliError> {
+    let file = a.ssh_config.clone().map(PathBuf::from).or_else(|| {
+        std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".ssh").join("config"))
+    });
+    let text = match &file {
+        Some(f) if f.is_file() => std::fs::read_to_string(f)
+            .map_err(|e| CliError::new(Code::Io, format!("cannot read `{}`: {e}", f.display())))?,
+        Some(f) if a.ssh_config.is_some() => {
+            return Err(CliError::new(
+                Code::Io,
+                format!("`{}` does not exist", f.display()),
+            ));
+        }
+        _ => String::new(),
+    };
+    let hosts = parse_hosts(&text);
+    let mut h = String::new();
+    for e in &hosts {
+        h.push_str(&format!(
+            "{:<20} {}{}{}\n",
+            e.alias,
+            e.user.as_ref().map_or(String::new(), |u| format!("{u}@")),
+            e.hostname.as_deref().unwrap_or(&e.alias),
+            e.port.map_or(String::new(), |p| format!(":{p}"))
+        ));
+    }
+    if hosts.is_empty() {
+        h.push_str("no Host entries\n");
+    }
+    let list: Vec<Value> = hosts
+        .iter()
+        .map(|e| {
+            json!({"alias": e.alias, "hostname": e.hostname, "user": e.user, "port": e.port, "identity": e.identity, "jump": e.jump})
+        })
+        .collect();
+    Ok((
+        json!({"file": file.map(|f| f.display().to_string()), "hosts": list}),
+        h,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1559,5 +1671,31 @@ mod tests {
         assert!(crate::win::creds::delete(&target));
         assert_eq!(crate::win::creds::read(&target), None);
         assert!(!crate::win::creds::delete(&target));
+    }
+
+    #[test]
+    fn ssh_config_hosts_are_listed_without_patterns() {
+        let h = parse_hosts(
+            "# mine
+Host web web2
+  HostName 10.0.0.5
+  User ops
+  Port 2222
+  Port 9
+Host *.corp !x
+  User nobody
+Host db
+  ProxyJump web
+  IdentityFile ~/.ssh/db
+Match host db
+  User root
+",
+        );
+        let names: Vec<&str> = h.iter().map(|e| e.alias.as_str()).collect();
+        assert_eq!(names, ["web", "web2", "db"]);
+        assert_eq!(h[0].hostname.as_deref(), Some("10.0.0.5"));
+        assert_eq!((h[1].user.as_deref(), h[1].port), (Some("ops"), Some(2222)));
+        assert_eq!(h[2].jump.as_deref(), Some("web"));
+        assert_eq!(h[2].user, None, "a Match block is not applied");
     }
 }
