@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 37** (#37) — Subak MCP server and AI guide
+- Current Step: **Step 38** (#38) — Kim tool interoperability
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #37 (MCP server and AI guide). Tabby leftovers are follow-up #98 (T1–T6);
-  test sshd servers must run on a private desktop (`crates/subak/tests/common/hidden.rs`)
+- Next action: read #38 (Kim tool interoperability). MCP server is `subak mcp serve`
+  (ADR 0070, docs/MCP_GUIDE.md); Tabby leftovers are follow-up #98
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-11: Step 37 — mcp unit tests (grants, annotations, handshake, refusals), mcp_server 1/1
+  (read-only with no Host, redacted token, ungranted tools refused, cancelled wait, create/type/
+  wait/split/keys, run required for a program, kill preview then confirm, audit without text),
+  e2e step37 1/1, real Claude Code 2.1.322 `claude -p --mcp-config` called list_terminals.
 
 - 2026-11-11: Step 36 — remote/ssh/config unit tests (Telnet state machine, serial newlines and
   DCB bits, ssh config hosts, profile groups), telnet_serial 1/1 (opt-in, negotiation, login,

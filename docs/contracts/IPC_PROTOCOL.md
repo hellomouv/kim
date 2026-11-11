@@ -181,7 +181,7 @@ Host does not implement yet answers `unknown_request`, as does any name not in t
 | `pane.break` | `{target (pane), name?, select?, dry_run?}` | `result_move_pane` | cli, gui, mcp* | **24** |
 | `pane.join` | `{source (pane), target (pane or window), direction?, before?, cells? \| percent?, select?, dry_run?}` | `result_move_pane` | cli, gui, mcp* | **24** |
 | `buffer.set` / `.list` / `.get` / `.delete` / `.paste` | `{name?, data, append?}` / `{}` / `{name?}` / `{name?}` / `{target, name?, delete?}` (`dry_run?` on set, delete, paste) | `result_buffer_set` / `_list` / `_get` / `_delete`, `result_input` | cli, gui, mcp* | **24** |
-| `pane.capture` | `{target?, start?, end?, format?: "text" \| "vt", join?, redact?}` | `{terminal_id, pane_id, format, join, redact, redacted, start, end, truncated, lines, screen, history}` | cli, gui, mcp* | **13** |
+| `pane.capture` | `{target?, start?, end?, format?: "text" \| "vt", join?, redact?}` | `{terminal_id, pane_id, format, join, redact, redacted, start, end, truncated, lines, screen, history}` | cli, gui, mcp (always redacted, Step 37) | **13** |
 | `pane.clear_history` | `{target?, dry_run?}` | `{terminal_id, pane_id, cleared_lines, cleared_bytes, history}` or `{dry_run: true, would_clear}` | cli, gui, mcp* | **13** |
 | `claude.report` | `{pane_id, session_id, event, reason?}`; only from a process in the pane's job | `result_claude_report` | **hook only** | **27** |
 | `claude.status` | `{target?}` | `result_claude_status`: `{panes: [{pane_id, terminal_id, state, stale, since, session_id, sessions}], persisted: false}` | cli, gui, mcp | **27** |

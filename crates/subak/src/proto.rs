@@ -608,7 +608,8 @@ pub const METHODS: &[Method] = &[
     m("buffer.delete", CG, true),
     m("buffer.paste", CG, true),
     // Step 13: reading and clearing a pane's history needs the MCP grant too (Step 37).
-    m("pane.capture", CG, true),
+    // Step 37: MCP clients may read screens, always redacted (ADR 0070).
+    m("pane.capture", CGM, true),
     m("pane.clear_history", CG, true),
     m("claude.report", HOOK, true),
     m("claude.status", CGM, true),

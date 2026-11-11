@@ -129,6 +129,9 @@ pub enum Cmd {
     SerialList,
     SerialConnect,
     SshHosts,
+    /// Step 37 (ADR 0070): the MCP server over stdio.
+    McpServe,
+    McpTools,
 }
 
 impl Cmd {
@@ -226,6 +229,8 @@ impl Cmd {
             Self::SerialList => "serial.list",
             Self::SerialConnect => "serial.connect",
             Self::SshHosts => "ssh.hosts",
+            Self::McpServe => "mcp.serve",
+            Self::McpTools => "mcp.tools",
         }
     }
 
@@ -289,6 +294,7 @@ impl Cmd {
                 | Self::TransferCancel
                 | Self::SerialList
                 | Self::SshHosts
+                | Self::McpTools
         )
     }
 
@@ -593,6 +599,8 @@ impl Cmd {
             ],
             Self::TransferList | Self::TransferStatus | Self::SerialList => &[],
             Self::SshHosts => &["--ssh-config"],
+            Self::McpServe => &["--endpoint", "--allow", "--dry-run"],
+            Self::McpTools => &["--allow"],
             Self::TelnetConnect => &[
                 "--endpoint",
                 "--allow-insecure",
@@ -685,6 +693,8 @@ pub struct Args {
     pub resume: bool,
     pub private: bool,
     pub background: bool,
+    /// Step 37: `mcp serve|tools --allow <grant>`, in the order given.
+    pub grants: Vec<String>,
     /// Step 36: `telnet connect --allow-insecure`.
     pub allow_insecure: bool,
     /// Step 36: `serial connect` line settings.
@@ -1381,6 +1391,12 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
                 a.background = true;
                 opts.push("--background");
             }
+            "--allow" => {
+                opts.push("--allow");
+                if let Some(v) = value("--allow") {
+                    a.grants.push(v);
+                }
+            }
             "--allow-insecure" => {
                 a.allow_insecure = true;
                 opts.push("--allow-insecure");
@@ -1655,6 +1671,8 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["serial", "list" | "ls", ..] => (Cmd::SerialList, 2),
         ["serial", "connect", ..] => (Cmd::SerialConnect, 2),
         ["ssh", "hosts", ..] => (Cmd::SshHosts, 2),
+        ["mcp", "serve", ..] => (Cmd::McpServe, 2),
+        ["mcp", "tools", ..] => (Cmd::McpTools, 2),
         ["shell-integration", "install", ..] => (Cmd::ShellIntegrationInstall, 2),
         ["shell-integration", "uninstall", ..] => (Cmd::ShellIntegrationUninstall, 2),
         ["recover", "list", ..] => (Cmd::RecoverList, 2),

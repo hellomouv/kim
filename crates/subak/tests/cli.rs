@@ -247,7 +247,9 @@ fn capabilities_are_honest_and_follow_the_contract() {
             "telnet.connect",
             "serial.list",
             "serial.connect",
-            "ssh.hosts"
+            "ssh.hosts",
+            "mcp.serve",
+            "mcp.tools"
         ],
         "only commands that really exist"
     );

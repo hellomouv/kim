@@ -907,6 +907,26 @@
       "dry_run": false,
       "requires_yes": false,
       "opens_window": false
+    },
+    {
+      "name": "mcp.serve",
+      "usage": "subak mcp serve [--allow create|input|run|control|destructive|recover]... [--endpoint <name>] [--dry-run [--json]]",
+      "summary": "A Model Context Protocol server on stdin/stdout for the agent that starts it: read-only (redacted screens) unless the user grants more; no network listener",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
+      "name": "mcp.tools",
+      "usage": "subak mcp tools [--allow <grant>]... [--json]",
+      "summary": "The MCP tools a server with these grants offers, with schemas and annotations",
+      "effect": "read",
+      "network": false,
+      "dry_run": false,
+      "requires_yes": false,
+      "opens_window": false
     }
   ]
 }

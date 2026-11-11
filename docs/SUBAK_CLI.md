@@ -507,6 +507,15 @@ stay), 1 MiB each. `ls` shows names, sizes and a redacted first line; `show` the
 types it into the pane with line ends as carriage returns. `set`, `delete` and `paste` take
 `--dry-run`.
 
+### 3.25 MCP server (Step 37)
+
+[ADR 0070](adr/0070-mcp-server.md), [MCP_GUIDE](MCP_GUIDE.md).
+
+| Command | Effect |
+| --- | --- |
+| `subak mcp serve [--allow create\|input\|run\|control\|destructive\|recover]… [--endpoint <name>]` | an MCP server on stdin/stdout for the agent that starts it; read-only without `--allow`; stdout carries only MCP messages; `--dry-run` prints the tools it would offer and exits |
+| `subak mcp tools [--allow …]` | the tools such a server offers, with their schemas and annotations (no Host) |
+
 ### 3.24 Telnet, serial ports and ssh config hosts (Step 36)
 
 [ADR 0069](adr/0069-telnet-serial-and-the-parity-review.md). Telnet and serial Terminals are panes

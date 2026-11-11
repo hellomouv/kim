@@ -28,7 +28,7 @@ did.
 | Document | Status | Purpose |
 | --- | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | current | Components, Host internals, object model, lifecycles, close/kill semantics, restart behavior, telemetry |
-| [adr/README.md](adr/README.md) | current | Architecture decision records (ADR 0001–0017, 0019–0032, 0034–0069; numbers 0018 and 0033 were reserved and not used) |
+| [adr/README.md](adr/README.md) | current | Architecture decision records (ADR 0001–0017, 0019–0032, 0034–0070; numbers 0018 and 0033 were reserved and not used) |
 | [SESSION_MODEL.md](SESSION_MODEL.md) | current (implemented, Step 10; CLI verbs and `detach` from Step 12; pane screens and history from Step 13; the window's tab, close and remove actions from Step 17; internal windows and panes from Step 21; splits and the layout from Step 22) | Terminal → Window → Pane model, the Terminal state machine, naming and target rules, what detach/stop/kill/rm/host stop do to processes, consent and the busy rule, concurrency guarantees, evidence |
 | [SUBAK_CLI.md](SUBAK_CLI.md) | current (implemented, Step 12; `capture`, `history`, `clear-history` from Step 13; `config`, `profile` and `new --profile` from Step 20; `window` and `pane` from Step 21; `pane split`, `resize`, `swap`, `zoom` from Step 22; `command` and `buffer` from Step 24) | Subak CLI reference: `new`, `ls`, `status`, `info`, `attach`, `detach`, `rename`, `stop`, `kill`, `rm`, `capture`, `history`, `clear-history`, `host …`; output, exit codes and consent; attach keys, Ctrl+C/Ctrl+Break and console restore with measurements; verbatim command lines for cmd.exe; agent and headless recipes; tmux mapping |
 | [TERMINAL_EMULATOR.md](TERMINAL_EMULATOR.md) | current (implemented, Step 15; used by the Subak window since Step 16; search, keyboard selection, links and paste checks since Step 19; visible-window check pending the maintainer) | Subak's terminal emulator: the model shared by the Host and client views (`subak-term`), what is emulated, the client view (viewport, selection and copy, hyperlinks, device reports), input encoding (keys, paste, mouse, focus), the CPU cell-grid renderer (themes, glyph fallback, DPI, damage), conformance and real-ConPTY tests, the benchmark harness and its results, known limits, the manual check |
@@ -52,6 +52,7 @@ did.
 | [CLAUDE_CODE_INTEGRATION.md](CLAUDE_CODE_INTEGRATION.md) | current (Steps 27–28) | Claude Code hooks: opt-in install, what is sent, pane correlation and its authentication, fallbacks, versions checked |
 | [TABBY_FEATURE_MATRIX.md](TABBY_FEATURE_MATRIX.md) | current (audited in Step 32 against Tabby v1.0.238, updated in Step 34: 12 implemented, 65 partial, 101 planned for Steps 35–40, 27 excluded, 4 blocked; checked by `cargo xtask docs-check`) | Tabby feature parity matrix with status and evidence |
 | [TABBY_PARITY_REPORT.md](TABBY_PARITY_REPORT.md) | current | Step 36 Tabby parity review: totals, every implemented row with its evidence, deviations, validation across terminal kinds, resource use, safety; the backlog is follow-up #98 |
+| [MCP_GUIDE.md](MCP_GUIDE.md) | current | Step 37: `subak mcp serve` for Claude Code and other agents — setup and removal, grants, tools, threat model, tested workflows |
 
 Design tokens and mock-ups live in [`design/`](../design/README.md) (`cargo xtask design-check`
 enforces declared contrast pairs). GUI toolkit evidence: [`research/gui-eval/`](../research/gui-eval/README.md);
@@ -85,7 +86,6 @@ cross-reference checks of [DDALGAK_RULE_MODEL §8](DDALGAK_RULE_MODEL.md) on the
 | Document | Status | Planned by | Purpose |
 | --- | --- | --- | --- |
 | [RECOVERY.md](RECOVERY.md) | current (Steps 29–30; Step 31 validation in MILESTONE_C_RECOVERY_VALIDATION) | Live survival vs cold restore, what state.json keeps, load and corruption rules, recovery limits, the `subak state` commands |
-| `MCP_GUIDE.md` | planned | Step 37 | Subak MCP server guide for agents |
 
 ## Repository and engineering
 

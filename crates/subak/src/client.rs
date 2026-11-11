@@ -241,6 +241,12 @@ impl Identity {
         kind: ClientKind::Gui,
         name: "subak-gui",
     };
+    /// Step 37: `subak mcp serve`'s read-only connection (the Host allows `mcp` clients only
+    /// discovery and redacted screens, ADR 0070).
+    pub const MCP: Self = Self {
+        kind: ClientKind::Mcp,
+        name: "subak-mcp",
+    };
     /// `subak-gui --float`: the floating icon and Terminal manager (Step 18, ADR 0045). A `gui`
     /// client that lists and manages Terminals and never attaches a pane.
     pub const FLOAT: Self = Self {

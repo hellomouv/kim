@@ -2453,7 +2453,21 @@ impl Host {
             "pane.detach" => Reply::Now(self.detach(conn, p)),
             "client.detach" => Reply::Now(self.detach_clients(conn, p)),
             "pane.resize" => Reply::Now(self.resize(conn, p)),
-            "pane.capture" => Reply::Now(self.capture(p)),
+            // Step 37: an MCP client always gets redacted text (ADR 0070).
+            "pane.capture" => {
+                let mcp = self
+                    .lock()
+                    .conns
+                    .get(&conn)
+                    .is_some_and(|c| c.kind == ClientKind::Mcp);
+                if mcp {
+                    let mut q = p.clone();
+                    q["redact"] = json!(true);
+                    Reply::Now(self.capture(&q))
+                } else {
+                    Reply::Now(self.capture(p))
+                }
+            }
             "pane.clear_history" => Reply::Now(self.clear_history(p)),
             "terminal.list" => Reply::Now(self.list(p)),
             "terminal.info" => Reply::Now(self.info(p)),

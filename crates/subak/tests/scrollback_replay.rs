@@ -1098,14 +1098,24 @@ fn history_access_is_restricted_and_secrets_stay_out_of_json() {
         Value::Null
     );
     leaks("host.stats", &h.stats().to_string());
-    // Only cli and gui clients may read or clear history (IPC_PROTOCOL §4).
+    // Only cli and gui clients may clear history or attach (IPC_PROTOCOL §4); hook clients may
+    // not read it; mcp clients read it (Step 37) but always redacted, even when they ask for
+    // the plain text.
     for kind in ["hook", "mcp"] {
         let c = Raw::handshake(ep, kind);
-        for (i, method) in ["pane.capture", "pane.clear_history"].iter().enumerate() {
-            let r = c.request(i as u64 + 1, method, &json!({"target": "sec"}));
-            assert_eq!(error_code(&r), "unauthorized", "{kind} {method}");
-            leaks(kind, &r.to_string());
+        let r = c.request(
+            1,
+            "pane.capture",
+            &json!({"target": "sec", "redact": false}),
+        );
+        if kind == "mcp" {
+            assert_eq!(r["result"]["redact"], true, "mcp capture is redacted: {r}");
+        } else {
+            assert_eq!(error_code(&r), "unauthorized", "{kind} pane.capture");
         }
+        leaks(kind, &r.to_string());
+        let r = c.request(2, "pane.clear_history", &json!({"target": "sec"}));
+        assert_eq!(error_code(&r), "unauthorized", "{kind} pane.clear_history");
         let r = c.request(9, "pane.attach", &json!({"target": "sec"}));
         assert_eq!(error_code(&r), "unauthorized", "{kind} attach");
     }

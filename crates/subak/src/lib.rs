@@ -24,6 +24,7 @@
 mod claude;
 // Step 33: the local shells found on this PC (profiles that need no configuration).
 /// Step 34: SSH sessions in panes, saved secrets in Credential Manager (ADR 0067).
+mod mcp;
 mod remote;
 mod sftp;
 mod shells;
@@ -299,6 +300,12 @@ SSH AND FILE TRANSFERS (Windows' own OpenSSH client; docs/SUBAK_CLI.md §3.22-3.
                   rm needs --yes. Remote names that could escape the folder are refused.
     transfer list|status|cancel <id>   Background transfers (progress; never a secret).
     ssh hosts     The Host entries of ~/.ssh/config (or --ssh-config), read only.
+
+MCP (docs/MCP_GUIDE.md):
+    mcp serve [--allow create|input|run|control|destructive|recover]...   An MCP server on
+                  stdin/stdout for the agent that starts it (no listener). Read only unless
+                  granted; screens always redacted; destructive tools preview until confirmed.
+    mcp tools [--allow ...]   The tools such a server offers.
     telnet connect <host[:port]> [<name>] --allow-insecure   A Telnet pane. Off by default:
                   it is unencrypted, and every connection says so.
     serial list | serial connect COMn [<name>]   Serial ports: --baud, --data-bits, --parity,
@@ -421,6 +428,39 @@ pub fn cli_main() -> ExitCode {
             let _ = write!(out, "{HELP}");
             ExitCode::SUCCESS
         }
+        // Step 37: stdout is the MCP channel; nothing else is printed there.
+        // `mcp serve --dry-run`: the tools it would offer, as one document; nothing is served.
+        Cmd::McpServe if args.dry_run => match mcp::tools_cmd(&args) {
+            Ok((data, human)) => {
+                if args.json {
+                    let _ = writeln!(out, "{}", output::success(cmd.name(), &data, &[]));
+                } else {
+                    let _ = write!(out, "{human}");
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                drop(out);
+                fail(cmd.name(), &e, args.json)
+            }
+        },
+        Cmd::McpServe => {
+            drop(out);
+            #[cfg(windows)]
+            let r = client::endpoint(&args).and_then(|ep| mcp::serve(&args, &ep));
+            #[cfg(not(windows))]
+            let r: Result<(), CliError> = Err(CliError::new(
+                Code::UnsupportedPlatform,
+                "the MCP server needs the Windows Host until M4",
+            ));
+            match r {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprint!("{}", output::human_error(&e));
+                    ExitCode::from(e.code.exit_code())
+                }
+            }
+        }
         Cmd::Version => {
             let _ = writeln!(out, "subak {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -471,6 +511,8 @@ pub fn cli_main() -> ExitCode {
                 Ok(remote::serial_list())
             } else if cmd == Cmd::SshHosts {
                 ssh::hosts(&args)
+            } else if cmd == Cmd::McpTools {
+                mcp::tools_cmd(&args)
             } else if cmd.is_remote() {
                 sftp::run(cmd, &args)
             } else if cmd.is_ssh_credential() {

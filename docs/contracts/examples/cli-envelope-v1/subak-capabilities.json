@@ -902,6 +902,26 @@
         "requires_yes": false,
         "summary": "The Host entries of ~/.ssh/config (HostName, User, Port, IdentityFile, ProxyJump), read only",
         "usage": "subak ssh hosts [--ssh-config <file>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "mcp.serve",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "A Model Context Protocol server on stdin/stdout for the agent that starts it: read-only (redacted screens) unless the user grants more; no network listener",
+        "usage": "subak mcp serve [--allow create|input|run|control|destructive|recover]... [--endpoint <name>] [--dry-run [--json]]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "mcp.tools",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The MCP tools a server with these grants offers, with schemas and annotations",
+        "usage": "subak mcp tools [--allow <grant>]... [--json]"
       }
     ],
     "implementation": "implemented",
