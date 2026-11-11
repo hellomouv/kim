@@ -8,12 +8,11 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: none eligible — the remaining open issues are blocked (Linux, maintainer checks, follow-ups); see the loop directive — the earliest unfinished Ddalgak Step (check its dependencies)
-- Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
+- Current Step: **none eligible** — every open Step issue is blocked (Linux work is not done on this PC; the rest wait for the maintainer's visible/physical checks); #97–#102 are follow-up trackers, not Steps
+- Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues. Step 82 (#87) delivered (bench-ddalgak 8/8, reload fix, threat model, acceptance script, guide); OPEN for the maintainer's acceptance run and the release. Step 81 (#86) delivered and closed (MCP, interop, package). Step 80 (#85) delivered (AutoHotkey import, guide). Step 79 (#84) delivered (window, clipboard, notify, tool, schedules; follow-up #102). Step 78 (#83) delivered (macros, builder, recorder; follow-up #101). Step 77 (#82) delivered (conditions, explain). Steps 61 (#66), 63 (#68), 76 (#81), 77 (#82), 78 (#83), 79 (#84) and 82 (#87) stay OPEN
-  for the maintainer's visible/physical checks.
+- Next action: the maintainer runs the open acceptance scripts (DDALGAK_ACCEPTANCE, NOEUL_ACCEPTANCE, GUI_JOURNEYS §8, ENGINE §18–§20) and decides on the follow-ups; then re-query. Steps 76–79 and 82 (#81–#84, #87) were delivered in this session and stay OPEN for those checks; 80 (#85) and 81 (#86) are closed.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
