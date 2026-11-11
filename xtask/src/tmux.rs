@@ -202,6 +202,100 @@ pub fn check(root: &Path, problems: &mut Vec<String>) -> Result<Matrix, String> 
     Ok(m)
 }
 
+/// Step 32: `docs/TABBY_FEATURE_MATRIX.md` against the repository: every row (`| `ID-n` …`) has
+/// six cells and a known status; `implemented`/`partial` rows cite evidence that exists; no
+/// `planned` row targets a finished Step or nothing; the summary counts equal the rows.
+pub const TABBY_DONE_THROUGH: u32 = 32;
+pub const TABBY_STATUSES: [&str; 5] = ["planned", "partial", "implemented", "excluded", "blocked"];
+
+pub fn check_tabby(root: &Path, problems: &mut Vec<String>) -> Result<Matrix, String> {
+    let path = root.join("docs/TABBY_FEATURE_MATRIX.md");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut m = Matrix::default();
+    let mut sources: BTreeMap<String, Option<String>> = BTreeMap::new();
+    for line in text.lines() {
+        let Some(rest) = line.strip_prefix("| `") else {
+            continue;
+        };
+        let Some(id) = rest.split('`').next() else {
+            continue;
+        };
+        if !id.contains('-') || !id.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            continue;
+        }
+        let c: Vec<&str> = line
+            .trim()
+            .trim_matches('|')
+            .split(" | ")
+            .map(str::trim)
+            .collect();
+        let at = format!("TABBY_FEATURE_MATRIX `{id}`");
+        if c.len() != 6 {
+            problems.push(format!("{at}: expected 6 cells, found {}", c.len()));
+            continue;
+        }
+        let Some(si) = TABBY_STATUSES.iter().position(|s| *s == c[3]) else {
+            problems.push(format!("{at}: unknown status `{}`", c[3]));
+            continue;
+        };
+        m.rows += 1;
+        *m.by_status.entry(TABBY_STATUSES[si]).or_default() += 1;
+        match TABBY_STATUSES[si] {
+            "implemented" | "partial" => {
+                let refs = evidence(c[5]);
+                if refs.is_empty() {
+                    problems.push(format!("{at}: {} without test evidence", c[3]));
+                }
+                for (file, item) in refs {
+                    m.evidence_refs += 1;
+                    let src = sources
+                        .entry(file.clone())
+                        .or_insert_with(|| std::fs::read_to_string(root.join(&file)).ok());
+                    match (src, item) {
+                        (None, _) => {
+                            problems.push(format!("{at}: evidence `{file}` does not exist"));
+                        }
+                        (Some(s), Some(item)) if !defines(s, &item) => {
+                            problems.push(format!("{at}: `{file}` defines no `{item}`"));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "planned" => {
+                let steps: Vec<u32> = if c[4].starts_with("Step") {
+                    c[4].split(|ch: char| !ch.is_ascii_digit())
+                        .filter_map(|n| n.parse().ok())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if c[4] == "—" || c[4].is_empty() {
+                    problems.push(format!("{at}: planned without a target Step"));
+                } else if !steps.is_empty() && steps.iter().all(|n| *n <= TABBY_DONE_THROUGH) {
+                    problems.push(format!("{at}: still `planned` for {}, which is done", c[4]));
+                }
+            }
+            _ => {}
+        }
+    }
+    for st in TABBY_STATUSES {
+        let n = m.by_status.get(st).copied().unwrap_or(0);
+        if !text.contains(&format!("| `{st}` | {n}")) {
+            problems.push(format!(
+                "TABBY_FEATURE_MATRIX summary: the `{st}` count is not {n}"
+            ));
+        }
+    }
+    if !text.contains(&format!("| **Total** | **{}** |", m.rows)) {
+        problems.push(format!(
+            "TABBY_FEATURE_MATRIX summary: the total is not {}",
+            m.rows
+        ));
+    }
+    Ok(m)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +318,22 @@ mod tests {
         assert!(!defines("fn journey_two() {}", "journey"));
         assert!(defines("pub const HOOKS: &[] = &[];", "HOOKS"));
         assert!(valid_target("10, 12") && valid_target("post-26") && !valid_target("soon"));
+    }
+
+    #[test]
+    fn the_tabby_matrix_reflects_the_code() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut problems = Vec::new();
+        let m = check_tabby(root, &mut problems).expect("matrix readable");
+        assert!(m.rows > 200, "{} rows", m.rows);
+        assert!(
+            problems.is_empty(),
+            "{}",
+            problems.join(
+                "
+"
+            )
+        );
     }
 
     #[test]

@@ -71,6 +71,7 @@ a recorded justification.
 | 55 | #29 Step 29 – Implement durable Terminal state persistence | `step29_state_persistence.rs` (1 test): a topology survives a clean stop in a private `--state-dir`, the next Host starts nothing (not even a saved command leaving a mark), `state show` lists the records, a torn file is reported and replaced from a backup | 8 |
 | 56 | #30 Step 30 – Implement cold recovery and Claude resume | `step30_cold_recovery.rs` (1 test): after a Host stop a user lists recoverable Terminals, is refused without `--yes`, recovers one with its id, windows and split as fresh shells, a job comes back as a shell without re-running its command, a second recover is refused | 9 |
 | 57 | #31 Step 31 – Validate shutdown, sleep and crash recovery (issue stays open: power transitions need the maintainer) | no new e2e file: the crash and cold-rebuild journey is `crates/subak/tests/milestone_c.rs` plus `scripts/recovery-matrix.ps1` (run around real transitions); the Step 29–30 e2e scenarios cover persistence and recover | 10 |
+| 58 | #32 Step 32 – Audit Tabby feature parity and UX | no new e2e file: an audit and decision Step (TABBY_FEATURE_MATRIX, ADR 0065); its evidence links point at existing tests, checked by `cargo xtask docs-check` | 11 |
 
 ## E2E runs
 

@@ -8,16 +8,18 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 32** (#32) — Tabby feature parity audit
+- Current Step: **Step 33** (#33) — shell profiles and productivity tools
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #32
+- Next action: read #33 (the Tabby matrix checklist lists its 37 rows; ADR 0065 priorities)
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 32 — Tabby matrix audited (39 rows reclassified, checklist, ADR 0065),
+  docs-check validates the matrix (209 rows, 83 evidence refs); `cargo xtask ci` before push.
 - 2026-11-11: Step 31 — milestone_c 1/1 (Host crash → intact state → cold rebuild 99 ms, no
   re-run, no duplicate); recovery-matrix.ps1 smoke: check-live PASS, check-cold after a Host
   kill PASS (79 ms); power transitions NOT TESTED (maintainer).

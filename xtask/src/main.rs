@@ -127,6 +127,18 @@ fn run_docs_check(root: &Path) -> Result<(), String> {
             .join(", "),
         m.evidence_refs
     );
+    // Step 32: the Tabby feature matrix too.
+    let t = tmux::check_tabby(root, &mut report.problems)?;
+    println!(
+        "docs-check: Tabby matrix {} rows ({}), {} evidence references resolved",
+        t.rows,
+        tmux::TABBY_STATUSES
+            .iter()
+            .map(|s| format!("{s} {}", t.by_status.get(s).copied().unwrap_or(0)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        t.evidence_refs
+    );
     if report.problems.is_empty() {
         println!("docs-check: PASS");
         Ok(())
