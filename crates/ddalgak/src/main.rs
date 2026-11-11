@@ -48,6 +48,9 @@ USAGE:
     ddalgak startup status|enable|disable [--dry-run] [--json]
     ddalgak rule list [--profile <p>] [--mode <m>] [--draft] [--json]
     ddalgak rule show <id> [--draft] [--json]
+    ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
+                     [--focus normal|password_field|elevated_window|secure_desktop]
+                     [--app <exe>] [--title <text>] [--ime] [--injected] [--draft] [--dry-run] [--json]
     ddalgak rule check [--draft] [--json]
     ddalgak rule add --trigger <keys> (--action <type> [inputs] | --step <json>...)
                      [rule options] [--id <id>] [--profile <p>] [--before|--after <id>]
@@ -521,6 +524,7 @@ fn is_rule_cmd(cmd: Cmd) -> bool {
         cmd,
         Cmd::RuleList
             | Cmd::RuleShow
+            | Cmd::Test
             | Cmd::RuleCheck
             | Cmd::RuleAdd
             | Cmd::RuleEdit
@@ -798,6 +802,31 @@ fn s(v: &Value) -> String {
 fn human(cmd: Cmd, d: &Value) -> String {
     let mut o = String::new();
     match cmd {
+        Cmd::Test => {
+            let dec = &d["decision"];
+            o.push_str(&match dec["outcome"].as_str() {
+                Some("fired") => format!(
+                    "{} fires (simulated; nothing was sent or opened).\n",
+                    s(&dec["rule"])
+                ),
+                Some("skipped") => format!(
+                    "{} would be skipped: {}.\n",
+                    s(&dec["rule"]),
+                    s(&dec["code"])
+                ),
+                _ => "No rule matches; the key reaches the app unchanged.\n".into(),
+            });
+            for c in dec["candidates"].as_array().into_iter().flatten() {
+                o.push_str(&format!(
+                    "  candidate {}: {}\n",
+                    s(&c["rule"]),
+                    s(&c["result"])
+                ));
+            }
+            for e in d["effects"].as_array().into_iter().flatten() {
+                o.push_str(&format!("  step {}: {}\n", e["step"], s(&e["summary"])));
+            }
+        }
         Cmd::Capabilities => {
             o.push_str(&format!(
                 "ddalgak {} — pre-alpha engine (CLI contract v1)\ncommands: {}\n",

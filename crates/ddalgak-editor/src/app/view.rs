@@ -129,6 +129,11 @@ impl EditorApp {
             .show(ui, |ui| match self.page {
                 Page::Modes => self.modes_page(ui),
                 Page::Profiles => self.profiles_page(ui),
+                Page::Playground => {
+                    egui::ScrollArea::vertical()
+                        .id_salt("playground-scroll")
+                        .show(ui, |ui| self.playground_page(ui));
+                }
                 Page::Rules if narrow && self.form.is_some() => {
                     egui::ScrollArea::vertical()
                         .id_salt("detail-scroll")
@@ -251,6 +256,7 @@ impl EditorApp {
                     (Page::Rules, "nav.rules"),
                     (Page::Modes, "nav.modes"),
                     (Page::Profiles, "nav.profiles"),
+                    (Page::Playground, "nav.playground"),
                 ] {
                     if ui.selectable_label(self.page == p, self.t(key)).clicked() {
                         self.acts.push(Act::Page(p));
@@ -279,6 +285,7 @@ impl EditorApp {
                 (Page::Rules, "nav.rules"),
                 (Page::Modes, "nav.modes"),
                 (Page::Profiles, "nav.profiles"),
+                (Page::Playground, "nav.playground"),
             ]
             .into_iter()
             .enumerate()

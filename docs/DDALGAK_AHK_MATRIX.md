@@ -186,7 +186,7 @@ Where a page did not state something, the row says so instead of filling the gap
 | --- | --- | --- | --- | --- | --- | --- |
 | 7.1 | Scripts build their own windows with the `Gui` object (controls, events, menus) | G | Ddalgak's own editor manages rules; users do not build windows | not intended | — | — |
 | 7.2 | A script's tray icon, with suspend and pause | SU | Ddalgak's tray icon with the engine states (shape and words; struck through after an emergency or a lost hook), turn on/off, pause/resume, release stuck keys, and **Open rule editor** (Step 74) | supported | 66, 73, 74 | Step 73: the indicator model is tested (`indicator::tests`, `status.indicator`); Step 74: `editor.open` registered (`tests/cli.rs`); the real tray icon and the editor window it opens are manual checks (DDALGAK_ENGINE §16, DDALGAK_GUI_JOURNEYS §8) |
-| 7.3 | Writing hotkeys requires a text editor and the script syntax | SC | A visual editor with key capture, effect tiles and a test playground | supported | 74, 76 | Step 74: the editor with key capture, eight effect tiles and their validated forms, simulation from the detail panel (headless flow tests, `crates/ddalgak-editor/tests/flows.rs`); the playground is Step 76 |
+| 7.3 | Writing hotkeys requires a text editor and the script syntax | SC | A visual editor with key capture, effect tiles and a test playground | supported | 74, 76 | Step 74: the editor with key capture, eight effect tiles and their validated forms, simulation from the detail panel (headless flow tests, `crates/ddalgak-editor/tests/flows.rs`); Step 76: the Playground page (`tests/playground.rs`) |
 
 ## 8. Scripting language
 
@@ -218,7 +218,7 @@ Where a page did not state something, the row says so instead of filling the gap
 | # | Capability | Ddalgak | Step |
 | --- | --- | --- | --- |
 | 10.1 | Visual rule editor with key capture, effect tiles and validation | [GUI_JOURNEYS §7](DDALGAK_GUI_JOURNEYS.md) (implemented, Step 74) | 74 |
-| 10.2 | Test playground: simulate without side effects, live test confined to the playground | RULE_MODEL §11 | 76 |
+| 10.2 | Test playground: simulate without side effects, live test confined to the playground | RULE_MODEL §11 (implemented, Step 76: `ddalgak test`, the editor's Playground page; evidence `simulate::tests`, `crates/ddalgak-editor/tests/playground.rs`, `e2e/tests/step76_ddalgak_playground.rs`) | 76 |
 | 10.3 | Explicit, per-rule consent for injection, launching and clipboard; fingerprinted launch targets | RULE_MODEL §6 | 67–70 |
 | 10.4 | A non-remappable emergency chord that removes the hook and releases every held key | [DDALGAK_SAFETY §7](DDALGAK_SAFETY.md) | 73 |
 | 10.5 | Conflict reports across Kim tools and reserved keys, with non-destructive offers | HOTKEY_CONTRACT §9 | 67, 81 |

@@ -14,6 +14,7 @@
     { "$ref": "#/$defs/ok_startup_change" },
     { "$ref": "#/$defs/ok_rule_list" },
     { "$ref": "#/$defs/ok_rule_show" },
+    { "$ref": "#/$defs/ok_test" },
     { "$ref": "#/$defs/ok_rule_check" },
     { "$ref": "#/$defs/ok_rule_write" },
     { "$ref": "#/$defs/ok_rules_history" },
@@ -1051,6 +1052,28 @@
                   }
                 },
                 "summary": { "$ref": "#/$defs/summary" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ok_test": {
+      "description": "`ddalgak test` (Step 76): `data` is exactly one ddalgak-simulation-v1 document of kind `simulate`, which that schema closes and the CLI's tests validate; only its identifying fields are repeated here.",
+      "allOf": [
+        { "$ref": "#/$defs/envelope_ok" },
+        {
+          "properties": {
+            "command": { "const": "test" },
+            "data": {
+              "type": "object",
+              "required": ["schema", "schema_version", "kind", "profile", "revision", "context", "event", "decision", "effects", "injected_events", "opened"],
+              "properties": {
+                "schema": { "const": "ddalgak.simulation" },
+                "schema_version": { "const": 1 },
+                "kind": { "const": "simulate" },
+                "injected_events": { "const": 0 },
+                "opened": { "type": "array", "maxItems": 0 }
               }
             }
           }

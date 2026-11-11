@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+mod playground;
 mod profiles;
 mod view;
 
@@ -47,6 +48,8 @@ pub struct Options {
     pub layout: Layout,
     /// Where the simulated pointer starts.
     pub cursor: Point,
+    /// What the playground opens a confirmed program or website with (Step 76; tests: none).
+    pub launcher: Arc<dyn ddalgak::launch::Launcher>,
 }
 
 impl std::fmt::Debug for Options {
@@ -69,6 +72,7 @@ impl Options {
             watch: false,
             layout: Layout::single(1920, 1080),
             cursor: Point::new(960, 540),
+            launcher: Arc::new(ddalgak::launch::NoLauncher),
         }
     }
 }
@@ -92,6 +96,8 @@ pub enum Page {
     Modes,
     /// Step 75: the profile browser (J6).
     Profiles,
+    /// Step 76: the test playground (J5).
+    Playground,
 }
 
 /// What a confirmed Discard leads to.
@@ -289,6 +295,9 @@ pub struct EditorApp {
     new_profile_title: String,
     /// A saved switch the running app has not confirmed yet (the profile's ID).
     switching: Option<String>,
+    // Step 76: the test playground.
+    play: playground::Playground,
+    launcher: Arc<dyn ddalgak::launch::Launcher>,
 }
 
 /// The document checks of the form's rule for one state of the form and the file.
@@ -357,6 +366,11 @@ impl EditorApp {
             profile_sort: ddalgak::profile::Sort::default(),
             new_profile_title: String::new(),
             switching: None,
+            play: playground::Playground {
+                pointer: (opts.cursor.x, opts.cursor.y),
+                ..playground::Playground::default()
+            },
+            launcher: Arc::clone(&opts.launcher),
         };
         app.start_watch();
         app.link.send(Job::Status);
@@ -404,6 +418,11 @@ impl EditorApp {
 
     pub fn banner(&self) -> Option<&Banner> {
         self.banner.as_ref()
+    }
+
+    /// The playground's test field and its last trace (Step 76).
+    pub fn playground(&self) -> (&str, Option<&serde_json::Value>) {
+        (&self.play.field, self.play.result.as_ref())
     }
 
     pub fn form(&self) -> Option<&RuleForm> {

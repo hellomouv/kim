@@ -238,6 +238,7 @@ fn run(
                 watch: true,
                 layout,
                 cursor,
+                launcher: Arc::new(ddalgak::win::launch::WinLauncher),
             });
             Ok(Box::new(app))
         }),

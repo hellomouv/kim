@@ -1,0 +1,50 @@
+{
+  "command": "test",
+  "data": {
+    "context": {
+      "app": null,
+      "engine": "running",
+      "focus": "normal",
+      "ime_composing": false,
+      "mode": "nav"
+    },
+    "decision": {
+      "candidates": [
+        {
+          "result": "winner",
+          "rule": "nav-left"
+        }
+      ],
+      "code": "ok",
+      "key_reaches_app": false,
+      "outcome": "fired",
+      "rule": "nav-left"
+    },
+    "effects": [
+      {
+        "performed": false,
+        "preview": {
+          "holds": "Left"
+        },
+        "step": 0,
+        "summary": "The key acts as Left.",
+        "type": "remap"
+      }
+    ],
+    "event": {
+      "keys": "code:KeyH",
+      "on": "press",
+      "source": "physical"
+    },
+    "injected_events": 0,
+    "kind": "simulate",
+    "opened": [],
+    "profile": "default",
+    "revision": null,
+    "schema": "ddalgak.simulation",
+    "schema_version": 1
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

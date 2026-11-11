@@ -164,6 +164,16 @@
         "usage": "ddalgak rule show <id> [--draft] [--show-text] [--show-targets] [--json]"
       },
       {
+        "dry_run": true,
+        "effect": "read",
+        "name": "test",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Simulate one key event against the saved rules or the draft: the decision, every candidate and the effect of every step (ddalgak-simulation-v1); nothing is injected, opened or changed",
+        "usage": "ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused] [--focus <kind>] [--app <exe>] [--title <text>] [--ime] [--injected] [--draft] [--dry-run] [--json]"
+      },
+      {
         "dry_run": false,
         "effect": "read",
         "name": "rule.check",

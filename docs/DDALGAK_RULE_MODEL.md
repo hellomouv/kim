@@ -860,6 +860,14 @@ do not block an unrelated change.
 
 The playground is where users try rules safely ([GUI_JOURNEYS J5](DDALGAK_GUI_JOURNEYS.md)).
 The same logic answers `ddalgak test --dry-run --json` and `ddalgak explain --json`.
+**Implemented in Step 76** ([ADR 0077](adr/0077-ddalgak-test-playground.md)):
+`crates/ddalgak/src/simulate.rs` is the one simulator (it reproduces every contract example);
+`ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
+[--focus normal|password_field|elevated_window|secure_desktop] [--app <exe>] [--title <text>]
+[--ime] [--injected] [--draft]` prints it (always `simulate`); the editor's Playground page runs
+it and offers `live`. `ddalgak explain` is not built (`ddalgak test` answers for a chosen
+context). Mouse previews use a simulated 1920×1080 desktop with the pointer at its centre and the
+active window at (100, 100).
 
 **Inputs**
 

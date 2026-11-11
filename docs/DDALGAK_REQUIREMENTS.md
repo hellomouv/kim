@@ -113,9 +113,9 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 
 | ID | Requirement | Pri | MS | Verify |
 | --- | --- | --- | --- | --- |
-| DDALGAK-FR-040 | Simulation (the default): for an event and a context (profile, mode, app, focus kind, engine state) Ddalgak reports a `ddalgak-simulation-v1` trace: decision, candidates and the effect of every step. Nothing is injected, opened or changed. Available in the GUI and as `ddalgak test --dry-run --json`. | P0 | D4 | T |
-| DDALGAK-FR-041 | Live test: input goes only into the playground's own test field; a program or website opens only after a confirmation for that launch; reset restores the playground and never touches active rules. | P1 | D4 | T, M |
-| DDALGAK-FR-042 | Unsaved drafts can be simulated and live-tested before they are saved or activated. | P1 | D4 | T |
+| DDALGAK-FR-040 | Simulation (the default): for an event and a context (profile, mode, app, focus kind, engine state) Ddalgak reports a `ddalgak-simulation-v1` trace: decision, candidates and the effect of every step. Nothing is injected, opened or changed. Available in the GUI and as `ddalgak test --dry-run --json`. Step 76: implemented (`ddalgak::simulate`, `ddalgak test`, the editor's Playground page; ADR 0077). | P0 | D4 | T |
+| DDALGAK-FR-041 | Live test: input goes only into the playground's own test field; a program or website opens only after a confirmation for that launch; reset restores the playground and never touches active rules. Step 76: implemented (typing and shortcuts written into the field, never sent; pointer, mode and engine stay simulated; *Confirm and open* per step); visible checks manual. | P1 | D4 | T, M |
+| DDALGAK-FR-042 | Unsaved drafts can be simulated and live-tested before they are saved or activated. Step 76: implemented (`ddalgak test --draft`; the playground's *Include the unsaved rule being edited*). | P1 | D4 | T |
 
 ### 2.6 GUI
 

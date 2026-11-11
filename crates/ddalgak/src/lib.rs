@@ -66,6 +66,7 @@ pub mod rules;
 pub mod run;
 pub mod schema;
 pub mod shortcuts;
+pub mod simulate;
 pub mod startup;
 pub mod stats;
 pub mod store;

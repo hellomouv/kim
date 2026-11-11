@@ -270,6 +270,60 @@ fn rule_problems<'a>(l: &'a store::Loaded, ids: &[String]) -> Vec<&'a Problem> {
         .collect()
 }
 
+/// `test <keys>` (Step 76, DDALGAK-FR-040): what the event would do with the saved rules (or the
+/// draft with `--draft`), as a `ddalgak-simulation-v1` document. Always a simulation: nothing is
+/// injected, opened or changed, and the running engine is not asked (live tests are the GUI
+/// playground's, into its own test field).
+fn test(a: &Args, files: &Files, ctx: &Context) -> Outcome {
+    let keys = a
+        .positional
+        .first()
+        .ok_or_else(|| CliError::usage("which keys? e.g. ddalgak test Ctrl+Shift+K"))?;
+    let (l, src) = source(a, files, ctx)?;
+    let doc = l.doc.ok_or_else(|| {
+        CliError::new(
+            Code::RulesInvalid,
+            "the rules cannot be read; `ddalgak rule check` says why",
+        )
+    })?;
+    let pick = |name: &str, allowed: &[&str], default: &str| -> Result<String, CliError> {
+        let v = a.get(name).unwrap_or(default);
+        if allowed.contains(&v) {
+            Ok(v.to_string())
+        } else {
+            Err(CliError::usage(format!(
+                "{name} takes {}",
+                allowed.join(", ")
+            )))
+        }
+    };
+    let input = ddalgak::simulate::Input {
+        profile: a.get("--profile").map(String::from),
+        revision: if src == "draft" { None } else { l.revision },
+        mode: a.get("--mode").map(String::from),
+        paused: a.has("--paused"),
+        focus: pick(
+            "--focus",
+            &[
+                "normal",
+                "password_field",
+                "elevated_window",
+                "secure_desktop",
+            ],
+            "normal",
+        )?,
+        app_exe: a.get("--app").map(String::from),
+        window_title: a.get("--title").map(String::from),
+        ime_composing: a.has("--ime"),
+        keys: keys.clone(),
+        on: pick("--on", &["press", "release", "hold", "repeat"], "press")?,
+        injected: a.has("--injected"),
+        ..ddalgak::simulate::Input::default()
+    };
+    let v = ddalgak::simulate::simulate(&doc, &input).map_err(CliError::usage)?;
+    Ok((v, Vec::new()))
+}
+
 /// `rule show <id>`
 fn show(a: &Args, files: &Files, ctx: &Context) -> Outcome {
     let (l, src) = source(a, files, ctx)?;
@@ -1409,6 +1463,7 @@ pub fn run(cmd: Cmd, a: &Args, paths: &Paths, notify: Notify<'_>) -> Outcome {
     match cmd {
         Cmd::RuleList => list(a, &files, &ctx),
         Cmd::RuleShow => show(a, &files, &ctx),
+        Cmd::Test => test(a, &files, &ctx),
         Cmd::RuleCheck => check(a, &files, &ctx),
         Cmd::RuleAdd => {
             let n = new_rule(a)?;

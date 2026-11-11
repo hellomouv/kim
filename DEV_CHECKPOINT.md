@@ -8,18 +8,20 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 76** (#81) — the earliest unfinished Ddalgak Step (check its dependencies)
-- Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
-  lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
+- Current Step: **Step 77** (#82) — the earliest unfinished Ddalgak Step (check its dependencies)
+- Last fully completed Step: Step 76 (#81, Ddalgak test playground); Step 31 (#31) done as far as
+  possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #81 (Step 76). Step 63 (#68) delivered (bench-noeul,
-  fuzz, threat model, parity report, follow-up #99); left OPEN for the maintainer's physical
-  acceptance (NOEUL_ACCEPTANCE). Step 61 (#66) open likewise.
+- Next action: re-query open issues; read #82 (Step 77). Steps 61 (#66) and 63 (#68) stay OPEN
+  for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-12: Step 76 — `simulate::tests` 4/4 (all 23 `ddalgak-simulation-v1` examples
+  reproduced and schema-valid), editor `tests/playground.rs` 2/2 (FakeLauncher: nothing opened
+  before *Confirm and open*), e2e step76 1/1, `cargo xtask ci` EXIT 0.
 - 2026-11-12: Step 63 — `cargo xtask bench-noeul --record`: 9/9 budgets (5.0 MiB, ready 25 ms,
   0 ms idle CPU / 10 s, 1.8 MiB private, overlay p95 33.5 / 83.8 ms, pin p95 17.2 / 60.2 ms);
   fuzz tests 3/3 (images 4200 mutations, HTML 2000, DIB 3000); e2e step63 1/1; parity matrix

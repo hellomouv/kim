@@ -20,6 +20,8 @@ pub enum Cmd {
     StartupEnable,
     StartupDisable,
     RuleList,
+    /// Step 76: `test` — the playground's simulation from the command line.
+    Test,
     RuleShow,
     RuleCheck,
     RuleAdd,
@@ -185,6 +187,7 @@ impl Cmd {
             Self::StartupDisable => "startup.disable".into(),
             Self::RuleList => "rule.list".into(),
             Self::RuleShow => "rule.show".into(),
+            Self::Test => "test".into(),
             Self::RuleCheck => "rule.check".into(),
             Self::RuleAdd => "rule.add".into(),
             Self::RuleEdit => "rule.edit".into(),
@@ -273,6 +276,19 @@ impl Cmd {
                 ("--show-targets", Flag),
             ],
             Self::RuleCheck => vec![("--draft", Flag)],
+            Self::Test => vec![
+                ("--draft", Flag),
+                ("--dry-run", Flag),
+                ("--on", Value),
+                ("--profile", Value),
+                ("--mode", Value),
+                ("--paused", Flag),
+                ("--focus", Value),
+                ("--app", Value),
+                ("--title", Value),
+                ("--ime", Flag),
+                ("--injected", Flag),
+            ],
             Self::RulesDraft | Self::RulesHistory => vec![],
             Self::RuleAdd => {
                 let mut v = RULE_FIELDS.to_vec();
@@ -461,7 +477,9 @@ impl Cmd {
     /// How many positional arguments the command takes: (at least, at most).
     fn positionals(self) -> (usize, usize) {
         match self {
-            Self::RuleShow | Self::RuleEdit | Self::RuleDuplicate | Self::RuleMove => (1, 1),
+            Self::RuleShow | Self::RuleEdit | Self::RuleDuplicate | Self::RuleMove | Self::Test => {
+                (1, 1)
+            }
             Self::RuleDelete | Self::RuleEnable | Self::RuleDisable => (1, 1000),
             Self::RuleRevoke | Self::ModeRename => (2, 2),
             Self::ModeShow
@@ -553,6 +571,7 @@ fn command(words: &[&str]) -> Result<(Cmd, usize), String> {
         ["startup"] => (Cmd::StartupStatus, 1),
         ["rule", "list", ..] => (Cmd::RuleList, 2),
         ["rule", "show", ..] => (Cmd::RuleShow, 2),
+        ["test", ..] => (Cmd::Test, 1),
         ["rule", "check", ..] => (Cmd::RuleCheck, 2),
         ["rule", "add", ..] => (Cmd::RuleAdd, 2),
         ["rule", "edit", ..] => (Cmd::RuleEdit, 2),

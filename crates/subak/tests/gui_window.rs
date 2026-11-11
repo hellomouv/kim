@@ -2858,6 +2858,7 @@ fn claude_marks_move_per_terminal_only_while_shown() {
     let timer = m(&d)["timer_ms"].as_u64().expect("armed while working");
     assert!((10..=300).contains(&timer), "{timer}");
     // It turns: frames are drawn and the bar shows the spin glyphs.
+    let span = Instant::now();
     let f0 = m(&gui.dump())["frames"].as_u64().unwrap();
     let mut seen = std::collections::BTreeSet::new();
     let t0 = Instant::now();
@@ -2871,10 +2872,12 @@ fn claude_marks_move_per_terminal_only_while_shown() {
         std::thread::sleep(Duration::from_millis(70));
     }
     let f1 = m(&gui.dump())["frames"].as_u64().unwrap();
+    // Bounded by the time that really passed between the two dumps (longer on a busy machine).
+    let ticks = (span.elapsed().as_millis() / 300) as u64;
     let frames = f1 - f0;
     assert!(
-        (7..=12).contains(&frames),
-        "{frames} frames in 3 s (one each 300 ms)"
+        (ticks * 2 / 3..=ticks + 2).contains(&frames),
+        "{frames} frames in {ticks} ticks of 300 ms"
     );
     assert!(seen.len() >= 3, "the mark turns: {seen:?}");
     // The cost of the moving mark, without test dumps.
