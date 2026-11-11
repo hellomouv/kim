@@ -123,3 +123,11 @@ Windows 10 Pro 10.0.19045, Claude Code 2.1.322: `claude -p … --mcp-config <fil
 --strict-mcp-config --allowedTools mcp__subak__list_terminals` started `subak mcp serve`, called
 `list_terminals` and answered with the Terminal's name (Step 37). The integration test drives the
 same server through every tool group. **Not tested:** other MCP clients.
+
+## 7. Noeul (Step 62)
+
+Noeul has its own adapter, `noeul mcp serve`: read tools always (status, pins, the capture
+history), `--allow pin` to pin a local image file, `--allow capture` to capture a region or monitor
+to a PNG file — which Noeul additionally refuses until the user runs `noeul config set
+privacy.mcp_captures on`, and which always shows a notice. No tool reads the clipboard. Setup,
+tools and the audit file: [NOEUL_CLI §4](NOEUL_CLI.md#4-agents-the-mcp-adapter).

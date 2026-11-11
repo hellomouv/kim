@@ -24,6 +24,10 @@
         "keep_days": 7,
         "keep_cancelled": "off"
       },
+      "privacy": {
+        "cli": "notify",
+        "mcp_captures": "off"
+      },
       "paste": {
         "paths": "on",
         "file_cards": "off"

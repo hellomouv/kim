@@ -83,8 +83,11 @@ check their own limits as well (Subak never starts a program of the caller's cho
 | `terminal.list` | 1.0.0 | Subak | read | — → `{host_running, terminals: [{id, name, state}]}`; starts no Host |
 | `terminal.open` | 1.0.0 | Subak | write | `{name?, cwd?, profile?}` → `{terminal_id, name, pane_id}`; Host on demand |
 | `terminal.paste-path` | 1.0.0 | Subak | write | `{target, path}` (an existing absolute file) → `{typed, pane}`; types the quoted path, no Enter |
+| `pin.list` | 1.0.0 | Noeul | read | — → the open pins (ids, rectangles, zoom, visibility); needs a running Noeul, never starts it |
+| `image.pin` | 1.0.0 | Noeul | write | `{path}` (a local image file) → the pin; without focus |
+| `screen.capture-file` | 1.0.0 | Noeul | write | `{region \| monitor, output, replace?}` → `{file: {written, bytes}}`; a PNG at an absolute local path; Noeul's `privacy.cli` applies (a notice, or `capture_not_allowed`) |
 
-Noeul and Ddalgak become providers and callers in their own Steps (Noeul Step 62, Ddalgak Step 81);
+Noeul provides since Step 62 ([NOEUL_CLI](NOEUL_CLI.md)); Ddalgak becomes a provider and caller in Step 81;
 until then the workflows below are run by an agent or a script through `kim tools invoke`.
 
 ## 5. Workflows

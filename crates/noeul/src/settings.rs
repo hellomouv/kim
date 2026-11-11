@@ -65,6 +65,14 @@
 //! - `[pins] backup`: back the pins up (picture, place, zoom, turn, opacity, group, annotations
 //!   drawn in) so they can be restored after a restart, `"off"` (default) or `"on"`.
 //!
+//! Since Step 62 (NOEUL-SEC-010, ADR 0076), who may capture and read the clipboard without the
+//! user's hand on the keyboard:
+//!
+//! - `[privacy] cli`: captures and clipboard reads requested through the CLI or IPC — `"notify"`
+//!   (default: each one shows a notice), `"allow"` (silently) or `"deny"` (`capture_not_allowed`);
+//! - `[privacy] mcp_captures`: captures an agent requests through `noeul mcp serve` — `"off"`
+//!   (default: refused) or `"on"` (each one still shows a notice). Agents never read the clipboard.
+//!
 //! The rules every setting follows:
 //!
 //! - a missing file means defaults;
@@ -207,6 +215,47 @@ pub struct Settings {
     pub history: History,
     /// Back the pins up (`[pins] backup`; Step 60, off by default).
     pub pin_backup: bool,
+    /// Who may capture and read the clipboard without the keyboard (`[privacy]`; Step 62).
+    pub privacy: Privacy,
+}
+
+/// `[privacy] cli` (Step 62, NOEUL-SEC-010).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CliAccess {
+    /// Each CLI capture or clipboard read shows a notice (the default).
+    #[default]
+    Notify,
+    /// Silently.
+    Allow,
+    /// Refused with `capture_not_allowed`.
+    Deny,
+}
+
+impl CliAccess {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CliAccess::Notify => "notify",
+            CliAccess::Allow => "allow",
+            CliAccess::Deny => "deny",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<CliAccess> {
+        Some(match s {
+            "notify" => CliAccess::Notify,
+            "allow" => CliAccess::Allow,
+            "deny" => CliAccess::Deny,
+            _ => return None,
+        })
+    }
+}
+
+/// `[privacy]` (Step 62).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Privacy {
+    pub cli: CliAccess,
+    /// Agents (MCP) may capture (off by default).
+    pub mcp_captures: bool,
 }
 
 /// `[history]` (Step 60, NOEUL-FR-050, NOEUL-FR-051).
@@ -247,6 +296,7 @@ impl Default for Settings {
             color: crate::color::Style::default(),
             history: History::default(),
             pin_backup: false,
+            privacy: Privacy::default(),
         }
     }
 }
@@ -296,6 +346,10 @@ impl Loaded {
                 "border": if s.pin_look.border { "on" } else { "off" },
                 "shadow": if s.pin_look.shadow { "on" } else { "off" },
                 "backup": if s.pin_backup { "on" } else { "off" },
+            },
+            "privacy": {
+                "cli": s.privacy.cli.as_str(),
+                "mcp_captures": if s.privacy.mcp_captures { "on" } else { "off" },
             },
             "history": {
                 "count": s.history.count,
@@ -433,6 +487,18 @@ const KEYS: &[Key] = &[
         default: "\"off\"",
     },
     Key {
+        section: "privacy",
+        name: "cli",
+        takes: "\"notify\", \"allow\" or \"deny\"",
+        default: "\"notify\"",
+    },
+    Key {
+        section: "privacy",
+        name: "mcp_captures",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
         section: "history",
         name: "count",
         takes: "a number from 1 to 100",
@@ -503,7 +569,7 @@ pub fn key_names() -> Vec<String> {
 
 /// The sections that hold keys (`noeul config reset <section>`).
 pub const SECTIONS: &[&str] = &[
-    "general", "capture", "gestures", "pins", "paste", "color", "history",
+    "general", "capture", "gestures", "pins", "paste", "color", "history", "privacy",
 ];
 
 fn on_off(s: Option<&str>) -> Result<bool, ()> {
@@ -590,6 +656,8 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
             }
         }
         ("pins", "backup") => settings.pin_backup = on_off(s)?,
+        ("privacy", "cli") => settings.privacy.cli = s.and_then(CliAccess::parse).ok_or(())?,
+        ("privacy", "mcp_captures") => settings.privacy.mcp_captures = on_off(s)?,
         ("history", "count") => {
             settings.history.count = number(v, 1, 100)? as usize;
         }
@@ -1380,6 +1448,37 @@ count = 1000
             l.problems.iter().any(|p| p.contains("history.count")),
             "{:?}",
             l.problems
+        );
+        let _ = std::fs::remove_dir_all(f.parent().unwrap());
+    }
+
+    /// Step 62: `[privacy]` — CLI captures notify by default, agent captures are off.
+    #[test]
+    fn privacy_defaults_notify_the_cli_and_refuse_agents() {
+        let d = Settings::default();
+        assert_eq!(
+            (d.privacy.cli, d.privacy.mcp_captures),
+            (CliAccess::Notify, false)
+        );
+        let f = std::env::temp_dir()
+            .join(format!("noeul-privacy-{}", std::process::id()))
+            .join("config.toml");
+        let _ = std::fs::remove_dir_all(f.parent().unwrap());
+        let e = set(
+            &f,
+            &[("privacy.cli", "deny"), ("privacy.mcp_captures", "on")],
+        )
+        .unwrap();
+        write(&f, &e.text).unwrap();
+        let l = load(&f);
+        assert_eq!(
+            (l.settings.privacy.cli, l.settings.privacy.mcp_captures),
+            (CliAccess::Deny, true)
+        );
+        assert_eq!(l.to_json()["privacy"]["cli"], "deny");
+        assert_eq!(
+            set(&f, &[("privacy.cli", "sometimes")]).unwrap_err().code,
+            Code::Usage
         );
         let _ = std::fs::remove_dir_all(f.parent().unwrap());
     }

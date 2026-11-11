@@ -448,7 +448,20 @@ pub fn capture(ctx: &Ctx, a: &crate::CaptureArgs) -> Result<Outcome> {
     if a.interactive {
         return capture_interactive(ctx, a);
     }
-    let mut params = json!({"pin": true, "dry_run": a.dry_run, "pointer": a.pointer});
+    let mut params = json!({"pin": a.output.is_none(), "dry_run": a.dry_run, "pointer": a.pointer});
+    if let Some(o) = &a.output {
+        // Relative paths are made absolute here, from where the user ran the command.
+        let p = std::path::Path::new(o);
+        let abs = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|d| d.join(p))
+                .unwrap_or_else(|_| p.to_path_buf())
+        };
+        params["output"] = json!(abs.display().to_string());
+        params["replace"] = json!(a.replace);
+    }
     if let Some(m) = &a.monitor {
         let spec = noeul::displays::MonitorSpec::parse(m).ok_or_else(|| {
             NoeulError::new(
@@ -467,10 +480,10 @@ pub fn capture(ctx: &Ctx, a: &crate::CaptureArgs) -> Result<Outcome> {
         })?;
         params["region"] = region.to_json();
     }
-    if !a.pin {
+    if !a.pin && a.output.is_none() {
         return Err(NoeulError::new(
             Code::Usage,
-            "nothing to do: add --pin (capture to a file or the clipboard is planned, NOEUL-FR-112)",
+            "nothing to do: add --pin or --output <file.png> (the clipboard is planned, NOEUL-FR-112)",
         ));
     }
     #[cfg(windows)]
@@ -519,9 +532,15 @@ fn capture_human(v: &Value) -> String {
         Some(true) => ", with the pointer",
         _ => "",
     };
+    if v["file"].is_object() {
+        return format!(
+            "Saved {what} {region}{scale}{pointer} to the file ({} bytes).\n",
+            v["file"]["bytes"]
+        );
+    }
     match v["pin"]["id"].as_str() {
         Some(id) => format!("Pinned {what} {region}{scale}{pointer} as {id}.\n"),
-        None => format!("Would capture {what} {region}{scale} and pin it (dry run).\n"),
+        None => format!("Would capture {what} {region}{scale} (dry run).\n"),
     }
 }
 

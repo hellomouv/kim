@@ -8,15 +8,22 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 62** (#67) — Noeul headless CLI, MCP guide and Kim integration
+- Current Step: **Step 63** (#68) — harden Noeul performance, security and Windows release
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #67 (Step 62). Step 61 (#66) done (settings window, ADR 0075).
+- Next action: read #68 (Step 63). Step 62 (#67) done (privacy, capture --output, MCP, interop,
+  Noeul package, ADR 0076). Step 61 (#66) open for the maintainer's visible checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 62 — privacy_tests 3/3 (notify/allow/deny, agents off by default and never the
+  clipboard, capture to a PNG file, no overwrite, no path echoed), mcp 2/2 + interop 1/1 unit,
+  mcp_adapter.rs 1/1 real instance (read only, two consents, pin file, audit without paths),
+  e2e step62 1/1 (kim install noeul from a test-signed catalog, tools find/invoke, uninstall),
+  a real Claude Code run against `noeul mcp serve` (status ok, capture refused).
 
 - 2026-11-12: Step 61 — prefs model 4/4, settings_tests 2/2 (opens only when asked, recording
   suspends hotkeys), settings_window.rs 2/2 on the real off-screen window (record, Esc, shadowed
@@ -127,4 +134,4 @@ checkpoint."*
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):
-  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #71, #73–#80.
+  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #71, #73–#80.

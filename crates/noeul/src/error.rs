@@ -21,6 +21,12 @@ pub enum Code {
     MonitorNotFound,
     /// Step 60: no capture with this number in the history.
     HistoryEntryNotFound,
+    /// Step 62: `[privacy]` refuses this capture or clipboard read (NOEUL-SEC-010).
+    CaptureNotAllowed,
+    /// Step 62 (interop, shared): Noeul does not provide this capability.
+    CapabilityMissing,
+    /// Step 62 (interop, shared): another request or interface major.
+    ToolIncompatible,
     WindowNotFound,
     ProtocolError,
     NoeulIdentityMismatch,
@@ -57,6 +63,9 @@ impl Code {
         Code::NothingToPin,
         Code::MonitorNotFound,
         Code::HistoryEntryNotFound,
+        Code::CaptureNotAllowed,
+        Code::CapabilityMissing,
+        Code::ToolIncompatible,
         Code::WindowNotFound,
         Code::ProtocolError,
         Code::NoeulIdentityMismatch,
@@ -93,6 +102,9 @@ impl Code {
             Code::NothingToPin => "nothing_to_pin",
             Code::MonitorNotFound => "monitor_not_found",
             Code::HistoryEntryNotFound => "history_entry_not_found",
+            Code::CaptureNotAllowed => "capture_not_allowed",
+            Code::CapabilityMissing => "capability_missing",
+            Code::ToolIncompatible => "tool_incompatible",
             Code::WindowNotFound => "window_not_found",
             Code::ProtocolError => "protocol_error",
             Code::NoeulIdentityMismatch => "noeul_identity_mismatch",
@@ -137,7 +149,9 @@ impl Code {
             | Code::HotkeysInvalid
             | Code::ImageInvalid
             | Code::ConfigInvalid => 4,
-            Code::UnsupportedPlatform
+            Code::CapabilityMissing
+            | Code::ToolIncompatible
+            | Code::UnsupportedPlatform
             | Code::NoeulIncompatible
             | Code::HotkeyUnsupported
             | Code::HotkeysFromNewerVersion
@@ -146,7 +160,10 @@ impl Code {
             | Code::ClipboardUnavailable
             | Code::NoeulUnresponsive
             | Code::Timeout => 6,
-            Code::Busy | Code::ConfirmationRequired | Code::HotkeyConflict => 7,
+            Code::Busy
+            | Code::CaptureNotAllowed
+            | Code::ConfirmationRequired
+            | Code::HotkeyConflict => 7,
             Code::Cancelled => 8,
         }
     }

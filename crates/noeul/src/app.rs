@@ -719,6 +719,33 @@ impl<S: Shell> std::fmt::Debug for App<S> {
     }
 }
 
+/// Step 62: a capture's `output` — an absolute `.png` path on a local drive (`C:\…`; never a
+/// network path).
+fn output_path(v: &Value) -> Result<PathBuf> {
+    let bad = || {
+        NoeulError::new(
+            Code::Usage,
+            "`output` must be an absolute path to a .png file on a local drive",
+        )
+    };
+    let s = v.as_str().ok_or_else(bad)?;
+    let p = PathBuf::from(s);
+    let b = s.as_bytes();
+    let drive = b.len() > 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
+    let png = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("png"));
+    if drive && png && !s.contains("..") {
+        Ok(p)
+    } else {
+        Err(bad())
+    }
+}
+
 fn session_error(e: SessionError) -> NoeulError {
     match e {
         SessionError::Busy { .. } => NoeulError::new(Code::Busy, "another capture is in progress")
@@ -1115,18 +1142,67 @@ impl<S: Shell> App<S> {
     fn capture(&mut self, params: &Value, dry_run: bool) -> Result<Value> {
         let target = Target::from_params(params)?;
         let pointer = ipc::flag(params, "pointer")?;
-        if params.get("pin") != Some(&Value::Bool(true)) {
+        let pin = params.get("pin") == Some(&Value::Bool(true));
+        let output = match params.get("output") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(output_path(v)?),
+        };
+        if pin == output.is_some() {
             return Err(NoeulError::new(
                 Code::Usage,
-                "the instance only pins captures in this build (`pin: true`)",
+                "a capture is pinned (`pin: true`) or written to a file (`output`): exactly one",
             )
-            .hint("capture to a file or the clipboard is planned (NOEUL-FR-112)"));
+            .hint("the clipboard as a target is planned (NOEUL-FR-112)"));
         }
-        let v = self.capture_target(target, pointer, Origin::Cli, dry_run)?;
+        // Step 62 (NOEUL-SEC-010): the user's `[privacy]` decides before anything is captured.
+        let notify = self.access(params, "a capture")?;
+        let file = output.map(|p| (p, ipc::flag(params, "replace").unwrap_or(false)));
+        let v = self.capture_target_to(target, pointer, Origin::Cli, dry_run, file, notify)?;
         if !dry_run {
-            self.last_action = Some(("capture".into(), "pinned"));
+            self.last_action = Some((
+                "capture".into(),
+                if v["file"].is_object() {
+                    "saved"
+                } else {
+                    "pinned"
+                },
+            ));
         }
         Ok(v)
+    }
+
+    /// Step 62 (NOEUL-SEC-010): may this IPC request capture or read the clipboard (`what`)?
+    /// `Ok(true)`: yes, with the visible notice; `Ok(false)`: yes, silently (`privacy.cli =
+    /// "allow"`). Agents (`via: "mcp"`) capture only with `privacy.mcp_captures = "on"`, always
+    /// with the notice, and never read the clipboard.
+    fn access(&self, params: &Value, what: &str) -> Result<bool> {
+        let p = self.settings.settings.privacy;
+        let refuse = |msg: String, hint: &str| {
+            Err(NoeulError::new(Code::CaptureNotAllowed, msg).hint(hint.to_string()))
+        };
+        if params["via"] == "mcp" {
+            if what.contains("clipboard") {
+                return refuse(
+                    "agents never read the clipboard".into(),
+                    "copy and paste it yourself with F3",
+                );
+            }
+            if !p.mcp_captures {
+                return refuse(
+                    format!("{what} for an agent (MCP) is off in Noeul's privacy settings"),
+                    "the user can allow it: noeul config set privacy.mcp_captures on",
+                );
+            }
+            return Ok(true);
+        }
+        match p.cli {
+            settings::CliAccess::Deny => refuse(
+                format!("{what} from the command line is denied in Noeul's privacy settings"),
+                "the user can allow it: noeul config set privacy.cli notify",
+            ),
+            settings::CliAccess::Allow => Ok(false),
+            settings::CliAccess::Notify => Ok(true),
+        }
     }
 
     /// Where a target is on `desktop` now: the rectangle to capture (inside the virtual desktop)
@@ -1189,6 +1265,20 @@ impl<S: Shell> App<S> {
         origin: Origin,
         dry_run: bool,
     ) -> Result<Value> {
+        self.capture_target_to(target, pointer, origin, dry_run, None, true)
+    }
+
+    /// [`App::capture_target`], or to a PNG file (`file`: the path and whether it may replace an
+    /// existing file; Step 62). `notify`: the visible notice of a CLI capture.
+    fn capture_target_to(
+        &mut self,
+        target: Target,
+        pointer: bool,
+        origin: Origin,
+        dry_run: bool,
+        file: Option<(PathBuf, bool)>,
+        notify: bool,
+    ) -> Result<Value> {
         let desktop = self.capture.desktop();
         if let Some(e) = desktop.state.error() {
             return Err(e);
@@ -1235,6 +1325,35 @@ impl<S: Shell> App<S> {
                 None,
             )
         };
+        if let Some((path, replace)) = file {
+            // Step 62: to a file the user's agent or script named — a PNG without metadata,
+            // never over an existing file unless `replace`; the path is never echoed back.
+            let png = output::png(&frame).map_err(|e| {
+                NoeulError::new(Code::Internal, format!("PNG encoding failed: {e}"))
+            })?;
+            output::write_file(&path, &png, replace).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    NoeulError::new(Code::Io, "the file exists; nothing was written")
+                        .hint("pass --replace to write over it, or choose another name")
+                } else {
+                    NoeulError::new(
+                        Code::Io,
+                        format!("the file could not be written: {}", e.kind()),
+                    )
+                }
+            })?;
+            self.keep_pinned(&frame);
+            drop(frame);
+            if notify {
+                self.shell
+                    .notice("Noeul saved a capture to a file (command line).");
+            }
+            if let Some(o) = outcome {
+                v["pointer"] = o.to_json();
+            }
+            v["file"] = json!({"written": true, "bytes": png.len()});
+            return Ok(v);
+        }
         let sid = self
             .captures
             .begin(origin, frame, Vec::new())
@@ -1243,7 +1362,7 @@ impl<S: Shell> App<S> {
         let frame = self.captures.finish_pin(sid).map_err(session_error)?;
         self.keep_pinned(&frame);
         let id = if origin == Origin::Cli {
-            self.create_pin(&desktop, frame, Source::Capture, Placement::Exact)?
+            self.create_pin(&desktop, frame, Source::Capture, Placement::Exact, notify)?
         } else {
             let new = NewPin {
                 frame,
@@ -1299,9 +1418,6 @@ impl<S: Shell> App<S> {
         }
     }
 
-    /// A pin requested over IPC: never with focus, so it never takes the keyboard from the
-    /// program the user is in (NOEUL-FR-060); announced like every CLI capture or clipboard read
-    /// (the default notice of NOEUL-SEC-010).
     /// Step 60: a capture pinned without the overlay (CLI, `capture.monitor`/`window`) joins the
     /// history as it was pinned.
     fn keep_pinned(&mut self, frame: &Frame) {
@@ -1312,12 +1428,16 @@ impl<S: Shell> App<S> {
         }
     }
 
+    /// A pin requested over IPC: never with focus, so it never takes the keyboard from the
+    /// program the user is in (NOEUL-FR-060); announced like every CLI capture or clipboard read
+    /// (the default notice of NOEUL-SEC-010).
     fn create_pin(
         &mut self,
         desktop: &crate::capture::Desktop,
         frame: Frame,
         source: Source,
         placement: Placement,
+        notify: bool,
     ) -> Result<PinId> {
         let new = NewPin {
             frame,
@@ -1329,11 +1449,13 @@ impl<S: Shell> App<S> {
         };
         match self.pins.create(self.shell.pin_windows(), desktop, new) {
             Ok(id) => {
-                self.shell.notice(match source {
-                    Source::Capture => "Noeul captured a region (command line).",
-                    Source::Clipboard => "Noeul pinned the clipboard (command line).",
-                    Source::File => "Noeul pinned a file (command line).",
-                });
+                if notify {
+                    self.shell.notice(match source {
+                        Source::Capture => "Noeul captured a region (command line).",
+                        Source::Clipboard => "Noeul pinned the clipboard (command line).",
+                        Source::File => "Noeul pinned a file (command line).",
+                    });
+                }
                 Ok(id)
             }
             Err((frame, why)) => {
@@ -1398,6 +1520,7 @@ impl<S: Shell> App<S> {
                         )
                     })?;
                 check_region(&desktop, region).map_err(NoeulError::from)?;
+                let notify = self.access(params, "a capture")?;
                 if dry_run {
                     return Ok(json!({"dry_run": true, "source": "region", "pin": null}));
                 }
@@ -1412,7 +1535,8 @@ impl<S: Shell> App<S> {
                 self.captures.select(sid, region).map_err(session_error)?;
                 let frame = self.captures.finish_pin(sid).map_err(session_error)?;
                 self.keep_pinned(&frame);
-                let id = self.create_pin(&desktop, frame, Source::Capture, Placement::Exact)?;
+                let id =
+                    self.create_pin(&desktop, frame, Source::Capture, Placement::Exact, notify)?;
                 self.last_action = Some(("pin.create".into(), "pinned"));
                 Ok(json!({"dry_run": false, "source": "region", "pin": self.pin_ref(id)}))
             }
@@ -1437,14 +1561,17 @@ impl<S: Shell> App<S> {
                         },
                     )?),
                 };
+                let notify = self.access(params, "a clipboard read")?;
                 if dry_run {
                     // A dry run never opens the clipboard.
                     return Ok(json!({"dry_run": true, "source": "clipboard", "pin": null}));
                 }
                 let at = at.unwrap_or_else(|| self.shell.pointer());
                 let made = self.paste_clipboard(want, at, false)?;
-                self.shell
-                    .notice("Noeul pinned the clipboard (command line).");
+                if notify {
+                    self.shell
+                        .notice("Noeul pinned the clipboard (command line).");
+                }
                 self.last_action = Some(("pin.create".into(), "pinned"));
                 Ok(self.made_json("clipboard", &made))
             }
@@ -3835,6 +3962,9 @@ mod keeping_tests;
 
 #[cfg(test)]
 mod settings_tests;
+
+#[cfg(test)]
+mod privacy_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {

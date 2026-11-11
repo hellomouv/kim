@@ -1,4 +1,4 @@
-//! `cargo xtask package <kim|subak> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
+//! `cargo xtask package <kim|subak|noeul> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
 //! distributable of one tool, built from this checkout.
 //!
 //! - Builds the release binaries (`cargo build --release -p <crates>`), unless `--skip-build`.
@@ -26,7 +26,7 @@ struct Tool {
     summary: &'static str,
 }
 
-const TOOLS: [Tool; 2] = [
+const TOOLS: [Tool; 3] = [
     Tool {
         id: "kim",
         crates: &["kim", "kim-manager", "kim-setup"],
@@ -40,6 +40,15 @@ const TOOLS: [Tool; 2] = [
         exes: &["subak.exe", "subak-gui.exe"],
         entrypoint: "subak.exe",
         summary: "Subak: a persistent Windows terminal with a detached Host (subak.exe CLI and Host, subak-gui.exe window)",
+    },
+    // Step 62: Noeul is packaged like the others so Kim can install it (one program: CLI,
+    // resident instance, MCP adapter and interop provider).
+    Tool {
+        id: "noeul",
+        crates: &["noeul"],
+        exes: &["noeul.exe"],
+        entrypoint: "noeul.exe",
+        summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider)",
     },
 ];
 
@@ -126,7 +135,7 @@ fn sha_hex(b: &[u8]) -> String {
 pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let id = args.first().map(String::as_str).unwrap_or("");
     let Some(tool) = TOOLS.iter().find(|t| t.id == id) else {
-        return Err("usage: cargo xtask package <kim|subak> [--skip-build]".into());
+        return Err("usage: cargo xtask package <kim|subak|noeul> [--skip-build]".into());
     };
     if !cfg!(windows) {
         return Err("package builds the Windows distributable; run it on Windows".into());

@@ -45,7 +45,7 @@ COMMANDS:
                       Actions.
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
-    package <kim|subak> [--skip-build]
+    package <kim|subak|noeul> [--skip-build]
                       Build the Windows release zip (programs, capabilities.json, licenses,
                       third-party notices, README) deterministically into target/dist, with a
                       release manifest (size, SHA-256, build, catalog entry); never uploads

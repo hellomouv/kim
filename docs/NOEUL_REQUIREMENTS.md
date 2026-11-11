@@ -211,6 +211,13 @@ colours, High Contrast, dark mode); the other sections are not built yet.
 | NOEUL-FR-113 | Optional local MCP adapter (`noeul mcp`, stdio, started only by the user's MCP client) with an allowlist: `status`, `pin.list`, `pin.create` from a file, and capture to a file. Capture and clipboard tools are disabled until the user enables them in Noeul's settings. | P2 | N5 | T, D |
 | NOEUL-FR-114 | Only implemented actions exist: each build lists and registers only the actions and commands it implements; anything planned is labeled as planned in `--help` and the docs. | P0 | N1 | T, I |
 
+Step 62 ([ADR 0076](adr/0076-noeul-agents-and-kim.md), [NOEUL_CLI](NOEUL_CLI.md)): every command is
+headless, instance or desktop (NOEUL-FR-111); `capture --output <file.png>` (NOEUL-FR-112; the
+clipboard target stays planned); the MCP adapter `noeul mcp serve` with read tools and the `pin` and
+`capture` grants (NOEUL-FR-113; captures also need `privacy.mcp_captures`); `[privacy] cli` notify,
+allow or deny with `capture_not_allowed` (NOEUL-SEC-010); Noeul packaged for Kim and an interop
+provider (`pin.list`, `image.pin`, `screen.capture-file`).
+
 ## 4. Non-functional requirements
 
 Budgets are initial targets for a release build on a typical machine (the measuring machine and
@@ -306,7 +313,7 @@ Proposed for the Steps that implement them (Steps 49 and 62); each is added to
 `desktop_unavailable`, `noeul_not_running`, `pin_not_found`, `clipboard_unavailable`,
 `nothing_to_pin` and `image_invalid`, plus the IPC codes `noeul_identity_mismatch`,
 `noeul_unresponsive`, `noeul_incompatible` and `noeul_start_failed` (CLI_CONTRACT §6, Noeul table).
-`capture_not_allowed` waits for the privacy setting of Step 62. **Registered in Step 51** with
+`capture_not_allowed` is registered in Step 62 with the `[privacy]` settings. **Registered in Step 51** with
 `noeul config set|reset`: `config_invalid` (4: `config.toml` is invalid or cannot be edited in
 place without changing other keys) and `config_from_newer_version` (5: written by a newer Noeul,
 never rewritten) ([ADR 0032](adr/0032-noeul-double-click-pin-and-outputs.md) §4). **Registered in

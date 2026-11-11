@@ -13,7 +13,9 @@
 mod config_cmd;
 mod hotkeys_cmd;
 mod instance;
+mod interop;
 mod keep_cmd;
+mod mcp;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use noeul::error::{Code, NoeulError};
@@ -142,6 +144,14 @@ enum Command {
     /// clear it (Step 60; on disk only with `[history] disk = "on"`)
     #[command(subcommand)]
     History(keep_cmd::HistoryCommand),
+    /// The optional MCP adapter for agents: `serve` speaks MCP on stdin/stdout (started by the
+    /// user's MCP client only), `tools` lists what it would offer (Step 62)
+    #[command(subcommand)]
+    Mcp(McpCommand),
+    /// Kim interop: answer one `kim.interop.request` from stdin (`pin.list`, `image.pin`,
+    /// `screen.capture-file`); for `kim tools invoke`, headless, never starts Noeul (Step 62)
+    #[command(subcommand)]
+    Interop(InteropCommand),
     /// Open the settings window of the running Noeul (shortcuts, gestures, history, backup): the
     /// one command that opens a window, and only when asked (Step 61)
     Settings(DryRun),
@@ -156,6 +166,38 @@ enum Command {
     Capabilities,
     /// Noeul's version and the contract, schema and IPC versions it speaks (read-only)
     Version,
+}
+
+#[derive(Debug, Subcommand)]
+enum InteropCommand {
+    /// Run one capability; the request is read from stdin (--dry-run: check only)
+    Invoke(DryRun),
+}
+
+#[derive(Debug, Subcommand)]
+enum McpCommand {
+    /// Serve MCP over stdin/stdout until stdin ends (reading only, unless granted)
+    Serve(McpArgs),
+    /// The tools `serve` offers with these grants (read-only)
+    Tools(McpToolsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpToolsArgs {
+    /// The grants to show the tools for: `pin`, `capture`
+    #[arg(long, value_name = "GRANT")]
+    pub allow: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Grant more than reading: `pin` (pin an image file) and `capture` (capture to a PNG file;
+    /// Noeul also needs `privacy.mcp_captures on`). Repeat or separate with commas
+    #[arg(long, value_name = "GRANT")]
+    pub allow: Vec<String>,
+    /// `serve`: print the tools it would offer and exit, serving nothing
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -203,10 +245,17 @@ pub struct CaptureArgs {
     /// Draw the mouse pointer into the picture
     #[arg(long, requires = "target")]
     pub pointer: bool,
-    /// Pin the capture in place at 100 % (required with --region, --monitor and --window in
-    /// this build; --output and --clipboard are planned)
-    #[arg(long, requires = "target")]
+    /// Pin the capture in place at 100 % (with --region, --monitor or --window, or use --output;
+    /// --clipboard is planned)
+    #[arg(long, requires = "target", conflicts_with = "output")]
     pub pin: bool,
+    /// Write the capture to this PNG file instead (an absolute path on a local drive; no
+    /// metadata; never over an existing file without --replace). Step 62
+    #[arg(long, value_name = "FILE", requires = "target")]
+    pub output: Option<String>,
+    /// With --output: write over an existing file
+    #[arg(long, requires = "output")]
+    pub replace: bool,
     /// Open the region selection overlay on the user's desktop, as F1 does (a visible window;
     /// the user selects, Enter pins, Esc cancels)
     #[arg(long, conflicts_with = "cancel")]
@@ -546,6 +595,15 @@ fn main() -> ExitCode {
         },
         Command::History(c) => keep_cmd::history(&ctx, c),
         Command::Settings(a) => keep_cmd::settings(&ctx, a.dry_run),
+        Command::Mcp(McpCommand::Tools(a)) => mcp::tools_cmd(&a.allow),
+        Command::Interop(InteropCommand::Invoke(a)) => interop::invoke(&ctx, a.dry_run),
+        Command::Mcp(McpCommand::Serve(a)) if a.dry_run => mcp::tools_cmd(&a.allow),
+        Command::Mcp(McpCommand::Serve(a)) => {
+            return match mcp::serve(&ctx, &a.allow) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => finish(name, Err(e), &ctx),
+            };
+        }
         Command::Hotkeys(c) => hotkeys_cmd::run(c, &ctx),
         Command::Config(ConfigCommand::Show) => instance::config_show(),
         Command::Config(ConfigCommand::Set(a)) => config_cmd::set(&ctx, a),
@@ -581,6 +639,9 @@ fn command_name(c: &Command) -> &'static str {
             Some(PinCommand::Backup(keep_cmd::BackupCommand::Clear(_))) => "pin.backup.clear",
         },
         Command::Settings(_) => "settings",
+        Command::Mcp(McpCommand::Serve(_)) => "mcp.serve",
+        Command::Mcp(McpCommand::Tools(_)) => "mcp.tools",
+        Command::Interop(InteropCommand::Invoke(_)) => "interop.invoke",
         Command::History(c) => match c {
             keep_cmd::HistoryCommand::List => "history.list",
             keep_cmd::HistoryCommand::Pin(_) => "history.pin",

@@ -146,6 +146,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "output": { "description": "capture (Step 62): write the capture to this absolute .png path on a local drive instead of pinning it.", "type": "string", "minLength": 4 },
+        "replace": { "description": "capture with output: write over an existing file.", "type": "boolean" },
+        "via": { "description": "Step 62: `mcp` when an agent asks through `noeul mcp serve` (the privacy setting privacy.mcp_captures applies); absent: the CLI or another IPC client (privacy.cli applies).", "enum": ["cli", "mcp"] },
         "dry_run": { "type": "boolean" },
         "region": { "$ref": "#/$defs/rect" },
         "entry": { "description": "history.pin (default: the newest) and history.forget: a kept capture's number (Step 60).", "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
@@ -298,7 +301,7 @@
     },
     "settings_state": {
       "type": "object",
-      "required": ["path", "state", "tray_icon", "keyboard_help", "quick_save_folder", "detection", "magnifier", "pointer", "pins", "history", "paste", "color", "gestures", "problems"],
+      "required": ["path", "state", "tray_icon", "keyboard_help", "quick_save_folder", "detection", "magnifier", "pointer", "pins", "history", "privacy", "paste", "color", "gestures", "problems"],
       "additionalProperties": false,
       "properties": {
         "path": { "type": "string", "minLength": 1 },
@@ -318,6 +321,16 @@
             "border": { "enum": ["on", "off"] },
             "shadow": { "enum": ["on", "off"] },
             "backup": { "enum": ["on", "off"] }
+          }
+        },
+        "privacy": {
+          "description": "`[privacy]` (Step 62, NOEUL-SEC-010): CLI and IPC captures and clipboard reads notify (default), are allowed silently or denied; agent (MCP) captures are off unless turned on.",
+          "type": "object",
+          "required": ["cli", "mcp_captures"],
+          "additionalProperties": false,
+          "properties": {
+            "cli": { "enum": ["notify", "allow", "deny"] },
+            "mcp_captures": { "enum": ["on", "off"] }
           }
         },
         "history": {
@@ -503,11 +516,12 @@
       }
     },
     "capture_result": {
-      "description": "`capture`: a region, a monitor or the active window, captured without the overlay and pinned in place (monitor, window, pointer, mapping and warnings since Step 58, ADR 0050). Geometry and states only: never pixels, a window title or a program name.",
+      "description": "`capture`: a region, a monitor or the active window, captured without the overlay and pinned in place (or, since Step 62, written to a PNG file: `file`) (monitor, window, pointer, mapping and warnings since Step 58, ADR 0050). Geometry and states only: never pixels, a window title or a program name.",
       "type": "object",
       "required": ["dry_run", "target", "region", "monitor", "mapping", "window", "pointer", "pin", "desktop", "warnings"],
       "additionalProperties": false,
       "properties": {
+        "file": { "description": "Step 62: written to the file the request named (`output`) instead of pinned; the path is never echoed.", "type": "object", "required": ["written", "bytes"], "additionalProperties": false, "properties": { "written": { "const": true }, "bytes": { "type": "integer", "minimum": 1 } } },
         "dry_run": { "type": "boolean" },
         "target": { "enum": ["region", "monitor", "window"] },
         "region": { "description": "What was (or would be) captured, in device pixels of the virtual desktop.", "$ref": "#/$defs/rect" },
