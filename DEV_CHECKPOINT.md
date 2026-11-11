@@ -8,14 +8,18 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 28** (#28) — Claude Code status indicators
-- Last fully completed Step: Step 27 (#27, Claude Code hooks and session events, ADR 0061)
+- Current Step: **Step 29** (#29) — durable Terminal state persistence
+- Last fully completed Step: Step 28 (#28, Claude Code status indicators, ADR 0062)
 - Uncommitted changes: none expected between Steps
-- Next action: read #28. The Host has `claude.status` and `claude.state_changed` (topic
-  `claude`); GUI indicators are next. Sessions are memory-only (persisting for resume: 29/30)
+- Next action: read #29. Claude sessions are memory-only (ADR 0061/0062); Step 29/30 persist
+  the last session id per pane for an opt-in `claude --resume`
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 28 — claude/tabs/model/float unit tests, claude_status 1/1 (all states,
+  lost and stale signals, repeated states), gui_window claude tab test (off-screen), a real
+  `claude -p` (2.1.322) with the 8-event hook set, e2e step27+28 2/2 (focused local run,
+  LEDGER); `cargo xtask ci` before push.
 - 2026-11-11: Step 27 — claude unit tests 3/3, claude_hooks 2/2, a real `claude -p` (2.1.322)
   in a Subak pane reported SessionStart/UserPromptSubmit/Stop/SessionEnd, e2e step27 1/1
   (focused local run, LEDGER); `cargo xtask ci` before push.

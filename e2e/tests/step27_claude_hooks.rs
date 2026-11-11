@@ -83,7 +83,7 @@ fn a_user_opts_in_and_a_pane_reports_its_claude_session_privately() {
     std::fs::write(&settings, mine).unwrap();
     let s = settings.to_str().unwrap();
     let d = ok(&subak, &["claude", "hooks", "install", "--settings", s]);
-    assert_eq!(d["events"].as_array().unwrap().len(), 6);
+    assert_eq!(d["events"].as_array().unwrap().len(), 8);
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
     assert_eq!(
         v["hooks"]["Notification"][0]["hooks"][0]["command"],

@@ -238,6 +238,9 @@ pub struct TerminalPrefs {
     pub copy_on_select: bool,
     /// `Ctrl+C` copies when text is selected, else it interrupts the program as always.
     pub smart_ctrl_c: bool,
+    /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
+    /// ever from hooks the user installed).
+    pub claude_indicators: bool,
     pub right_click: RightClick,
     pub middle_click: MiddleClick,
     /// Characters that end a word for double-click selection and mark mode.
@@ -301,6 +304,7 @@ impl Default for Settings {
                 default_profile: String::new(),
                 copy_on_select: false,
                 smart_ctrl_c: false,
+                claude_indicators: true,
                 right_click: RightClick::CopyPaste,
                 middle_click: MiddleClick::None,
                 word_separators: subak_term::view::WORD_DELIMITERS.to_string(),
@@ -370,6 +374,7 @@ impl Settings {
             ("terminal", "default_profile") => json!(t.default_profile),
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
+            ("terminal", "claude_indicators") => json!(t.claude_indicators),
             ("terminal", "right_click") => json!(t.right_click.as_str()),
             ("terminal", "middle_click") => json!(t.middle_click.as_str()),
             ("terminal", "word_separators") => json!(t.word_separators),
@@ -570,6 +575,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "claude_indicators",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "terminal",
         name: "right_click",
         takes: "copy-paste, menu, paste or none",
         kind: Kind::Text,
@@ -651,6 +662,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         }
         ("terminal", "copy_on_select") => t.copy_on_select = flag()?,
         ("terminal", "smart_ctrl_c") => t.smart_ctrl_c = flag()?,
+        ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "right_click") => t.right_click = RightClick::parse(text()?).ok_or(())?,
         ("terminal", "middle_click") => {
             t.middle_click = MiddleClick::parse(text()?).ok_or(())?;

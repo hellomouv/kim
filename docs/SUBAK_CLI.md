@@ -357,7 +357,8 @@ window, and never change a running Terminal. The window's Settings menu changes 
 `appearance.font_family`, `appearance.font_size` (8–36), `appearance.line_height` (1.0–2.0),
 `appearance.padding` (0–16), `appearance.opacity` (50–100), `appearance.motion` (`system`,
 `reduced`, `full`), `appearance.bold_is_bright`, `terminal.default_profile`,
-`terminal.copy_on_select`, `terminal.smart_ctrl_c`, `terminal.right_click` (`copy-paste`,
+`terminal.copy_on_select`, `terminal.smart_ctrl_c`, `terminal.claude_indicators` (Step 28),
+`terminal.right_click` (`copy-paste`,
 `menu`, `paste`, `none`), `terminal.middle_click` (`none`, `paste`), `terminal.word_separators`.
 Booleans take `true`/`false` (or `on`/`off`). A value that starts with `-` is given as
 `<key>=<value>`. Profiles are `[[profiles]]` tables of the file (`name`, `program`, `args`, `cwd`,
@@ -516,7 +517,7 @@ types it into the pane with line ends as carriage returns. `set`, `delete` and `
 | `subak claude hooks install [--settings <file>] [--dry-run]` | opt in: merge Subak's hooks, keeping every other setting and hook; a backup first |
 | `subak claude hooks uninstall [--settings <file>] [--dry-run]` | remove exactly Subak's entries; a backup first |
 | `subak claude report` | run by the hooks: forward the event and session id to the pane's Host; prints nothing (with `--json`, whether it was delivered), always exit 0 |
-| `subak claude status [<target>]` | the Claude sessions per pane and their states |
+| `subak claude status [<target>]` (also `subak claude list`) | the Claude sessions per pane and their states (read-only); `subak ls`/`info` give each Terminal's aggregate `claude_state` (Step 28, ADR 0062) |
 
 An invalid settings file is `config_invalid` (exit 2) and is not changed.
 

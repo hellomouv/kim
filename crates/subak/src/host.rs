@@ -471,6 +471,8 @@ struct State {
     in_hook: bool,
     /// Step 27: Claude Code sessions per pane (memory only): pane id → session id → state.
     claude: HashMap<String, BTreeMap<String, ClaudeSession>>,
+    /// Step 28: the Claude state last announced per Terminal (`terminal.claude_changed`).
+    claude_told: HashMap<String, &'static str>,
 }
 
 /// One Claude Code session in a pane (Step 27): what its last hook said, and when.
@@ -482,11 +484,40 @@ struct ClaudeSession {
     reason: Option<String>,
     since: SystemTime,
     at: Instant,
+    /// Step 28: its going stale was announced.
+    stale_told: bool,
 }
 
 /// After this long without a hook, an `in-progress` session is `unknown` (a missed hook, a
 /// killed Claude): Subak does not guess (ADR 0010 §4).
 pub const CLAUDE_STALE: Duration = Duration::from_secs(30 * 60);
+
+impl ClaudeSession {
+    /// The state as shown: `unknown` once [`CLAUDE_STALE`] in progress without a hook.
+    fn shown(&self) -> &'static str {
+        if self.state == "in-progress" && self.at.elapsed() > stale_after() {
+            "unknown"
+        } else {
+            claude::PRIORITY
+                .iter()
+                .copied()
+                .find(|p| *p == self.state)
+                .unwrap_or("unknown")
+        }
+    }
+}
+
+/// [`CLAUDE_STALE`], or `SUBAK_TEST_CLAUDE_STALE_MS` in debug builds (tests of stale signals).
+fn stale_after() -> Duration {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("SUBAK_TEST_CLAUDE_STALE_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        return Duration::from_millis(ms);
+    }
+    CLAUDE_STALE
+}
 
 /// One hook run (Step 25): the command line and where its event happened.
 #[derive(Debug, Clone)]
@@ -565,12 +596,73 @@ impl State {
         }
     }
 
+    /// Step 28: a Terminal's Claude state, the most urgent of its panes' sessions (`none`).
+    fn claude_of(&self, terminal_id: &str) -> &'static str {
+        claude::aggregate(
+            self.claude
+                .values()
+                .flat_map(BTreeMap::values)
+                .filter(|s| s.terminal_id == terminal_id)
+                .map(ClaudeSession::shown),
+        )
+    }
+
+    /// Step 28: how long until the next in-progress session goes stale (not yet announced).
+    fn claude_deadline(&self) -> Option<Duration> {
+        let now = Instant::now();
+        self.claude
+            .values()
+            .flat_map(BTreeMap::values)
+            .filter(|s| s.state == "in-progress" && !s.stale_told)
+            .map(|s| (s.at + stale_after()).saturating_duration_since(now))
+            .min()
+    }
+
+    /// Step 28: announces sessions that went stale (`unknown`) and the Terminals whose
+    /// aggregate changed with them.
+    fn claude_tick(&mut self) {
+        let mut told = Vec::new();
+        for (pane, sessions) in &mut self.claude {
+            for (sid, s) in sessions.iter_mut() {
+                if s.state == "in-progress" && !s.stale_told && s.shown() == "unknown" {
+                    s.stale_told = true;
+                    told.push((pane.clone(), sid.clone(), s.terminal_id.clone()));
+                }
+            }
+        }
+        let mut terminals = std::collections::BTreeSet::new();
+        for (pane, sid, tid) in told {
+            let data = json!({"pane_id": pane, "terminal_id": tid, "session_id": sid,
+                "state": "unknown", "previous_state": "in-progress", "event": "stale"});
+            self.notify("claude", "claude.state_changed", &data);
+            terminals.insert(tid);
+        }
+        for tid in terminals {
+            let before = self.claude_told.get(&tid).copied().unwrap_or("none");
+            self.claude_changed(&tid, before);
+        }
+    }
+
+    /// Step 28: tells `terminals` subscribers when a Terminal's Claude state changed.
+    fn claude_changed(&mut self, terminal_id: &str, before: &'static str) {
+        let now = self.claude_of(terminal_id);
+        self.claude_told.insert(terminal_id.to_string(), now);
+        if now != before {
+            let data = json!({"terminal_id": terminal_id, "claude_state": now, "previous": before});
+            self.notify("terminals", "terminal.claude_changed", &data);
+        }
+    }
+
     fn terminal_json(&self, t: &session::Terminal) -> Value {
-        session::terminal_json(t, &|p| self.live(p))
+        let mut j = session::terminal_json(t, &|p| self.live(p));
+        j["claude_state"] = json!(self.claude_of(&t.id));
+        j
     }
 
     fn summary_json(&self, t: &session::Terminal) -> Value {
-        session::summary_json(t, &|p| self.live(p))
+        let mut j = session::summary_json(t, &|p| self.live(p));
+        j["claude_state"] = json!(self.claude_of(&t.id));
+        j
     }
 
     fn window_json(&self, t: &session::Terminal, w: &session::Window) -> Value {
@@ -867,6 +959,7 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             hook_tx: None,
             in_hook: false,
             claude: HashMap::new(),
+            claude_told: HashMap::new(),
             initial: None,
         }),
         events: ev_tx,
@@ -1227,6 +1320,12 @@ impl Host {
     fn supervise(&self, rx: &mpsc::Receiver<Ev>) -> Exit {
         loop {
             let idle = self.lock().idle();
+            // Read under the lock, waited on without it.
+            let claude_wait = if idle {
+                None
+            } else {
+                self.lock().claude_deadline()
+            };
             let ev = if idle {
                 match rx.recv_timeout(self.idle_exit) {
                     Ok(ev) => ev,
@@ -1236,6 +1335,16 @@ impl Host {
                             st.stopping = true;
                             return Exit::Idle;
                         }
+                        continue;
+                    }
+                }
+            } else if let Some(wait) = claude_wait {
+                // Step 28: wake when an in-progress Claude session would go stale (only then;
+                // an idle Host or one without such sessions never wakes for it).
+                match rx.recv_timeout(wait + Duration::from_millis(20)) {
+                    Ok(ev) => ev,
+                    Err(_) => {
+                        self.lock().claude_tick();
                         continue;
                     }
                 }
@@ -1602,6 +1711,7 @@ impl Host {
         });
         st.notify("panes", "pane.exited", &data);
         // Step 27: a pane that ended has no Claude session any more (ADR 0061).
+        let before = st.claude_of(&rt.terminal_id);
         if let Some(sessions) = st.claude.remove(&rt.pane_id) {
             for (sid, s) in sessions {
                 let data = json!({"pane_id": rt.pane_id, "terminal_id": rt.terminal_id,
@@ -1609,6 +1719,7 @@ impl Host {
                     "event": "pane.exited"});
                 st.notify("claude", "claude.state_changed", &data);
             }
+            st.claude_changed(&rt.terminal_id, before);
         }
     }
 
@@ -3787,6 +3898,7 @@ impl Host {
         }
         let mut st = self.lock();
         st.stats.claude_reports += 1;
+        let before = st.claude_of(&rt.terminal_id);
         let sessions = st.claude.entry(pane_id.clone()).or_default();
         let previous = sessions.get(&session_id).map(|s| s.state.clone());
         let now_state = previous.clone().unwrap_or_else(|| "unknown".into());
@@ -3802,6 +3914,7 @@ impl Host {
                         reason,
                         since: SystemTime::now(),
                         at: Instant::now(),
+                        stale_told: false,
                     },
                 );
             }
@@ -3819,6 +3932,10 @@ impl Host {
                 "event": event});
             st.notify("claude", "claude.state_changed", &data);
         }
+        st.claude_changed(&rt.terminal_id, before);
+        drop(st);
+        // The supervisor recomputes when the next session could go stale.
+        let _ = self.events.send(Ev::Changed);
         Ok(json!({"pane_id": pane_id, "session_id": session_id, "state": state}))
     }
 
@@ -3848,14 +3965,10 @@ impl Host {
             }
         };
         let shown = |s: &ClaudeSession| -> (String, bool) {
-            let stale = s.state == "in-progress" && s.at.elapsed() > CLAUDE_STALE;
+            let state = s.shown();
             (
-                if stale {
-                    "unknown".into()
-                } else {
-                    s.state.clone()
-                },
-                stale,
+                state.to_string(),
+                state == "unknown" && s.state == "in-progress",
             )
         };
         let mut panes: Vec<Value> = st

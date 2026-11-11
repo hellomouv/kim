@@ -33,6 +33,7 @@
       "properties": {
         "default_profile": { "description": "The profile Ctrl+T, + and `subak new` (without a program) start; empty: the Host's default shell.", "type": "string", "maxLength": 64 },
         "copy_on_select": { "description": "A mouse selection is copied when the button is released (default false).", "type": "boolean" },
+        "claude_indicators": { "description": "Step 28: tabs and the title show each Terminal's Claude Code state from hooks (default true).", "type": "boolean" },
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
         "right_click": { "description": "copy-paste (default): copy a selection, else paste; menu: the pane menu; paste; none.", "enum": ["copy-paste", "menu", "paste", "none"] },
         "middle_click": { "enum": ["none", "paste"] },

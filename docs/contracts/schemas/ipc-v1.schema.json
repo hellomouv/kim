@@ -151,6 +151,7 @@
         {"$ref": "#/$defs/event_window_alert"},
         {"$ref": "#/$defs/event_window_options"},
         {"$ref": "#/$defs/event_claude_state_changed"},
+        {"$ref": "#/$defs/event_terminal_claude_changed"},
         {"$ref": "#/$defs/event_other"}
       ]
     },
@@ -183,7 +184,8 @@
               "window.layout",
               "window.alert",
               "window.options",
-              "claude.state_changed"
+              "claude.state_changed",
+              "terminal.claude_changed"
             ]
           }
         },
@@ -251,6 +253,26 @@
             "state": {"$ref": "#/$defs/claude_state"},
             "previous_state": {"anyOf": [{"$ref": "#/$defs/claude_state"}, {"type": "null"}]},
             "event": {"type": "string", "maxLength": 64}
+          }
+        }
+      }
+    },
+    "event_terminal_claude_changed": {
+      "description": "Step 28 (topic `terminals`): a Terminal's aggregate Claude state changed (what tabs and the icon show).",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "terminal.claude_changed"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "claude_state", "previous"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "claude_state": {"$ref": "#/$defs/claude_state"},
+            "previous": {"$ref": "#/$defs/claude_state"}
           }
         }
       }
@@ -822,6 +844,7 @@
         "busy": {"type": "boolean"},
         "clients": {"type": "integer", "minimum": 0},
         "active_window": {"$ref": "#/$defs/window_id"},
+        "claude_state": {"description": "Step 28: the Terminal's Claude Code state, the most urgent of its panes' sessions (need-input > error > done > in-progress > unknown > idle > none); from hooks only. Hosts before Step 28 omit it.", "enum": ["idle", "in-progress", "need-input", "done", "error", "unknown", "none"]},
         "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}},
         "failure": {
@@ -871,6 +894,7 @@
         "clients": {"type": "integer", "minimum": 0},
         "windows": {"type": "integer", "minimum": 1},
         "panes": {"type": "integer", "minimum": 1},
+        "claude_state": {"description": "Step 28: the Terminal's Claude Code state, the most urgent of its panes' sessions; from hooks only. Hosts before Step 28 omit it.", "enum": ["idle", "in-progress", "need-input", "done", "error", "unknown", "none"]},
         "pid": {"type": ["integer", "null"], "minimum": 1},
         "program": {"type": "string", "minLength": 1}
       }
@@ -1260,6 +1284,7 @@
         "name": {"$ref": "#/$defs/terminal_name"},
         "state": {"$ref": "#/$defs/terminal_state"},
         "active_window": {"$ref": "#/$defs/window_id"},
+        "claude_state": {"description": "Step 28: the Terminal's Claude Code state, the most urgent of its panes' sessions (need-input > error > done > in-progress > unknown > idle > none); from hooks only. Hosts before Step 28 omit it.", "enum": ["idle", "in-progress", "need-input", "done", "error", "unknown", "none"]},
         "last_window": {"description": "Step 25: the previously active window (tmux last-window, {last}); null when none. Hosts before Step 25 omit it.", "anyOf": [{"$ref": "#/$defs/window_id"}, {"type": "null"}]},
         "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}}
       }

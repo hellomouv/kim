@@ -912,6 +912,7 @@ bold_is_bright = true    # bold ANSI 0–7 drawn in their bright colours
 default_profile = ""     # the profile Ctrl+T, + and `subak new` start ("" = the Host's shell)
 copy_on_select = false   # copy a mouse selection when the button is released
 smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the program
+claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
 right_click = "copy-paste"   # copy-paste | menu | paste | none
 middle_click = "none"    # none | paste
 word_separators = " ()[]{}'\",;:|<>"   # default: Windows Terminal's set (shown by `config show`)
@@ -1372,3 +1373,33 @@ previous window, `#` output (`monitor-activity`), `!` a bell (`monitor-bell`, on
 | `crates/subak-term/src/screen.rs::tests::bells_count_controls_not_osc_terminators` | bells vs OSC terminators |
 | `crates/subak/tests/tmux_advanced.rs` | the real Host: layouts, synchronized input, last window/pane, tokens, formats, alerts, hooks |
 | `e2e/tests/step25_advanced_tmux.rs` (ignored; `cargo xtask e2e` only) | the same journeys on the real binaries |
+
+## 18. Claude Code states on the tabs (Step 28)
+
+[ADR 0062](adr/0062-claude-code-status-indicators.md), [CLAUDE_CODE_INTEGRATION.md](CLAUDE_CODE_INTEGRATION.md).
+Only after `subak claude hooks install`; nothing is ever guessed.
+
+| Mark (after the status) | State | Title adds |
+| --- | --- | --- |
+| `!` (warning) | need-input: a permission prompt or a question | (Claude needs input) |
+| `✕` (danger) | error: the turn ended on an API error | (Claude error) |
+| `✓` (success) | done: the turn finished | (Claude done) |
+| `◔` (accent) | in-progress | (Claude working) |
+| `?` (muted) | unknown: no hook for 30 minutes while working | (Claude state unknown) |
+| `◦` (muted) | idle: a session started, no prompt yet | (Claude idle) |
+
+A Terminal with several Claude panes shows the most urgent (need-input > error > done >
+in-progress > unknown > idle). The floating icon and the manager rows use the same states and
+order (their tooltips and rows say them in words). `terminal.claude_indicators = false` hides the
+tab marks and the title words.
+
+**Tests:** `crates/subak/src/gui/tabs.rs::tests::claude_marks_are_distinct_shapes_beside_the_status`,
+`gui/model.rs::tests::claude_states_reach_the_tabs_from_the_list_and_events`,
+`gui/float/list.rs::tests::claude_changes_reach_the_row_and_the_icon_without_a_list`,
+`crates/subak/tests/gui_window.rs::claude_states_mark_the_tabs_and_the_title_in_words` (off-screen
+window), `crates/subak/tests/claude_status.rs` (Host states, stale and lost signals).
+
+**Manual check (maintainer, not tested by the agent):** install the hooks, run `claude` in a tab,
+ask something that needs a permission: the tab shows `!` and the title "(Claude needs input)";
+answer it: `◔`; when Claude finishes: `✓`.
+

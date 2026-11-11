@@ -86,6 +86,13 @@
         "value": false
       },
       {
+        "default": true,
+        "key": "terminal.claude_indicators",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
+      },
+      {
         "default": "copy-paste",
         "key": "terminal.right_click",
         "source": "default",

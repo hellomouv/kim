@@ -30,7 +30,9 @@ hooks; it never reads the screen, transcripts or prompts.
 | `UserPromptSubmit` | session id | `in-progress` |
 | `PostToolUse` | session id | `in-progress` |
 | `Notification` | session id, `permission`/`idle`/`attention` | `need-input` (`done` for idle) |
+| `PermissionRequest` (Step 28) | session id, `permission` | `need-input` |
 | `Stop` | session id | `done` |
+| `StopFailure` (Step 28) | session id, `api_error` (never the error text) | `error` |
 | `SessionEnd` | session id, `clear`/`logout`/`exit`/`other` | session ends |
 
 **Never sent, logged or stored:** prompts, tool input or output, notification messages,
@@ -50,16 +52,26 @@ from a process **inside that pane's job** — a forged `SUBAK_PANE_ID` elsewhere
 
 Several Claude sessions in one pane are tracked separately; the latest one speaks for the pane.
 
-## 4. Honest fallbacks
+## 4. Where you see it (Step 28)
+
+Each tab gets a mark and the title says the state in words; the floating icon and the manager
+show the most urgent state (need-input > error > done > in-progress > unknown > idle). A tool
+call finishing never counts as `done`; only `Stop` does. `terminal.claude_indicators = false`
+in `config.toml` hides the tab marks ([SUBAK_GUI §18](SUBAK_GUI.md)).
+
+## 5. Honest fallbacks
 
 - **No hooks installed / not a Claude pane:** no session — Subak never guesses from screen text.
 - **An event Subak does not know** (a newer Claude Code): the state does not change.
-- **No hook for 30 minutes while `in-progress`** (a missed hook, a killed Claude): `unknown`.
+- **No hook for 30 minutes while `in-progress`** (a missed hook, a killed Claude): `unknown`,
+  announced by itself (the tab changes without a new hook).
+- **An older Claude Code without `StopFailure`/`PermissionRequest`:** those states come from
+  `Notification` or not at all; never an invented `error`.
 - **The pane ends:** its sessions end.
 - **The Host restarts:** sessions are in memory only (`persisted: false`) and start empty; the
   next hook re-creates them. Persisting the last session id for `claude --resume` is Step 29/30.
 
-## 5. Versions checked
+## 6. Versions checked
 
 | Claude Code | How | Result |
 | --- | --- | --- |

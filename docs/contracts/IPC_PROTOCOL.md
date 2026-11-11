@@ -460,6 +460,7 @@ subscribes and then lists sees every later change exactly once, after its list.
 | `window.alert` | `terminals` | `{terminal_id, window_id, pane_id, kind: "activity" \| "bell"}`: a window that is not shown had output or a bell (once until it is shown) | 25 |
 | `window.options` | `terminals` | `{terminal_id, window_id, options}`: `window.set_option` changed an option | 25 |
 
+| `terminal.claude_changed` | `terminals` | `{terminal_id, claude_state, previous}`: a Terminal's aggregate Claude state changed ([ADR 0062](../adr/0062-claude-code-status-indicators.md)); Terminal objects carry `claude_state` | 28 |
 | `claude.state_changed` | `claude` | `{pane_id, terminal_id, session_id, state, previous_state, event}` ([ADR 0061](../adr/0061-claude-code-hooks-and-session-events.md)); `state` `none` when the session or its pane ended | 27 |
 
 ## 6. Error codes (stable)

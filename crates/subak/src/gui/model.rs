@@ -66,6 +66,8 @@ pub struct TermInfo {
     /// `#` activity, `!` bell, `Z` zoomed), when the Terminal has more than one window or a
     /// window has an alert.
     pub status: Option<String>,
+    /// Step 28: the Terminal's Claude Code state (hooks only; `None` without).
+    pub claude: crate::gui::float::art::Claude,
     /// Step 21: the id of the Terminal's active pane (its active window's active pane).
     pub active_pane: Option<String>,
     /// Step 22: the active window's layout when it has more than one pane.
@@ -217,6 +219,10 @@ impl TermInfo {
                 .unwrap_or(2000),
             place,
             status,
+            claude: t["claude_state"]
+                .as_str()
+                .and_then(crate::gui::float::art::Claude::parse)
+                .unwrap_or(crate::gui::float::art::Claude::None),
             active_pane: pane["id"].as_str().map(String::from),
             layout: WinLayout::from_window(window),
             windows: windows
@@ -504,6 +510,7 @@ impl Model {
             history_limit: 2000,
             place: None,
             status: None,
+            claude: crate::gui::float::art::Claude::None,
             active_pane: None,
             layout: None,
             windows: Vec::new(),
@@ -1194,6 +1201,7 @@ impl Model {
                         history_limit: 2000,
                         place: None,
                         status: None,
+                        claude: crate::gui::float::art::Claude::None,
                         active_pane: None,
                         layout: None,
                         windows: Vec::new(),
@@ -1444,12 +1452,14 @@ impl Model {
             &mut self.phase
             && (term.place != t.place
                 || term.status != t.status
+                || term.claude != t.claude
                 || term.active_pane != t.active_pane
                 || term.layout != t.layout
                 || term.windows != t.windows)
         {
             term.place.clone_from(&t.place);
             term.status.clone_from(&t.status);
+            term.claude = t.claude;
             term.active_pane.clone_from(&t.active_pane);
             term.layout.clone_from(&t.layout);
             term.windows.clone_from(&t.windows);
@@ -1564,6 +1574,7 @@ impl Model {
                     history_limit: 2000,
                     place: None,
                     status: None,
+                    claude: crate::gui::float::art::Claude::None,
                     active_pane: None,
                     layout: None,
                     windows: Vec::new(),
@@ -1733,6 +1744,23 @@ impl Model {
                     out.push(Effect::Phase);
                     out.push(Effect::Tabs);
                 }
+            }
+            // Step 28: a Terminal's Claude state changed: its tab's mark (and the title).
+            "terminal.claude_changed" => {
+                let c = d["claude_state"]
+                    .as_str()
+                    .and_then(crate::gui::float::art::Claude::parse)
+                    .unwrap_or(crate::gui::float::art::Claude::None);
+                self.update(&tid, |t| t.claude = c);
+                if let Phase::Attached { term, .. }
+                | Phase::Ended { term, .. }
+                | Phase::Attaching(term) = &mut self.phase
+                    && term.id == tid
+                {
+                    term.claude = c;
+                }
+                out.push(Effect::Tabs);
+                out.push(Effect::Phase);
             }
             "terminal.state_changed" => {
                 let state = d["state"].as_str().unwrap_or("unknown").to_string();
@@ -1922,6 +1950,35 @@ mod tests {
     fn fail(m: &mut Model, id: u64, code: &str, details: Value) -> Vec<Effect> {
         m.on_control(&json!({"type": "response", "id": id, "ok": false,
             "error": {"code": code, "message": format!("{code} happened"), "details": details}}))
+    }
+
+    /// Step 28: a tab's Claude state comes with the list and follows `terminal.claude_changed`.
+    #[test]
+    fn claude_states_reach_the_tabs_from_the_list_and_events() {
+        let mut m = Model::new(Want::Any, (80, 24));
+        let mut a = term("t-a", "agent", "running", 10);
+        a["claude_state"] = json!("in-progress");
+        connect_with(&mut m, json!([a, term("t-b", "b", "running", 11)]));
+        use crate::gui::float::art::Claude;
+        assert_eq!(m.tabs()[0].claude, Claude::InProgress);
+        assert_eq!(m.tabs()[1].claude, Claude::None);
+        let fx = event(
+            &mut m,
+            "terminal.claude_changed",
+            json!({"terminal_id": "t-b", "claude_state": "need-input", "previous": "none"}),
+        );
+        assert!(fx.iter().any(|e| matches!(e, Effect::Tabs)), "{fx:?}");
+        assert_eq!(m.tabs()[1].claude, Claude::NeedInput);
+        event(
+            &mut m,
+            "terminal.claude_changed",
+            json!({"terminal_id": "t-a", "claude_state": "unknown", "previous": "in-progress"}),
+        );
+        assert_eq!(
+            m.tabs()[0].claude,
+            Claude::Unknown,
+            "a stale signal is shown as unknown"
+        );
     }
 
     #[allow(clippy::needless_pass_by_value)]

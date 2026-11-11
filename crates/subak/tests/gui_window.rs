@@ -2669,3 +2669,102 @@ fn the_command_prompt_and_copy_mode_work_on_the_shown_terminal() {
         "EVIDENCE gui command prompt and copy mode: split-window, select-pane, list-panes, an unknown command, copy mode keys, a copied line pasted with Ctrl+B ]"
     );
 }
+
+/// Step 28 (`SUBAK-FR-050`, `SUBAK-FR-051`): a Claude Code hook in a pane of the shown Terminal
+/// (a stand-in feeding the hook JSON through the installed reporter, not a Claude process)
+/// puts the state on its tab and in the title in words; a second Terminal's tab keeps its own
+/// state; a session that ends clears the mark. The CLI reports the same states.
+#[test]
+fn claude_states_mark_the_tabs_and_the_title_in_words() {
+    let host = Host::start("gui-claude", &["--no-shell"]);
+    let ep = host.ep.clone();
+    let (_, _) = new_terminal(&ep, "agent");
+    let (_, _) = new_terminal(&ep, "other");
+    let gui = Gui::start(&ep, Some("agent"), &sandbox("claude"));
+    gui.state("attached");
+    let dir = std::env::temp_dir().join(format!("subak-gui-claude-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let hook = |target: &str, k: u32, input: &Value| {
+        let (file, out) = (dir.join(format!("{k}.json")), dir.join(format!("{k}.out")));
+        std::fs::write(&file, input.to_string()).unwrap();
+        let line = format!(
+            "type \"{}\" | \"{}\" --json claude report > \"{}\"",
+            file.display(),
+            Path::new(subak()).display(),
+            out.display()
+        );
+        for keys in [
+            format!("send-keys -l '{line}'"),
+            "send-keys Enter".to_string(),
+        ] {
+            let (code, doc) = sub(&ep, &["--json", "command", "--target", target, &keys]);
+            assert_eq!(code, 0, "{doc}");
+        }
+        wait_for("the reporter", || {
+            std::fs::read_to_string(&out).is_ok_and(|t| t.contains("\"delivered\":true"))
+        });
+    };
+    let tab = |d: &Value, name: &str| {
+        d["tabs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap()["claude"]
+            .clone()
+    };
+    let d = gui.dump();
+    assert_eq!(
+        (tab(&d, "agent"), tab(&d, "other")),
+        (json!("none"), json!("none"))
+    );
+    hook(
+        "agent",
+        1,
+        &json!({"session_id": "g1", "hook_event_name": "PermissionRequest", "tool_name": "Bash"}),
+    );
+    let d = gui.until("the agent tab shows need-input", |d| {
+        tab(d, "agent") == "need-input"
+    });
+    assert!(
+        d["title"]
+            .as_str()
+            .unwrap()
+            .contains("(Claude needs input)"),
+        "{}",
+        d["title"]
+    );
+    hook(
+        "other",
+        2,
+        &json!({"session_id": "g2", "hook_event_name": "UserPromptSubmit", "prompt": "secret plan"}),
+    );
+    let d = gui.until("the other tab shows in-progress", |d| {
+        tab(d, "other") == "in-progress"
+    });
+    assert_eq!(
+        tab(&d, "agent"),
+        "need-input",
+        "each tab its own Terminal's state"
+    );
+    assert!(!d.to_string().contains("secret plan"));
+    // The CLI says what the tabs show.
+    let (_, doc) = sub(&ep, &["--json", "ls"]);
+    for t in doc["data"]["terminals"].as_array().unwrap() {
+        let shown = tab(&d, t["name"].as_str().unwrap());
+        assert_eq!(t["claude_state"], shown, "{t}");
+    }
+    hook(
+        "agent",
+        3,
+        &json!({"session_id": "g1", "hook_event_name": "SessionEnd", "reason": "other"}),
+    );
+    let d = gui.until("the agent mark goes", |d| tab(d, "agent") == "none");
+    assert!(
+        !d["title"].as_str().unwrap().contains("Claude"),
+        "{}",
+        d["title"]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

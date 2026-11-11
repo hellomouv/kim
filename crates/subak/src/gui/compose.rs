@@ -220,6 +220,7 @@ mod tests {
             history_limit: 2000,
             place: None,
             status: None,
+            claude: crate::gui::float::art::Claude::None,
             active_pane: None,
             layout: None,
             windows: Vec::new(),
@@ -384,18 +385,22 @@ mod tests {
 
     #[test]
     fn golden_tab_bar_over_a_pane_at_100_and_200_percent() {
+        use crate::gui::tabs::Claude;
         let items = [
             Item {
                 name: "빌드",
                 status: Status::Running,
+                claude: Claude::None,
             },
             Item {
                 name: "claude",
                 status: Status::Running,
+                claude: Claude::None,
             },
             Item {
                 name: "kept",
                 status: Status::Stopped,
+                claude: Claude::None,
             },
         ];
         for (scale, pct) in [(1.0f32, 100), (2.0, 200)] {

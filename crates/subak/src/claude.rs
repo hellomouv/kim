@@ -16,14 +16,39 @@
 use serde_json::{Value, json};
 
 /// The Claude Code hook events Subak listens to, and the matcher each entry gets.
-pub const EVENTS: [(&str, Option<&str>); 6] = [
+/// Step 28: `PermissionRequest` (Claude is about to ask) and `StopFailure` (the turn ended on an
+/// API error) give `need-input` and `error` real evidence.
+pub const EVENTS: [(&str, Option<&str>); 8] = [
     ("SessionStart", None),
     ("UserPromptSubmit", None),
     ("PostToolUse", Some("*")),
+    ("PermissionRequest", Some("*")),
     ("Notification", None),
     ("Stop", None),
+    ("StopFailure", None),
     ("SessionEnd", None),
 ];
+
+/// Step 28 (`SUBAK-FR-051`): the order in which states speak for a Terminal or the icon, most
+/// urgent first: `need-input` > `error` > `done` > `in-progress` > `unknown` > `idle` > `none`.
+pub const PRIORITY: [&str; 7] = [
+    "need-input",
+    "error",
+    "done",
+    "in-progress",
+    "unknown",
+    "idle",
+    "none",
+];
+
+/// The most urgent of several states (`none` for no state at all).
+pub fn aggregate<'a>(states: impl IntoIterator<Item = &'a str>) -> &'static str {
+    states
+        .into_iter()
+        .filter_map(|s| PRIORITY.iter().position(|p| *p == s))
+        .min()
+        .map_or("none", |i| PRIORITY[i])
+}
 
 /// The most of a hook's stdin the reporter reads (inputs with tool output can be large; the
 /// rest is read and dropped so Claude's write never blocks).
@@ -73,6 +98,8 @@ pub fn parse_input(input: &[u8]) -> Result<Report, &'static str> {
                 },
             )
         }
+        "StopFailure" => Some("api_error"),
+        "PermissionRequest" => Some("permission"),
         "SessionEnd" => Some(match v["reason"].as_str() {
             Some("clear") => "clear",
             Some("logout") => "logout",
@@ -95,7 +122,11 @@ pub fn next_state(event: &str, reason: Option<&str>, now: &str) -> Option<String
         match (event, reason) {
             ("SessionEnd", _) => return None,
             ("SessionStart", _) => "idle",
-            ("UserPromptSubmit" | "PostToolUse" | "PreToolUse", _) => "in-progress",
+            // A finished tool call keeps the turn in progress; it is never `done` (only `Stop`).
+            ("UserPromptSubmit" | "PostToolUse" | "PreToolUse" | "PostToolUseFailure", _) => {
+                "in-progress"
+            }
+            ("PermissionRequest", _) => "need-input",
             ("Notification", Some("idle")) | ("Stop", _) => "done",
             ("Notification", _) => "need-input",
             ("StopFailure", _) => "error",
@@ -703,7 +734,7 @@ mod tests {
         assert_eq!(st["other_hooks"], 2);
         let cmd = r#""C:/Tools/subak.exe" claude report"#;
         let added = install(&mut j, cmd).unwrap();
-        assert_eq!(added.len(), 6);
+        assert_eq!(added.len(), 8);
         assert!(install(&mut j, cmd).unwrap().is_empty(), "idempotent");
         let text = write(&j, "\n");
         let v: Value = serde_json::from_str(&text).unwrap();
@@ -736,7 +767,7 @@ mod tests {
         );
 
         let removed = uninstall(&mut j);
-        assert_eq!(removed.len(), 6);
+        assert_eq!(removed.len(), 8);
         assert_eq!(
             serde_json::from_str::<Value>(&write(&j, "\n")).unwrap(),
             serde_json::from_str::<Value>(USER).unwrap(),
@@ -841,5 +872,35 @@ mod tests {
             Some("need-input")
         );
         assert_eq!(next_state("SessionEnd", Some("exit"), "done"), None);
+        // Step 28: permission requests and API failures; a tool's end is not the task's.
+        assert_eq!(
+            next_state("PermissionRequest", Some("permission"), "in-progress").as_deref(),
+            Some("need-input")
+        );
+        assert_eq!(
+            next_state("StopFailure", Some("api_error"), "in-progress").as_deref(),
+            Some("error")
+        );
+        assert_eq!(
+            next_state("PostToolUse", None, "need-input").as_deref(),
+            Some("in-progress")
+        );
+        assert_eq!(
+            next_state("PostToolUseFailure", None, "in-progress").as_deref(),
+            Some("in-progress")
+        );
+        assert_eq!(
+            n(
+                r#"{"session_id":"s","hook_event_name":"StopFailure","error":"rate_limit","error_details":"secret"}"#
+            ),
+            Some("api_error")
+        );
+        // Repeated events change nothing; the priority aggregates.
+        assert_eq!(next_state("Stop", None, "done").as_deref(), Some("done"));
+        assert_eq!(aggregate(["idle", "done", "in-progress"]), "done");
+        assert_eq!(aggregate(["idle", "need-input", "error"]), "need-input");
+        assert_eq!(aggregate(["unknown", "idle"]), "unknown");
+        assert_eq!(aggregate([]), "none");
+        assert_eq!(aggregate(["bogus"]), "none");
     }
 }

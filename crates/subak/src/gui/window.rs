@@ -1586,6 +1586,12 @@ impl App {
                 } else {
                     tabs::Status::Unknown
                 },
+                // Step 28: no mark while disconnected (nothing current to show).
+                claude: if connected && !t.gone() && self.settings.terminal.claude_indicators {
+                    t.claude
+                } else {
+                    tabs::Claude::None
+                },
             })
             .collect();
         let active = self.model.active();
@@ -1675,6 +1681,7 @@ impl App {
             "tabs": self.model.tabs().iter().enumerate().map(|(i, t)| json!({
                 "id": t.id, "name": t.name, "state": t.state, "active": Some(i) == active,
                 "status": tabs::Status::from_state(&t.state).word(),
+                "claude": t.claude.as_str(),
             })).collect::<Vec<_>>(),
             "active": active,
             "hidden": self.model.hidden().iter().map(|t| json!({"id": t.id, "name": t.name}))
@@ -2855,6 +2862,12 @@ impl App {
                     Some(p) => format!("{} [{p}]", t.name),
                     None => t.name.clone(),
                 };
+                // Step 28: the Claude state in words (read by screen readers, not colour only).
+                if self.settings.terminal.claude_indicators
+                    && let Some((_, _, words)) = tabs::claude_mark(t.claude)
+                {
+                    name = format!("{name} ({words})");
+                }
                 // Step 25: tmux's status line window list with its alert flags.
                 if let Some(s) = &t.status {
                     name = format!("{name} {{{s}}}");

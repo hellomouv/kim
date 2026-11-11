@@ -86,6 +86,29 @@ impl Status {
 pub struct Item<'a> {
     pub name: &'a str,
     pub status: Status,
+    /// Step 28: the Terminal's Claude Code state (`None`: no mark).
+    pub claude: Claude,
+}
+
+pub use crate::gui::float::art::Claude;
+
+/// Step 28: the tab's Claude mark — a shape and a colour per state (never colour alone,
+/// DESIGN_SYSTEM §3.1) — and its words for the title, menus and tests.
+pub fn claude_mark(c: Claude) -> Option<(char, Rgb, &'static str)> {
+    Some(match c {
+        Claude::NeedInput => ('!', WARNING, "Claude needs input"),
+        Claude::Error => ('✕', DANGER, "Claude error"),
+        Claude::Done => ('✓', SUCCESS, "Claude done"),
+        Claude::InProgress => ('◔', ACCENT, "Claude working"),
+        Claude::Unknown => ('?', TEXT_MUTED, "Claude state unknown"),
+        Claude::Idle => ('◦', TEXT_MUTED, "Claude idle"),
+        Claude::None => return None,
+    })
+}
+
+/// The columns a tab's Claude mark takes (the glyph and a space).
+fn mark_width(c: Claude) -> usize {
+    claude_mark(c).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
 }
 
 /// What a click on a column of the bar means.
@@ -205,8 +228,8 @@ fn edit_window(e: &Edit<'_>) -> (String, usize, usize) {
 /// The width in cells of tab `i`.
 fn tab_width(it: &Item<'_>, edit: Option<&Edit<'_>>) -> usize {
     match edit {
-        Some(e) => edit_window(e).2 + 6,
-        None => (width(it.name) + 6).clamp(TAB_MIN, TAB_MAX),
+        Some(e) => edit_window(e).2 + 6 + mark_width(it.claude),
+        None => (width(it.name) + 6).clamp(TAB_MIN, TAB_MAX) + mark_width(it.claude),
     }
 }
 
@@ -306,6 +329,9 @@ pub fn layout_hover(
             &mut col,
             &format!("{fill}{}{} ", fg(it.status.color()), it.status.glyph()),
         );
+        if let Some((g, c, _)) = claude_mark(it.claude) {
+            put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
+        }
         match edit.filter(|_| is_active) {
             Some(e) => {
                 let (shown, at, field) = edit_window(e);
@@ -330,7 +356,7 @@ pub fn layout_hover(
                 put(&mut vt, &mut col, &s);
             }
             None => {
-                let room = w - 6;
+                let room = w - 6 - mark_width(it.claude);
                 let name = fit(it.name, room);
                 let pad = " ".repeat(room.saturating_sub(width(&name)));
                 let style = if is_active {
@@ -425,6 +451,7 @@ mod tests {
             .map(|n| Item {
                 name: n,
                 status: Status::Running,
+                claude: Claude::None,
             })
             .collect()
     }
@@ -440,6 +467,46 @@ mod tests {
             col += u16::from(subak_term::screen::char_width(c));
         }
         out
+    }
+
+    /// Step 28: a tab's Claude mark has its own shape per state, sits after the status, and
+    /// keeps the name and the spans in place.
+    #[test]
+    fn claude_marks_are_distinct_shapes_beside_the_status() {
+        let states = [
+            Claude::NeedInput,
+            Claude::Error,
+            Claude::Done,
+            Claude::InProgress,
+            Claude::Unknown,
+            Claude::Idle,
+        ];
+        let glyphs: Vec<char> = states.iter().map(|c| claude_mark(*c).unwrap().0).collect();
+        let mut unique = glyphs.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), states.len(), "never colour alone: {glyphs:?}");
+        assert!(claude_mark(Claude::None).is_none());
+        assert!(
+            states
+                .iter()
+                .all(|c| claude_mark(*c).unwrap().2.starts_with("Claude "))
+        );
+        let mut list = items(&["agent", "other"]);
+        list[0].claude = Claude::NeedInput;
+        let bar = layout(&list, Some(1), None, 120, 0);
+        let t = text(&bar, 120);
+        assert!(t.contains("● ! agent"), "{t:?}");
+        assert!(t.contains("● other"), "no mark without a state: {t:?}");
+        let plain = layout(&items(&["agent", "other"]), Some(1), None, 120, 0);
+        let w = |b: &Bar| {
+            b.spans
+                .iter()
+                .find(|s| s.2 == Hit::Tab(0))
+                .map(|s| s.1 - s.0)
+                .unwrap()
+        };
+        assert_eq!(w(&bar), w(&plain) + 2, "the mark adds its own columns");
     }
 
     /// Step 20: a hovered inactive tab gets `bg.hover` and a brighter `×`; the text and the

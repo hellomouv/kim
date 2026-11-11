@@ -630,7 +630,7 @@
     },
     {
       "name": "claude.status",
-      "usage": "subak claude status [<terminal | window | pane>] [--json]",
+      "usage": "subak claude status|list [<terminal | window | pane>] [--json]",
       "summary": "The Claude Code sessions per pane that hooks reported (states idle, in-progress, need-input, done, unknown)",
       "effect": "read",
       "network": false,

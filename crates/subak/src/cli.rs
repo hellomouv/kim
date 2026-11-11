@@ -1208,7 +1208,8 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
         ["claude", "hooks", "install", ..] => (Cmd::ClaudeHooksInstall, 3),
         ["claude", "hooks", "uninstall", ..] => (Cmd::ClaudeHooksUninstall, 3),
         ["claude", "report", ..] => (Cmd::ClaudeReport, 2),
-        ["claude", "status", ..] => (Cmd::ClaudeStatus, 2),
+        // `list` is the same read-only answer (the issue's `subak claude list`).
+        ["claude", "status" | "list", ..] => (Cmd::ClaudeStatus, 2),
         ["claude", ..] => {
             return Err((
                 "claude".into(),

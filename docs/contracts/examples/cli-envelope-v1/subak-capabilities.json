@@ -631,7 +631,7 @@
         "opens_window": false,
         "requires_yes": false,
         "summary": "The Claude Code sessions per pane that hooks reported (states idle, in-progress, need-input, done, unknown)",
-        "usage": "subak claude status [<terminal | window | pane>] [--json]"
+        "usage": "subak claude status|list [<terminal | window | pane>] [--json]"
       }
     ],
     "implementation": "implemented",

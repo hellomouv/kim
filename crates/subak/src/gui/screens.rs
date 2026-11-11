@@ -588,6 +588,7 @@ mod tests {
             history_limit: 2000,
             place: None,
             status: None,
+            claude: crate::gui::float::art::Claude::None,
             active_pane: None,
             layout: None,
             windows: Vec::new(),

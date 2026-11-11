@@ -64,7 +64,7 @@ fn hooks_install_merges_into_the_users_settings_and_uninstall_restores_them() {
         ],
         &[],
     );
-    assert_eq!(doc["data"]["events"].as_array().unwrap().len(), 6);
+    assert_eq!(doc["data"]["events"].as_array().unwrap().len(), 8);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), USER_SETTINGS);
 
     let (code, doc) = cli(

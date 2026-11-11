@@ -912,6 +912,16 @@ impl Manager {
                     return vec![Effect::Changed];
                 }
             }
+            // Step 28: the row's and the icon's Claude state.
+            "terminal.claude_changed" => {
+                if let Some(e) = self.entries.iter_mut().find(|e| e.id == tid) {
+                    e.claude = d["claude_state"]
+                        .as_str()
+                        .and_then(Claude::parse)
+                        .unwrap_or(Claude::None);
+                    return vec![Effect::Changed];
+                }
+            }
             "terminal.removed" => {
                 if self.entries.iter().any(|e| e.id == tid) {
                     self.drop_entry(&tid);
@@ -1299,5 +1309,36 @@ mod tests {
         assert!(m.entries()[0].detail().ends_with("Claude need-input"));
         assert_eq!(m.icon_state().claude, Claude::NeedInput);
         assert_eq!(m.entries()[1].claude, Claude::None);
+    }
+
+    /// Step 28: `terminal.claude_changed` updates a row and the icon at once, no re-list.
+    #[test]
+    fn claude_changes_reach_the_row_and_the_icon_without_a_list() {
+        let mut m = connected(vec![
+            term("t-a", "agent", "running", true, 1),
+            term("t-b", "b", "running", false, 0),
+        ]);
+        let ev = |m: &mut Manager, tid: &str, s: &str| {
+            m.on_control(&json!({"type": "event", "event": "terminal.claude_changed",
+                "data": {"terminal_id": tid, "claude_state": s, "previous": "none"}}))
+        };
+        let fx = ev(&mut m, "t-a", "in-progress");
+        assert!(matches!(fx.as_slice(), [Effect::Changed]), "{fx:?}");
+        assert_eq!(m.icon_state().claude, Claude::InProgress);
+        ev(&mut m, "t-b", "need-input");
+        assert_eq!(
+            m.icon_state().claude,
+            Claude::NeedInput,
+            "the most urgent wins"
+        );
+        ev(&mut m, "t-b", "none");
+        assert_eq!(m.icon_state().claude, Claude::InProgress);
+        assert!(m.entries()[0].detail().contains("Claude in-progress"));
+        ev(&mut m, "t-a", "bogus");
+        assert_eq!(
+            m.entries()[0].claude,
+            Claude::None,
+            "an unknown value is no state"
+        );
     }
 }
