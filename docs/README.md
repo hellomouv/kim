@@ -37,6 +37,7 @@ did.
 | [PTY_PROCESSES.md](PTY_PROCESSES.md) | current (implemented, Step 11; lagging clients resynced since Step 13; job settling after a root's exit since Step 19) | What runs in a pane: program resolution and quoting, PowerShell/cmd/pwsh, working directory, the three environment layers and secrets, size/Unicode/Ctrl+C, exit status, process-tree containment, backpressure and memory, the platform-neutral PTY interface, errors, evidence |
 | [CONPTY_PROOF.md](CONPTY_PROOF.md) | current (Step 08 prototype) | Windows ConPTY + detached Host proof: what "detached" means, evidence with process ids, OS limitations and power states, manual procedures (Windows Terminal, sleep, logoff pending) |
 | [MILESTONE_B_VALIDATION.md](MILESTONE_B_VALIDATION.md) | current (Step 20; **Milestone B not complete**: the visible-window acceptance run is pending the maintainer) | The Subak window validated: the user journey (install by copy, open, session CRUD, tabs, close and reopen, settings) on real Hosts with off-screen windows, the Alpha resource baseline (startup, latencies, idle CPU and memory of the window and the Host, release and debug), failure handling, the maintainer's visible procedure with its pending results, tracked UX deviations |
+| [MILESTONE_C_RECOVERY_VALIDATION.md](MILESTONE_C_RECOVERY_VALIDATION.md) | current (Step 31; Milestone C not passed: power transitions need the maintainer) | Recovery matrix: crash, corruption, opt-out and resume rows with evidence; lock, sleep, hibernate, reboot and power loss open; `scripts/recovery-matrix.ps1` |
 | [MILESTONE_A_VALIDATION.md](MILESTONE_A_VALIDATION.md) | current (Step 14; **Milestone A not complete**: the live Windows Terminal + Claude Code acceptance run is pending) | Persistent sessions and reconnection validated: the plan, the automated integration suite and its evidence, the failure and concurrency matrix, baseline measurements with the machine and environment, the maintainer's manual procedure (`scripts/milestone-a-smoke.ps1`) with its pending results table, defects and open risks |
 | [CLI_CONTRACT.md](CLI_CONTRACT.md) | current (contract v1) | Cross-tool CLI contract: names, help, streams, `--json` envelope, exit codes, error-code registry, dry-run/confirmation, versioning, capabilities and tool-to-tool invocation, secret redaction |
 | [KIM_CLI.md](KIM_CLI.md) | current | `kim` command reference, files and environment, sample agent workflows |
@@ -82,7 +83,7 @@ cross-reference checks of [DDALGAK_RULE_MODEL §8](DDALGAK_RULE_MODEL.md) on the
 
 | Document | Status | Planned by | Purpose |
 | --- | --- | --- | --- |
-| [RECOVERY.md](RECOVERY.md) | current (Steps 29–30: persistence, restore, Claude resume; Step 31 planned) | Live survival vs cold restore, what state.json keeps, load and corruption rules, recovery limits, the `subak state` commands |
+| [RECOVERY.md](RECOVERY.md) | current (Steps 29–30; Step 31 validation in MILESTONE_C_RECOVERY_VALIDATION) | Live survival vs cold restore, what state.json keeps, load and corruption rules, recovery limits, the `subak state` commands |
 | `MCP_GUIDE.md` | planned | Step 37 | Subak MCP server guide for agents |
 
 ## Repository and engineering

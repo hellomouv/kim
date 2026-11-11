@@ -8,15 +8,19 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 31** (#31) — validate shutdown, sleep and crash recovery
-- Last fully completed Step: Step 30 (#30, cold recovery and Claude resume, ADR 0064)
+- Current Step: **Step 32** (#32) — Tabby feature parity audit
+- Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
+  lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #31 (real shutdown/sleep/crash validation; a reboot needs the maintainer)
+- Next action: read #32
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-11: Step 31 — milestone_c 1/1 (Host crash → intact state → cold rebuild 99 ms, no
+  re-run, no duplicate); recovery-matrix.ps1 smoke: check-live PASS, check-cold after a Host
+  kill PASS (79 ms); power transitions NOT TESTED (maintainer).
 - 2026-11-11: Step 30 — recovery 2/2 (topology, sizes, id, no rerun, confirm, duplicate, auto,
   Claude resume decisions), a real Claude 2.1.322 conversation resumed by `subak recover
   --claude-resume`, e2e step30 1/1 (focused local run, LEDGER); `cargo xtask ci` before push.
@@ -54,6 +58,9 @@ checkpoint."*
 
 ## Blocked
 
+- **Step 31 (#31)**: Milestone C needs real lock/unlock, sleep, hibernate, reboot and power-loss
+  runs by the maintainer (rows 10–16 of MILESTONE_C_RECOVERY_VALIDATION); everything automatable
+  passes.
 - **Linux Steps 41, 42, 64, 83 and the Linux half of 43**: AGENTS.md §3 forbids Linux work on
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
