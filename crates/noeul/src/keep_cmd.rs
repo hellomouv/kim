@@ -206,6 +206,17 @@ pub fn history(ctx: &Ctx, c: &HistoryCommand) -> Result<Outcome> {
     }
 }
 
+/// `noeul settings`: the running Noeul opens (or brings forward) its settings window.
+pub fn settings(ctx: &Ctx, dry_run: bool) -> Result<Outcome> {
+    let v = running(ctx, "settings.open", json!({"dry_run": dry_run}))?;
+    let human = if dry_run {
+        "Would open the settings window.\n".to_string()
+    } else {
+        "The settings window is open.\n".to_string()
+    };
+    Ok(Outcome::new(v, human))
+}
+
 pub fn restore(ctx: &Ctx, dry_run: bool) -> Result<Outcome> {
     let v = running(ctx, "backup.restore", json!({"dry_run": dry_run}))?;
     let mut human = if dry_run {

@@ -13,6 +13,7 @@ pub mod overlay;
 pub mod pinwnd;
 pub mod pipe;
 pub mod runtime;
+pub mod settings;
 pub mod spawn;
 pub mod tray;
 pub mod typeset;

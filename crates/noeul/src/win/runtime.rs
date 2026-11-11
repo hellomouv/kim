@@ -343,6 +343,14 @@ impl Shell for WinShell {
         self.uia = None;
     }
 
+    fn open_settings(&mut self) -> std::result::Result<(), String> {
+        crate::win::settings::open(self.interactive)
+    }
+
+    fn settings_recording(&self) -> bool {
+        crate::win::settings::recording()
+    }
+
     fn active_window(&mut self) -> Option<crate::detect::WindowFacts> {
         if self.interactive {
             crate::win::detect::foreground(&Scope::All)
@@ -1036,6 +1044,10 @@ pub fn run(opts: &RunOpts) -> Result<Value> {
         let r = unsafe { GetMessageW(&raw mut msg, std::ptr::null_mut(), 0, 0) };
         if r == 0 || r == -1 {
             break;
+        }
+        // Step 61: keyboard navigation inside the settings window.
+        if crate::win::settings::dialog_message(&msg) {
+            continue;
         }
         // SAFETY: a message just retrieved by GetMessageW.
         unsafe {

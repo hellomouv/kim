@@ -196,6 +196,11 @@ by itself; click-through is never restored ([ADR 0074](adr/0074-noeul-history-an
 | NOEUL-FR-103 | Themes: the Kim dark tokens by default, a light theme, and Windows contrast themes with system colors. | P1 | N5 | M |
 | NOEUL-FR-104 | User interface text in English and Korean. | P2 | N5 | M |
 
+Step 61 ([ADR 0075](adr/0075-noeul-settings-window.md)): NOEUL-FR-101 in part — the Shortcuts
+section (list, keyboard-only recording, disable, reset, reset all, import, export, conflicts), the
+Gestures section and the tray, disk-history and pin-backup switches; NOEUL-FR-103 in part (system
+colours, High Contrast, dark mode); the other sections are not built yet.
+
 ### 3.12 CLI, headless and agents
 
 | ID | Requirement | Pri | MS | Verify |

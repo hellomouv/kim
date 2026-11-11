@@ -161,6 +161,12 @@ mod measure {
         fn active_window(&mut self) -> Option<noeul::detect::WindowFacts> {
             None
         }
+        fn open_settings(&mut self) -> Result<(), String> {
+            Err("no settings window in this measurement".into())
+        }
+        fn settings_recording(&self) -> bool {
+            false
+        }
     }
 
     /// Private bytes of this process (`GetProcessMemoryInfo`).

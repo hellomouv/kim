@@ -46,6 +46,7 @@ pub const METHODS: &[(&str, bool)] = &[
     ("pin.set", true),
     ("group.list", false),
     ("group.switch", true),
+    ("settings.open", true),
     ("history.list", false),
     ("history.pin", true),
     ("history.forget", true),

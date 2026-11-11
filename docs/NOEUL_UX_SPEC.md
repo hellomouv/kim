@@ -222,6 +222,17 @@ time …") — it never restores them by itself.
 +--------------------------------------------------------------------------+
 ```
 
+**Shipped in Step 61** ([ADR 0075](adr/0075-noeul-settings-window.md)): one compact window of
+standard controls (`noeul settings`, the tray's "Settings…"): the shortcut list (every action with
+its keys; Change records new keys without running them, `Esc` cancels; Disable; Reset; Reset all
+asks in words and resets on a second press; Import… and Export… through the file dialogs; "Use
+anyway" after a refused binding), the double-click and middle-click gestures (double-click pins by
+default), and switches for the tray icon, the disk history and the pin backup. Every change runs
+the matching `noeul hotkeys …` / `noeul config set …` command, so the window and the CLI share one
+code path. Keyboard: `Tab`, arrows, `Alt`+the underlined letters. Screen readers read each control's
+text; High Contrast uses the system colours; dark mode gives a dark title bar and controls; the text
+size follows Windows and the monitor's DPI. Not yet: the other sections sketched above.
+
 Shipped since Step 51, before the settings window (Step 61): the Gestures section's values are
 `config.toml` settings changed with `noeul config set gestures.double_click pin|copy|save|none`,
 `gestures.middle_click pin|copy|none` and `gestures.preset noeul|snipaste`, and reset with

@@ -137,7 +137,7 @@
       "properties": {
         "type": { "const": "request" },
         "id": { "type": "integer", "minimum": 1 },
-        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "history.list", "history.pin", "history.forget", "history.clear", "backup.status", "backup.save", "backup.restore", "backup.clear", "hotkeys.reload", "settings.reload", "quit"] },
+        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "settings.open", "history.list", "history.pin", "history.forget", "history.clear", "backup.status", "backup.save", "backup.restore", "backup.clear", "hotkeys.reload", "settings.reload", "quit"] },
         "params": { "$ref": "#/$defs/params" }
       }
     },
@@ -197,6 +197,7 @@
             { "$ref": "#/$defs/pin_set_result" },
             { "$ref": "#/$defs/group_list_result" },
             { "$ref": "#/$defs/group_switch_result" },
+            { "$ref": "#/$defs/settings_open_result" },
             { "$ref": "#/$defs/history_list_result" },
             { "$ref": "#/$defs/history_pin_result" },
             { "$ref": "#/$defs/history_forget_result" },
@@ -925,6 +926,16 @@
         "dry_run": { "type": "boolean" },
         "closed": { "type": "array", "items": { "$ref": "#/$defs/pin_id" } },
         "reopenable": { "oneOf": [{ "$ref": "#/$defs/pin_id" }, { "type": "null" }] }
+      }
+    },
+    "settings_open_result": {
+      "description": "settings.open (Step 61): the settings window opened or brought forward (never by another method).",
+      "type": "object",
+      "required": ["dry_run", "opened"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "opened": { "type": "boolean" }
       }
     },
     "history_list_result": {

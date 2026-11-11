@@ -25,6 +25,8 @@ pub enum MenuItem {
     /// the nearest work area.
     BringPinsOnScreen,
     ReopenClosedPin,
+    /// Step 61: the settings window (always shown).
+    Settings,
     /// Step 60: shown while the capture history holds a picture: pins the newest again.
     PinLastCapture,
     /// Step 60: shown while the pin backup holds pins that are not open: restores them.
@@ -49,6 +51,7 @@ impl MenuItem {
             MenuItem::ShowAllPins => "Show all pins",
             MenuItem::BringPinsOnScreen => "Bring pins on screen",
             MenuItem::ReopenClosedPin => "Reopen closed pin",
+            MenuItem::Settings => "Settings…",
             MenuItem::PinLastCapture => "Pin last capture again",
             MenuItem::RestorePins => "Restore pins from last time",
             MenuItem::MakeAllPinsClickable => "Make all pins clickable",
@@ -70,6 +73,7 @@ impl MenuItem {
             MenuItem::BringPinsOnScreen => 7,
             MenuItem::ReopenClosedPin => 2,
             MenuItem::MakeAllPinsClickable => 8,
+            MenuItem::Settings => 12,
             MenuItem::PinLastCapture => 10,
             MenuItem::RestorePins => 11,
             MenuItem::Group(i) => 100 + u32::from(i),
@@ -143,6 +147,7 @@ pub fn menu(s: &MenuState) -> Vec<MenuItem> {
     if s.shortcuts_switchable {
         items.push(MenuItem::Shortcuts { on: s.shortcuts_on });
     }
+    items.push(MenuItem::Settings);
     items.push(MenuItem::Quit);
     items
 }
@@ -171,6 +176,7 @@ mod tests {
                 MenuItem::CaptureRegion,
                 MenuItem::PinClipboard,
                 MenuItem::Shortcuts { on: true },
+                MenuItem::Settings,
                 MenuItem::Quit
             ]
         );

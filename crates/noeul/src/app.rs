@@ -168,6 +168,11 @@ pub trait Shell {
     /// `None` when no window has focus. The debug-build test hook only ever names a test's own
     /// window.
     fn active_window(&mut self) -> Option<WindowFacts>;
+    /// Opens the settings window, or brings it forward (Step 61; `win::settings`). Only from the
+    /// tray's "Settings…" and `noeul settings`, never from another command.
+    fn open_settings(&mut self) -> std::result::Result<(), String>;
+    /// The settings window records keys now: global hotkeys must not run (Step 61).
+    fn settings_recording(&self) -> bool;
 }
 
 /// The capture overlay's window (`win::overlay`; a fake in tests). It owns a back buffer of
@@ -822,6 +827,20 @@ impl<S: Shell> App<S> {
             "pin.set" => self.pin_set(params, dry_run),
             "group.list" => Ok(self.group_list()),
             "group.switch" => self.group_switch(params, dry_run),
+            "settings.open" => {
+                if dry_run {
+                    Ok(json!({"dry_run": true, "opened": false}))
+                } else {
+                    self.shell.open_settings().map_err(|why| {
+                        NoeulError::new(
+                            Code::Internal,
+                            format!("the settings window could not be opened: {why}"),
+                        )
+                    })?;
+                    self.last_action = Some(("settings.open".into(), "opened"));
+                    Ok(json!({"dry_run": false, "opened": true}))
+                }
+            }
             "history.list" => Ok(self.history_list()),
             "history.pin" => self.history_pin(params, dry_run),
             "history.forget" => self.history_forget(params, dry_run),
@@ -3400,6 +3419,12 @@ impl<S: Shell> App<S> {
                 let _ = self.pins.reopen(self.shell.pin_windows(), focus);
             }
             MenuItem::MakeAllPinsClickable => self.action(PINS_CLICKABLE, None),
+            MenuItem::Settings => {
+                if let Err(why) = self.shell.open_settings() {
+                    self.shell
+                        .notice(&format!("The settings window could not be opened: {why}"));
+                }
+            }
             MenuItem::PinLastCapture => {
                 if let Err(e) = self.history_pin(&json!({}), false) {
                     self.shell.notice(&e.message);
@@ -3463,6 +3488,11 @@ impl<S: Shell> App<S> {
     pub fn hotkey_pressed(&mut self, id: kim_hotkeys::register::HotkeyId) {
         // The first-frame latency of the overlay counts from here (NOEUL-NFR-003).
         let trigger = Instant::now();
+        // Step 61: keys being recorded in the settings window never run their action.
+        if self.shell.settings_recording() {
+            self.last_action = Some(("hotkey".into(), "recording"));
+            return;
+        }
         // NOEUL-SEC-003: no action while the user's desktop is not the input desktop.
         if self.capture.desktop().state != DesktopState::Available {
             self.last_action = Some(("hotkey".into(), "desktop_unavailable"));
@@ -3804,6 +3834,9 @@ mod color_tests;
 mod keeping_tests;
 
 #[cfg(test)]
+mod settings_tests;
+
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::capture::{CaptureError, Desktop, Monitor, Synthetic};
@@ -3981,6 +4014,9 @@ pub(crate) mod tests {
         pub facts: Vec<WindowFacts>,
         /// The window with the keyboard focus (Step 58).
         pub active: Option<WindowFacts>,
+        /// Step 61: settings windows opened, and whether one records keys.
+        pub settings_opened: usize,
+        pub recording: bool,
         /// How many window lists were taken.
         pub snapshots: usize,
         /// The UI Automation requests sent.
@@ -4126,6 +4162,13 @@ pub(crate) mod tests {
         }
         fn active_window(&mut self) -> Option<WindowFacts> {
             self.active
+        }
+        fn open_settings(&mut self) -> std::result::Result<(), String> {
+            self.settings_opened += 1;
+            Ok(())
+        }
+        fn settings_recording(&self) -> bool {
+            self.recording
         }
         fn end_detection(&mut self) {
             self.detection_ended += 1;

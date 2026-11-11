@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 61** (#66) — Noeul custom hotkeys, preferences and accessibility
+- Current Step: **Step 62** (#67) — Noeul headless CLI, MCP guide and Kim integration
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #66 (Step 61). Step 60 (#65) done (history + pin backup, ADR 0074).
-  Step 44 (#45) done; Step 43 (#44) Windows part done, Linux half open.
+- Next action: read #67 (Step 62). Step 61 (#66) done (settings window, ADR 0075).
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 61 — prefs model 4/4, settings_tests 2/2 (opens only when asked, recording
+  suspends hotkeys), settings_window.rs 2/2 on the real off-screen window (record, Esc, shadowed
+  default, refused conflict + Use anyway, disable, reset, reset all in two presses, gesture and
+  disk-history switches to config.toml, live re-registration of a global key and back), all noeul
+  tests, e2e step61 2/2.
 
 - 2026-11-12: Step 60 — noeul lib 334/334 (store 4, settings, selection, keeping_tests 4: what was
   output kept with redactions drawn in, private excluded, disk history bounded/restart/damage,

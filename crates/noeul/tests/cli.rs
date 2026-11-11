@@ -56,8 +56,8 @@ fn capabilities_version_status_and_config_are_headless_reads() {
         .collect();
     assert_eq!(
         opens,
-        ["start", "run", "capture"],
-        "the instance launchers, and `capture --interactive` (the overlay, Step 50)"
+        ["start", "run", "capture", "settings"],
+        "the instance launchers, `capture --interactive` (the overlay, Step 50) and `settings` (the settings window, Step 61)"
     );
     assert!(
         caps["data"]["commands"]

@@ -1,0 +1,6 @@
+{
+  "type": "request",
+  "id": 50,
+  "method": "settings.open",
+  "params": {}
+}

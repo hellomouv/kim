@@ -57,6 +57,7 @@ pub mod overlay;
 pub mod paste;
 pub mod paths;
 pub mod pins;
+pub mod prefs;
 pub mod selection;
 pub mod settings;
 pub mod store;

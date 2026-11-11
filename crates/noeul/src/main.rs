@@ -142,6 +142,9 @@ enum Command {
     /// clear it (Step 60; on disk only with `[history] disk = "on"`)
     #[command(subcommand)]
     History(keep_cmd::HistoryCommand),
+    /// Open the settings window of the running Noeul (shortcuts, gestures, history, backup): the
+    /// one command that opens a window, and only when asked (Step 61)
+    Settings(DryRun),
     /// Noeul's keyboard shortcuts: list, change, disable, reset, check conflicts (never
     /// registers a hotkey or opens a window)
     #[command(subcommand)]
@@ -542,6 +545,7 @@ fn main() -> ExitCode {
             Some(PinCommand::Backup(c)) => keep_cmd::backup(&ctx, c),
         },
         Command::History(c) => keep_cmd::history(&ctx, c),
+        Command::Settings(a) => keep_cmd::settings(&ctx, a.dry_run),
         Command::Hotkeys(c) => hotkeys_cmd::run(c, &ctx),
         Command::Config(ConfigCommand::Show) => instance::config_show(),
         Command::Config(ConfigCommand::Set(a)) => config_cmd::set(&ctx, a),
@@ -576,6 +580,7 @@ fn command_name(c: &Command) -> &'static str {
             Some(PinCommand::Backup(keep_cmd::BackupCommand::Save(_))) => "pin.backup.save",
             Some(PinCommand::Backup(keep_cmd::BackupCommand::Clear(_))) => "pin.backup.clear",
         },
+        Command::Settings(_) => "settings",
         Command::History(c) => match c {
             keep_cmd::HistoryCommand::List => "history.list",
             keep_cmd::HistoryCommand::Pin(_) => "history.pin",
