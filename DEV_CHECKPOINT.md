@@ -9,10 +9,10 @@ checkpoint."*
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
 - Current Step: **Step 77** (#82) — the earliest unfinished Ddalgak Step (check its dependencies)
-- Last fully completed Step: Step 76 (#81, Ddalgak test playground); Step 31 (#31) done as far as
+- Last delivered Step: Step 76 (#81, Ddalgak test playground; OPEN for the visible check, GUI_JOURNEYS §8 steps 17–18); Step 31 (#31) done as far as
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: re-query open issues; read #82 (Step 77). Steps 61 (#66) and 63 (#68) stay OPEN
+- Next action: re-query open issues; read #82 (Step 77). Steps 61 (#66), 63 (#68) and 76 (#81) stay OPEN
   for the maintainer's visible/physical checks.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
@@ -142,4 +142,4 @@ checkpoint."*
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):
-  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#80.
+  #8, #14, #15, #16, #18, #19, #20, #55–#58, #61–#64, #66, #68, #71, #73–#81.

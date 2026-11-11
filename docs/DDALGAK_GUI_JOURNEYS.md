@@ -621,3 +621,11 @@ result (pass, fail, remark) in the Step 74 issue.
     work: pick an older version, compare side by side, **Restore this version**; then **Roll back
     to the last working version**. Type a label and **Save this version**: it appears as a save
     point. Each restore is a new change (the history grows; **Undo** works).
+17. **Step 76 — playground, simulate.** Open **Playground** (rail). Type `CapsLock` in *Keys*,
+    **Run test**: the winner, its candidates, *The key does not reach the app* and the time;
+    *Next step* reveals each step. Choose another profile and a mode: the header's active profile
+    does not change. Pick *A password field*: the rule *would be skipped*. Nothing is typed anywhere.
+18. **Step 76 — playground, live.** Choose *Live*, tick the consent box, test a type-text rule:
+    the text appears only in the page's test field (Notepad open beside it receives nothing).
+    Test an open-website rule: nothing opens until **Confirm and open**; then the browser opens
+    once. **Reset** empties the field and the trace; the rules still work in other programs.
