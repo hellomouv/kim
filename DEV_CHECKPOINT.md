@@ -8,16 +8,21 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 43** (#43, Windows part) — one-step installation; Steps 41–42 are Linux (blocked)
+- Current Step: **Step 44** (#45) — watermelon icon and animated Claude status
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #43 (Windows half only; Linux half blocked). Release: `cargo xtask package`,
-  `kim rollback`, release.yml (never run; no certificate), docs/INSTALL.md, RELEASING.md
+- Next action: read #45 (Step 44). Step 43 (#44) Windows part done (Kim-Setup.exe, ADR 0072);
+  its Linux half stays open (blocked like 41/42). Issue numbers differ from Step numbers past 42.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 43 (Windows) — kim-setup unit tests 2/2, setup.rs 1/1 (install only Kim,
+  refuse/repair/upgrade/downgrade, damaged installer, running refusal, uninstall keeping data;
+  test registry key), e2e step43 1/1 with the release Kim programs; `xtask package kim` writes
+  Kim-Setup-0.0.1-x86_64.exe (6.3 MB); the double-click window path is the maintainer's check.
 
 - 2026-11-12: Step 40 — `cargo xtask package kim|subak` (deterministic, re-pack same SHA-256,
   notices), `kim rollback` (rollback.rs 1/1, contract goldens), `package --signed` refuses
@@ -102,7 +107,7 @@ checkpoint."*
 - **Step 31 (#31)**: Milestone C needs real lock/unlock, sleep, hibernate, reboot and power-loss
   runs by the maintainer (rows 10–16 of MILESTONE_C_RECOVERY_VALIDATION); everything automatable
   passes.
-- **Linux Steps 41, 42, 64, 83 and the Linux half of 43**: AGENTS.md §3 forbids Linux work on
+- **Linux Steps 41, 42, 64, 83 and the Linux half of 43 (#44)**: AGENTS.md §3 forbids Linux work on
   this Windows PC (maintainer decision 2026-11-04); they wait for the Linux server phase.
 - **Maintainer manual checks** (implemented and merged; issues stay open until the visible-window /
   real-input / real-clipboard / multi-monitor checks named in each issue's report are done):

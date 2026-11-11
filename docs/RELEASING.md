@@ -19,6 +19,12 @@ builds the release binaries and writes to `target/dist/`:
   build (commit, `rustc -V`, target), `"signed"`, and the `release` entry for
   `catalog/catalog.json`.
 
+For `kim`, it also writes **`Kim-Setup-<version>-x86_64.exe`**: the `kim-setup` program with
+the zip appended and a footer (`KIMSETUP`, length, SHA-256) the installer checks before
+unpacking ([ADR 0072](adr/0072-one-step-windows-installer.md)). Signing the finished installer
+keeps it working (the footer is found before the certificate table), and changes its SHA-256 —
+publish the signed file's hash.
+
 **Reproducibility.** The zip is deterministic: sorted entries, fixed timestamps (1980-01-01),
 fixed permissions; packing the same binaries twice gives the same bytes (`package` checks it on
 every run; Step 40: `subak` packed twice from the same build gave the same SHA-256). Bit-identical

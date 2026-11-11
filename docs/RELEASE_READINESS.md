@@ -17,6 +17,7 @@
 | 5 | Release signing key ceremony; Authenticode signatures | ◐ pipeline ready, no certificate | `release.yml` signs only with configured certificate secrets; `xtask package --signed` verifies (Step 40); the release key is still to be created offline (RELEASE_POLICY §4) |
 | 5a | Distributables: deterministic zips with licenses, notices, manifests | ✅ | `cargo xtask package kim|subak` (Step 40, RELEASING §1) |
 | 5b | Install, update while running, rollback, uninstall keeping data, offline | ✅ | `e2e/tests/step40_release.rs` (real Subak package), `crates/kim/tests/rollback.rs` |
+| 5c | One-step Windows installer (`Kim-Setup.exe`, only Kim) | ✅ headless; window path ⏳ maintainer | `crates/kim-setup/tests/setup.rs`, `e2e/tests/step43_setup.rs` (ADR 0072) |
 | 6 | Host survives closing every client, detach, GUI crash | ✅ | `session_lifecycle.rs`, `milestone_a.rs`, `gui_window.rs` |
 | 7 | Crash recovery without data loss or duplicates | ✅ | `milestone_c.rs`, `recovery.rs`, `state_persistence.rs` |
 | 8 | Lock, sleep, hibernate, reboot, power loss | ⏳ maintainer | #31, `scripts/recovery-matrix.ps1` |

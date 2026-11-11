@@ -53,8 +53,14 @@ jobs:
             & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:PFX_PASSWORD $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "signing failed: $($_.Name)" }
           }
-          Remove-Item $pfx
           cargo xtask package ${{ inputs.tool }} --skip-build --signed
+          # Kim: the one-step installer is signed last (its footer is found before the certificate).
+          Get-ChildItem target/dist/Kim-Setup-*.exe -ErrorAction SilentlyContinue | ForEach-Object {
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:PFX_PASSWORD $_.FullName
+            if ((Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -ne 'Valid') { throw "Kim-Setup signature invalid" }
+            (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower() | Set-Content "$($_.FullName).sha256"
+          }
+          Remove-Item $pfx
       - name: Upload the artifact (not a release)
         uses: actions/upload-artifact@v4
         with:
@@ -62,4 +68,5 @@ jobs:
           path: |
             target/dist/*.zip
             target/dist/*-release.json
+            target/dist/Kim-Setup-*
           if-no-files-found: error

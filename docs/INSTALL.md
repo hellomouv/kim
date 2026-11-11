@@ -5,6 +5,20 @@
   built from this repository). Release notes: [RELEASE_NOTES](RELEASE_NOTES.md); readiness and
   blockers: [RELEASE_READINESS](RELEASE_READINESS.md).
 
+## Install Kim — one step
+
+**Windows:** download **`Kim-Setup.exe`** and double-click it. A small window shows the progress,
+then Kim Manager opens. No administrator rights, no other downloads; only Kim is installed — pick
+any tool you want in Kim Manager afterwards. If Windows SmartScreen warns about an unsigned
+preview build, choose "More info" → "Run anyway" only if you downloaded it from the official
+release page (the signed release will not warn).
+
+**Linux:** not available yet (Steps 41–43).
+
+If something goes wrong: run `Kim-Setup.exe` again (it offers a repair), or unzip
+`kim-<version>-windows-x86_64.zip` and run `kim-manager.exe` from there. Remove Kim in Settings →
+Apps (your settings are kept).
+
 ## 1. Supported systems
 
 | System | State |
@@ -36,7 +50,8 @@ are present only when a release was signed with a real certificate (the release 
 
 ## 3. Install
 
-With Kim (recommended; integrity-checked, reversible):
+Kim itself: `Kim-Setup.exe` (above). Tools, with Kim (recommended; integrity-checked,
+reversible):
 
 ```powershell
 kim catalog refresh          # explicit: fetch the signed catalog (or use the one Kim ships with)

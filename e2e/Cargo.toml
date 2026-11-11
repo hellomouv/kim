@@ -21,6 +21,7 @@ ddalgak-editor = { path = "../crates/ddalgak-editor" }
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 egui_kittest = "=0.37.0"
 kim = { path = "../crates/kim" }
+kim-setup = { path = "../crates/kim-setup" }
 # step57 decodes Noeul's quick-saved PNG to check that a redaction left no original pixel.
 png = { version = "0.18.1", default-features = false }
 # step07 validates real --json output with xtask/src/jsonschema.rs (needs regex).

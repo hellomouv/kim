@@ -1672,6 +1672,7 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "kim",
+ "kim-setup",
  "png",
  "regex",
  "serde_json",
@@ -1701,6 +1702,17 @@ dependencies = [
  "kim-hotkeys",
  "serde_json",
  "sha2",
+ "zip",
+]
+
+[[package]]
+name = "kim-setup"
+version = "0.0.1"
+dependencies = [
+ "kim",
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
  "zip",
 ]
 

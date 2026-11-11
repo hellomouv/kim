@@ -29,7 +29,7 @@ struct Tool {
 const TOOLS: [Tool; 2] = [
     Tool {
         id: "kim",
-        crates: &["kim", "kim-manager"],
+        crates: &["kim", "kim-manager", "kim-setup"],
         exes: &["kim.exe", "kim-manager.exe"],
         entrypoint: "kim.exe",
         summary: "Kim: the explicit catalog and installer for Kim tools (kim.exe CLI, kim-manager.exe window)",
@@ -247,6 +247,28 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
                         "size": zipped.len(), "sha256": sha}],
         },
     });
+    // Kim: also the one-step installer (Step 43, ADR 0072) — kim-setup.exe with this zip
+    // appended (footer: magic, length, SHA-256 checked before anything is unpacked).
+    let mut manifest = manifest;
+    if id == "kim" {
+        let stub =
+            std::fs::read(rel.join("kim-setup.exe")).map_err(|e| format!("kim-setup.exe: {e}"))?;
+        let mut with_payload = Vec::with_capacity(stub.len() + zipped.len() + 48);
+        with_payload.extend_from_slice(&stub);
+        with_payload.extend_from_slice(&zipped);
+        with_payload.extend_from_slice(b"KIMSETUP");
+        with_payload.extend_from_slice(&(zipped.len() as u64).to_le_bytes());
+        with_payload.extend_from_slice(&Sha256::digest(&zipped));
+        let sname = format!("Kim-Setup-{version}-x86_64.exe");
+        std::fs::write(dist.join(&sname), &with_payload).map_err(|e| e.to_string())?;
+        manifest["setup"] = json!({"file": sname, "size": with_payload.len(), "sha256": sha_hex(&with_payload),
+            "note": "signing Kim-Setup (after this file is written) changes its SHA-256; publish the signed file's"});
+        println!(
+            "package: {} ({} bytes)",
+            dist.join(&sname).display(),
+            with_payload.len()
+        );
+    }
     let mpath = dist.join(format!("{id}-{version}-release.json"));
     std::fs::write(
         &mpath,

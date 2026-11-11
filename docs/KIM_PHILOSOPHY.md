@@ -86,6 +86,15 @@ This is non-negotiable.
 - Uninstalling preserves user data unless the user separately and clearly confirms deletion.
   [KIM-SEC-005]
 
+### One-step installation
+
+Getting Kim is one action: on Windows, one `Kim-Setup.exe` that a user double-clicks and that
+ends with Kim Manager open; on Linux (planned), one package or one reviewable command. Nothing
+to set up by hand, no administrator rights where the OS allows a per-user install, and **only
+Kim** is installed — every other tool is the user's later, separate choice. One-step never means
+silent: integrity is checked before anything runs, OS security prompts are never bypassed, and
+the consent rules above still hold. [KIM-FR-060]
+
 ## 8. Honesty in engineering
 
 - Placeholders, mocks and planned features are labeled as such in code, help text and docs.
