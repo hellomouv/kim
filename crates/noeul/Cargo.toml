@@ -35,6 +35,8 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 # crate in the lock).
 moxcms = "0.8.1"
 serde = { version = "1.0.229", features = ["derive"] }
+# Integrity of the opt-in history and pin backup files (Step 60); already in the workspace lock.
+sha2 = "0.11.1"
 # The --json envelope and IPC v1 messages.
 serde_json = "1.0.154"
 # config.toml (NOEUL-FR-102); already in the workspace lock.

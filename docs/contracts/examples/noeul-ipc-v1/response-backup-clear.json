@@ -1,0 +1,8 @@
+{
+  "type": "response",
+  "id": 45,
+  "result": {
+    "dry_run": false,
+    "removed": 3
+  }
+}

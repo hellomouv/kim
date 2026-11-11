@@ -1,0 +1,35 @@
+{
+  "type": "response",
+  "id": 41,
+  "result": {
+    "disk": true,
+    "count": 2,
+    "bytes": 1920000,
+    "entries": [
+      {
+        "id": 2,
+        "rect": {
+          "x": 100,
+          "y": 80,
+          "width": 400,
+          "height": 300
+        },
+        "at": "2026-11-12T09:30:00Z",
+        "outcome": "copied",
+        "on_disk": true
+      },
+      {
+        "id": 3,
+        "rect": {
+          "x": -600,
+          "y": 20,
+          "width": 400,
+          "height": 200
+        },
+        "at": "2026-11-12T09:31:12Z",
+        "outcome": "pinned",
+        "on_disk": true
+      }
+    ]
+  }
+}

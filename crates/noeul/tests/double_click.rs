@@ -316,10 +316,19 @@ fn a_double_click_inside_pins_and_nothing_else_does() {
     let st = status(&sb);
     assert_eq!(st["pins"]["open"], 1, "exactly one pin, not closed");
     assert_eq!(pin_list(&sb)["pins"][0]["rect"], sel, "not moved");
+    // The pin's pixels and, since Step 60, the in-memory capture history's copy of what was
+    // pinned (NOEUL-FR-050; `noeul history clear` frees it); nothing else.
     assert_eq!(
         st["memory"]["bytes"],
+        2 * 300 * 200 * 4,
+        "only the pin's pixels and its history copy are kept"
+    );
+    let (code, v) = sb.json(&["history", "clear", "--yes"]);
+    assert_eq!((code, v["data"]["cleared"].as_u64()), (0, Some(1)), "{v}");
+    assert_eq!(
+        status(&sb)["memory"]["bytes"],
         300 * 200 * 4,
-        "only the pin's pixels are kept"
+        "the history copy is freed"
     );
     let (code, _) = sb.json(&["quit", "--yes"]);
     assert_eq!(code, 0);

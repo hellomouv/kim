@@ -1,0 +1,8 @@
+{
+  "type": "request",
+  "id": 40,
+  "method": "history.pin",
+  "params": {
+    "entry": 3
+  }
+}

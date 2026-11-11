@@ -241,7 +241,15 @@
       "pointer": "off",
       "pins": {
         "border": "on",
-        "shadow": "on"
+        "shadow": "on",
+        "backup": "off"
+      },
+      "history": {
+        "count": 20,
+        "memory_mb": 256,
+        "disk": "off",
+        "keep_days": 7,
+        "keep_cancelled": "off"
       },
       "paste": {
         "paths": "on",

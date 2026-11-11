@@ -8,16 +8,22 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **Step 60** (#65) — Noeul capture history and pin backup recovery
+- Current Step: **Step 61** (#66) — Noeul custom hotkeys, preferences and accessibility
 - Last fully completed Step: Step 30 (#30); Step 31 (#31) done as far as possible, left OPEN:
   lock/sleep/hibernate/reboot/power rows need the maintainer (`scripts/recovery-matrix.ps1`)
 - Uncommitted changes: none expected between Steps
-- Next action: read #65 (Step 60) and its dependencies. Step 44 (#45) done (watermelon icon
-  assets, per-Terminal Claude motion, ADR 0073). Step 43 (#44) Windows part done, Linux half open.
+- Next action: read #66 (Step 61). Step 60 (#65) done (history + pin backup, ADR 0074).
+  Step 44 (#45) done; Step 43 (#44) Windows part done, Linux half open.
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-12: Step 60 — noeul lib 334/334 (store 4, settings, selection, keeping_tests 4: what was
+  output kept with redactions drawn in, private excluded, disk history bounded/restart/damage,
+  backup offered/restored once/no duplicates/damaged skipped/off-screen fixed), history_backup.rs
+  1/1 real instance across a restart, all noeul integration tests (memory checks now count the
+  history copy explicitly), e2e step60 2/2.
 
 - 2026-11-12: Step 44 — claude_motion unit tests 6/6, art/tabs frame tests, icon_assets 3/3
   (byte-exact assets, SVG colours, legibility 16–48 px on 4 surfaces), gui_window motion test

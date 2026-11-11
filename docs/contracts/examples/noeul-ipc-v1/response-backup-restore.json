@@ -1,0 +1,17 @@
+{
+  "type": "response",
+  "id": 43,
+  "result": {
+    "dry_run": false,
+    "restored": [
+      "pin-1",
+      "pin-2"
+    ],
+    "already_open": 0,
+    "would_restore": 0,
+    "skipped": 1,
+    "problems": [
+      "pin 18e70d39: its picture is damaged"
+    ]
+  }
+}

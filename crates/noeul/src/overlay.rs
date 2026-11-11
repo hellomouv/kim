@@ -287,6 +287,9 @@ pub enum Action {
     DetectCycle,
     /// `magnifier.toggle` (`M`) (Step 52, NOEUL-FR-041).
     Magnifier,
+    /// `capture.private` (`P`): this capture joins no history, in memory or on disk (Step 60,
+    /// NOEUL-FR-051).
+    Private,
     /// `history.previous` (`Comma`): the rectangle of an earlier capture (Step 52, NOEUL-FR-050).
     HistoryPrevious,
     /// `history.next` (`Period`).
@@ -305,6 +308,7 @@ pub const ACTION_IDS: &[&str] = &[
     "capture.save",
     "capture.quick-save",
     "capture.cancel",
+    "capture.private",
     "selection.mark",
     "selection.full",
     "selection.last",
@@ -347,6 +351,7 @@ impl Action {
             "capture.save" => Action::Save,
             "capture.quick-save" => Action::QuickSave,
             "capture.cancel" => Action::Cancel,
+            "capture.private" => Action::Private,
             "selection.mark" => Action::Mark,
             "selection.full" => Action::Full,
             "selection.last" => Action::Last,
@@ -925,6 +930,8 @@ pub struct Overlay {
     last: Option<Rect>,
     detect: Detection,
     magnifier: bool,
+    /// Step 60: the user marked this capture private (`P`): it joins no history.
+    private: bool,
     /// Earlier capture rectangles inside the picture, oldest first, and where `history.*` is.
     history: Vec<Rect>,
     history_at: Option<usize>,
@@ -988,6 +995,7 @@ impl Overlay {
             last,
             detect: Detection::default(),
             magnifier: true,
+            private: false,
             history: Vec::new(),
             history_at: None,
             streak: None,
@@ -1211,6 +1219,11 @@ impl Overlay {
 
     pub fn magnifier_enabled(&self) -> bool {
         self.magnifier
+    }
+
+    /// Whether the user marked this capture private (`capture.private`, Step 60).
+    pub fn private(&self) -> bool {
+        self.private
     }
 
     /// `(retained rectangles, position)` of `history.*`.
@@ -2198,6 +2211,10 @@ impl Overlay {
                 self.magnifier = !self.magnifier;
                 return Outcome::Stay;
             }
+            Action::Private => {
+                self.private = !self.private;
+                return Outcome::Stay;
+            }
             // The colour picker (Step 59): not in the pin editor, which has no magnifier.
             Action::ColorFormatNext | Action::ColorCopy if self.mode == Mode::PinEdit => {
                 return Outcome::Stay;
@@ -2373,6 +2390,7 @@ impl Overlay {
             Action::Cancel
             | Action::DetectCycle
             | Action::Magnifier
+            | Action::Private
             | Action::Pointer(_)
             | Action::ColorCopy
             | Action::ColorFormatNext => Outcome::Stay,

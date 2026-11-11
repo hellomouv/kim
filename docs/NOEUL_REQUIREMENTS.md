@@ -132,6 +132,12 @@ rules, edge cases and tests are in [NOEUL_UX_SPEC §4](NOEUL_UX_SPEC.md#4-the-si
 | NOEUL-FR-050 | Capture history in memory: successful captures (pinned, copied or saved) are kept, bounded by count (default 20) and total size. In the overlay `history.previous` and `history.next` (`Comma`, `Period`) step through earlier rectangles over the current picture; earlier images can be pinned again from the tray and the CLI. | P1 | N4 | T |
 | NOEUL-FR-051 | History on disk, and automatic saving of every capture, are off by default. When the user turns them on, images go to Noeul's user-only data folder (or the chosen folder for auto-save) with limits by count and age, a Clear command, and an exclusion for captures the user marks private. Cancelled captures are never kept unless the user opts in. | P1 | N4 | T |
 
+Step 60 ([ADR 0074](adr/0074-noeul-history-and-pin-backup.md)): the history keeps **what each
+capture produced** (redactions drawn in), bounded by `[history] count` and `memory_mb`; `P`
+(`capture.private`) excludes a capture; the disk history (`[history] disk`, `keep_days`) and
+`keep_cancelled` are opt-in; `noeul history list|pin|forget|clear`. Auto-save to a folder
+(the rest of NOEUL-FR-051) is not done yet.
+
 ### 3.7 Pins
 
 | ID | Requirement | Pri | MS | Verify |
@@ -146,6 +152,10 @@ rules, edge cases and tests are in [NOEUL_UX_SPEC §4](NOEUL_UX_SPEC.md#4-the-si
 | NOEUL-FR-067 | Pins and display changes: pins keep their place when monitors change, even off-screen, and "Bring pins on screen" (tray, CLI) moves every off-screen pin onto a visible monitor. | P1 | N4 | T, M |
 | NOEUL-FR-068 | Animated GIF pins play their frames, can be paused and stepped frame by frame, and have a speed setting. Where animation is not supported, the pin says it shows only the first frame. | P2 | N2 | T |
 | NOEUL-FR-069 | Pin extras: snapping to screen edges and other pins while dragging with Shift, grayscale and color inversion, solo mode, multi-selection, turning off always-on-top per pin, background modes for transparent images, free-size thumbnails, smooth or pixelated scaling, replacing a pin's content from the clipboard, and pins on all virtual desktops. | P2 | N4 | T |
+
+Step 60: `[pins] backup` writes the pins a second after they change; annotations are stored drawn
+into the picture; the next start offers them (tray, `noeul pin restore`) and never restores them
+by itself; click-through is never restored ([ADR 0074](adr/0074-noeul-history-and-pin-backup.md)).
 
 ### 3.8 Paste (`F3`)
 
@@ -311,6 +321,7 @@ Noeul also uses the shared codes (`usage`, `io`, `permission_denied`, `internal`
 | `monitor_not_found` | 3 | `--monitor <n>` names a monitor that is not attached now (registered in Step 58). |
 | `window_not_found` | 3 | `--window active` or `capture.window` found no window to capture: none has focus, or it is minimized, hidden or off every monitor (registered in Step 58). |
 | `image_invalid` | 4 | The image is malformed or exceeds the size limits. |
+| `history_entry_not_found` | 3 | No capture with this number in the history (registered in Step 60). |
 
 ## 8. Inherited Kim requirements
 

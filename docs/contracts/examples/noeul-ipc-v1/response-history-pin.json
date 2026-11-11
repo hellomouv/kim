@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": 40,
+  "result": {
+    "dry_run": false,
+    "entry": 3,
+    "pin": "pin-7"
+  }
+}

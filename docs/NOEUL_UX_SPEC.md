@@ -179,7 +179,20 @@ Shipped since Step 53: Hide all pins (while every pin shows) or Show all pins (w
 hidden), and Bring pins on screen (only while a pin lies where no monitor shows it). Step 54:
 Make all pins clickable (only while a pin lets clicks through) and, while there are several
 groups, one checked entry per group ("Group: work"; choosing one switches to it) instead of the
-sketch's Groups submenu.
+sketch's Groups submenu. Step 60 ([ADR 0074](adr/0074-noeul-history-and-pin-backup.md)): "Pin last
+capture again" (while the capture history holds a picture) and "Restore pins from last time"
+(while the opt-in pin backup holds pins that are not open; a restore never duplicates an open pin).
+
+### 3.4a Capture history and pin backup (Step 60)
+
+Every capture that ends with pin, copy or save keeps **the picture it produced** (annotations and
+redactions drawn in) in memory: `[history] count` captures (default 20) within `memory_mb`
+(default 256 MiB). `P` in the overlay marks the capture **private**: it joins no history. Earlier
+pictures are pinned again from the tray or `noeul history pin [n]`; `noeul history list|forget|
+clear` show and remove them. Writing them to disk (`[history] disk`, kept `keep_days`) and the pin
+backup (`[pins] backup`) are **off by default**; with the backup on, Noeul writes the pins a
+second after they change and, at the next start, offers them ("Noeul can restore 3 pins from last
+time …") — it never restores them by itself.
 
 ### 3.5 Settings: Gestures and Shortcuts
 
@@ -1266,6 +1279,7 @@ scopes `global` and `app`, also **without default keys**; the catalog's shortcut
 | `selection.full` | `Ctrl+A` | `color.copy` | `C` |
 | `selection.last` | `R` | `color.format-next` | `Shift+C` |
 | `history.previous` | `Comma` | `history.next` | `Period` |
+| `capture.private` | `P` | | |
 
 Shipped since Step 50 ([ADR 0026](adr/0026-noeul-capture-overlay.md)): `capture.pin`,
 `capture.cancel`, `selection.full`, `selection.last` and the `selection.move-*`, `-grow-*` and

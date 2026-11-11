@@ -53,6 +53,18 @@
 //! - `[color] alpha`: include the alpha (`#3A6EA5FF`, `rgba(…, 1)`, `hsla(…, 1)`), `"off"`
 //!   (default) or `"on"`.
 //!
+//! Since Step 60 (NOEUL-FR-050, NOEUL-FR-051, NOEUL-FR-066, ADR 0074), history and backup —
+//! everything on disk is **off** by default:
+//!
+//! - `[history] count`: how many earlier captures are kept, 1–100 (default 20);
+//! - `[history] memory_mb`: their pictures' total size in memory, 16–2048 MiB (default 256);
+//! - `[history] disk`: also keep them on disk in the user-only data folder, `"off"` (default)
+//!   or `"on"`;
+//! - `[history] keep_days`: on disk, how long, 1–365 days (default 7);
+//! - `[history] keep_cancelled`: also keep cancelled captures, `"off"` (default) or `"on"`;
+//! - `[pins] backup`: back the pins up (picture, place, zoom, turn, opacity, group, annotations
+//!   drawn in) so they can be restored after a restart, `"off"` (default) or `"on"`.
+//!
 //! The rules every setting follows:
 //!
 //! - a missing file means defaults;
@@ -191,6 +203,32 @@ pub struct Settings {
     pub paste: crate::paste::Options,
     /// How the colour picker writes colours (`[color]`; Step 59).
     pub color: crate::color::Style,
+    /// The capture history (`[history]`; Step 60).
+    pub history: History,
+    /// Back the pins up (`[pins] backup`; Step 60, off by default).
+    pub pin_backup: bool,
+}
+
+/// `[history]` (Step 60, NOEUL-FR-050, NOEUL-FR-051).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct History {
+    pub count: usize,
+    pub memory_mb: u64,
+    pub disk: bool,
+    pub keep_days: u64,
+    pub keep_cancelled: bool,
+}
+
+impl Default for History {
+    fn default() -> History {
+        History {
+            count: 20,
+            memory_mb: 256,
+            disk: false,
+            keep_days: 7,
+            keep_cancelled: false,
+        }
+    }
 }
 
 impl Default for Settings {
@@ -207,6 +245,8 @@ impl Default for Settings {
             pin_look: Look::default(),
             paste: crate::paste::Options::default(),
             color: crate::color::Style::default(),
+            history: History::default(),
+            pin_backup: false,
         }
     }
 }
@@ -255,6 +295,14 @@ impl Loaded {
             "pins": {
                 "border": if s.pin_look.border { "on" } else { "off" },
                 "shadow": if s.pin_look.shadow { "on" } else { "off" },
+                "backup": if s.pin_backup { "on" } else { "off" },
+            },
+            "history": {
+                "count": s.history.count,
+                "memory_mb": s.history.memory_mb,
+                "disk": if s.history.disk { "on" } else { "off" },
+                "keep_days": s.history.keep_days,
+                "keep_cancelled": if s.history.keep_cancelled { "on" } else { "off" },
             },
             "paste": {
                 "paths": if s.paste.paths { "on" } else { "off" },
@@ -379,6 +427,42 @@ const KEYS: &[Key] = &[
         default: "\"on\"",
     },
     Key {
+        section: "pins",
+        name: "backup",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
+        section: "history",
+        name: "count",
+        takes: "a number from 1 to 100",
+        default: "20",
+    },
+    Key {
+        section: "history",
+        name: "memory_mb",
+        takes: "a number from 16 to 2048",
+        default: "256",
+    },
+    Key {
+        section: "history",
+        name: "disk",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
+        section: "history",
+        name: "keep_days",
+        takes: "a number from 1 to 365",
+        default: "7",
+    },
+    Key {
+        section: "history",
+        name: "keep_cancelled",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
         section: "paste",
         name: "paths",
         takes: "\"on\" or \"off\"",
@@ -418,7 +502,27 @@ pub fn key_names() -> Vec<String> {
 }
 
 /// The sections that hold keys (`noeul config reset <section>`).
-pub const SECTIONS: &[&str] = &["general", "capture", "gestures", "pins", "paste", "color"];
+pub const SECTIONS: &[&str] = &[
+    "general", "capture", "gestures", "pins", "paste", "color", "history",
+];
+
+fn on_off(s: Option<&str>) -> Result<bool, ()> {
+    match s {
+        Some("on") => Ok(true),
+        Some("off") => Ok(false),
+        _ => Err(()),
+    }
+}
+
+/// A whole number in `lo..=hi` (a TOML integer, or a string of digits).
+fn number(v: &toml::Value, lo: u64, hi: u64) -> Result<u64, ()> {
+    let n = match v {
+        toml::Value::Integer(i) => u64::try_from(*i).map_err(|_| ())?,
+        toml::Value::String(s) => s.trim().parse::<u64>().map_err(|_| ())?,
+        _ => return Err(()),
+    };
+    (lo..=hi).contains(&n).then_some(n).ok_or(())
+}
 
 /// Applies one value to `settings`; `Err` names what the key takes.
 fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) -> Result<(), ()> {
@@ -485,6 +589,14 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
                 settings.paste.file_cards = on;
             }
         }
+        ("pins", "backup") => settings.pin_backup = on_off(s)?,
+        ("history", "count") => {
+            settings.history.count = number(v, 1, 100)? as usize;
+        }
+        ("history", "memory_mb") => settings.history.memory_mb = number(v, 16, 2048)?,
+        ("history", "keep_days") => settings.history.keep_days = number(v, 1, 365)?,
+        ("history", "disk") => settings.history.disk = on_off(s)?,
+        ("history", "keep_cancelled") => settings.history.keep_cancelled = on_off(s)?,
         ("color", "format") => {
             settings.color.format = s.and_then(crate::color::Format::parse).ok_or(())?;
         }
@@ -593,6 +705,12 @@ fn literal(section: &str, name: &str, value: &str) -> Result<(String, toml::Valu
             "false" => toml::Value::Boolean(false),
             _ => toml::Value::String(value.to_string()),
         }
+    } else if key.takes.starts_with("a number") {
+        // Numbers are written as TOML integers (Step 60).
+        match value.trim().parse::<i64>() {
+            Ok(n) => toml::Value::Integer(n),
+            Err(_) => toml::Value::String(value.to_string()),
+        }
     } else {
         toml::Value::String(value.to_string())
     };
@@ -606,7 +724,8 @@ fn literal(section: &str, name: &str, value: &str) -> Result<(String, toml::Valu
     let text = match &v {
         toml::Value::Boolean(b) => b.to_string(),
         toml::Value::String(s) => toml_string(s),
-        _ => unreachable!("only booleans and strings are written"),
+        toml::Value::Integer(n) => n.to_string(),
+        _ => unreachable!("only booleans, numbers and strings are written"),
     };
     Ok((text, v))
 }
@@ -719,6 +838,7 @@ fn value_text(v: Option<&toml::Value>) -> Option<String> {
     match v? {
         toml::Value::Boolean(b) => Some(b.to_string()),
         toml::Value::String(s) => Some(toml_string(s)),
+        toml::Value::Integer(n) => Some(n.to_string()),
         other => Some(format!("{other:?}")),
     }
 }
@@ -767,7 +887,7 @@ fn checked_edit(
                 path.display()
             ),
         )
-        .hint("edit the file by hand (keys go under [general], [capture], [gestures] and [pins])")
+        .hint("edit the file by hand (keys go under [general], [capture], [gestures], [pins], [paste], [color] and [history])")
     };
     let before: toml::Table = text.parse().map_err(|_| refuse("not valid TOML"))?;
     let mut out = text.to_string();
@@ -1163,7 +1283,7 @@ mod tests {
                 .unwrap()
                 .contains("# keep this comment")
         );
-        assert_eq!(reset(&f, Some("history")).unwrap_err().code, Code::Usage);
+        assert_eq!(reset(&f, Some("later")).unwrap_err().code, Code::Usage);
         let e = reset(&f, None).unwrap();
         write(&f, &e.text).unwrap();
         assert_eq!(load(&f).settings, Settings::default());
@@ -1192,6 +1312,75 @@ mod tests {
             assert_eq!(e.code, code, "{text:?}: {}", e.message);
             assert_eq!(std::fs::read_to_string(&f).unwrap(), text, "untouched");
         }
+        let _ = std::fs::remove_dir_all(f.parent().unwrap());
+    }
+
+    /// Step 60: `[history]` and `[pins] backup` — off by default, numbers written as integers
+    /// and range-checked, out-of-range values refused by `set` and defaulted when read.
+    #[test]
+    fn history_and_backup_settings_are_off_by_default_and_range_checked() {
+        let d = Settings::default();
+        assert!(!d.history.disk && !d.history.keep_cancelled && !d.pin_backup);
+        assert_eq!(
+            (d.history.count, d.history.memory_mb, d.history.keep_days),
+            (20, 256, 7)
+        );
+        let f = std::env::temp_dir()
+            .join(format!("noeul-hist-set-{}", std::process::id()))
+            .join("config.toml");
+        let _ = std::fs::remove_dir_all(f.parent().unwrap());
+        let e = set(
+            &f,
+            &[
+                ("history.count", "50"),
+                ("history.disk", "on"),
+                ("pins.backup", "on"),
+            ],
+        )
+        .unwrap();
+        assert!(
+            e.text.contains(
+                "count = 50
+"
+            ),
+            "{}",
+            e.text
+        );
+        write(&f, &e.text).unwrap();
+        let l = load(&f);
+        assert_eq!(
+            (
+                l.settings.history.count,
+                l.settings.history.disk,
+                l.settings.pin_backup
+            ),
+            (50, true, true)
+        );
+        assert_eq!(l.to_json()["history"]["count"], 50);
+        assert_eq!(l.to_json()["pins"]["backup"], "on");
+        for (k, v) in [
+            ("history.count", "0"),
+            ("history.count", "101"),
+            ("history.keep_days", "x"),
+            ("history.memory_mb", "8"),
+        ] {
+            assert_eq!(set(&f, &[(k, v)]).unwrap_err().code, Code::Usage, "{k}={v}");
+        }
+        std::fs::write(
+            &f,
+            "schema_version = 1
+[history]
+count = 1000
+",
+        )
+        .unwrap();
+        let l = load(&f);
+        assert_eq!(l.settings.history.count, 20);
+        assert!(
+            l.problems.iter().any(|p| p.contains("history.count")),
+            "{:?}",
+            l.problems
+        );
         let _ = std::fs::remove_dir_all(f.parent().unwrap());
     }
 }

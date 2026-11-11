@@ -34,11 +34,54 @@
 //!   particular nothing is copied to the clipboard and nothing reaches the disk (NOEUL-SEC-002,
 //!   NOEUL-SEC-005).
 //! - Like every frame, it is counted in the instance's ledger and `Debug` never prints pixels.
+//!
+//! # The capture history (Step 60, NOEUL-FR-050)
+//!
+//! A successful capture (pinned, copied or saved) also keeps **the picture it produced** — with
+//! its annotations and redactions drawn in, never the pixels a redaction covers — in memory, as
+//! a [`Kept`] entry with a number, so it can be pinned again later (`noeul history pin`, the
+//! tray). The caller hands that picture over with [`Captures::keep`] when [`Captures::keeps`].
+//! The entries are bounded by count and by the pictures' total size (`[history] count`,
+//! `memory_mb`; the oldest go first; a picture larger than the whole budget is not kept).
+//! A capture the user marked **private** (`capture.private`, `P` in the overlay) joins neither
+//! the pictures nor the rectangles; a cancelled one joins only with `[history] keep_cancelled`.
+//! Writing them to disk is the caller's opt-in (`crate::store`).
 
 use crate::capture::Monitor;
 use crate::frame::{Frame, Rect};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
+use std::time::SystemTime;
+
+/// One earlier capture kept in memory (Step 60).
+#[derive(Debug)]
+pub struct Kept {
+    /// Numbered from 1 for the instance (continuing the disk history when that is on).
+    pub id: u64,
+    pub rect: Rect,
+    pub frame: Frame,
+    pub at: SystemTime,
+    pub outcome: Outcome,
+}
+
+/// The history's limits (`[history]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeepLimits {
+    pub count: usize,
+    pub bytes: u64,
+    pub keep_cancelled: bool,
+}
+
+/// No pictures until the instance sets the limits from its settings.
+impl Default for KeepLimits {
+    fn default() -> KeepLimits {
+        KeepLimits {
+            count: 0,
+            bytes: 256 * 1024 * 1024,
+            keep_cancelled: false,
+        }
+    }
+}
 
 /// How many rectangles of successful captures the instance remembers, in memory only
 /// (`selection.last`, `history.*`; NOEUL-FR-014, NOEUL-FR-050, NOEUL-SEC-005).
@@ -80,6 +123,8 @@ struct Session {
     frame: Frame,
     monitors: Vec<Monitor>,
     selection: Option<Rect>,
+    /// Marked private (Step 60): joins no history.
+    private: bool,
 }
 
 /// The confirmed selection handed to an output action. See the module documentation for its
@@ -188,6 +233,12 @@ pub struct Captures {
     ignored: u64,
     /// Captures ended by copying a colour with the picker (Step 59).
     colors: u64,
+    /// Step 60: earlier captures' pictures, oldest first, and their limits.
+    kept: VecDeque<Kept>,
+    next_kept: u64,
+    limits: KeepLimits,
+    /// Ids kept since [`Captures::take_fresh`] (the caller writes them to disk when that is on).
+    fresh: Vec<u64>,
 }
 
 impl Captures {
@@ -214,6 +265,7 @@ impl Captures {
             frame,
             monitors,
             selection: None,
+            private: false,
         });
         Ok(self.next_id)
     }
@@ -269,7 +321,17 @@ impl Captures {
     pub fn complete(&mut self, id: u64, how: Outcome) -> Result<(), SessionError> {
         let s = self.session(id)?;
         let rect = s.selection;
+        let private = s.private;
         self.open = None;
+        if private {
+            match how {
+                Outcome::Pinned => self.pinned += 1,
+                Outcome::Copied => self.copied += 1,
+                Outcome::Saved => self.saved += 1,
+                Outcome::Cancelled => self.cancelled += 1,
+            }
+            return Ok(());
+        }
         match how {
             Outcome::Pinned | Outcome::Copied | Outcome::Saved => {
                 match how {
@@ -312,6 +374,7 @@ impl Captures {
     pub fn finish_pin(&mut self, id: u64) -> Result<Frame, SessionError> {
         let s = self.session(id)?;
         let rect = s.selection.ok_or(SessionError::NoSelection)?;
+        let private = s.private;
         let out = if rect == s.frame.rect() {
             // The whole picture: move it instead of copying.
             let s = self.open.take().expect("checked above");
@@ -321,9 +384,116 @@ impl Captures {
             self.open = None;
             out
         };
-        self.remember(rect);
+        if !private {
+            self.remember(rect);
+        }
         self.pinned += 1;
         Ok(out)
+    }
+
+    /// Marks the open session private (Step 60): it joins no history.
+    pub fn set_private(&mut self, id: u64, private: bool) -> bool {
+        match &mut self.open {
+            Some(s) if s.id == id => {
+                s.private = private;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_private(&self) -> bool {
+        self.open.as_ref().is_some_and(|s| s.private)
+    }
+
+    /// The history's limits; the oldest entries beyond them go at once.
+    pub fn set_limits(&mut self, limits: KeepLimits) {
+        self.limits = limits;
+        self.trim();
+    }
+
+    /// The next entry's number (after the disk history's, Step 60).
+    pub fn continue_from(&mut self, next: u64) {
+        self.next_kept = self.next_kept.max(next.saturating_sub(1));
+    }
+
+    /// Keeps a picture (newest last) within the limits; returns its number (`None`: too large).
+    pub fn keep(&mut self, frame: Frame, outcome: Outcome) -> Option<u64> {
+        if self.limits.count == 0 || frame.rect().bgra_bytes() > self.limits.bytes {
+            return None;
+        }
+        self.next_kept += 1;
+        let id = self.next_kept;
+        self.kept.push_back(Kept {
+            id,
+            rect: frame.rect(),
+            frame,
+            at: SystemTime::now(),
+            outcome,
+        });
+        self.fresh.push(id);
+        self.trim();
+        Some(id)
+    }
+
+    /// Puts an entry read back from the disk history (oldest first) into memory.
+    pub fn restore_kept(&mut self, id: u64, frame: Frame, at: SystemTime) {
+        self.next_kept = self.next_kept.max(id);
+        self.kept.push_back(Kept {
+            id,
+            rect: frame.rect(),
+            frame,
+            at,
+            outcome: Outcome::Pinned,
+        });
+        self.trim();
+    }
+
+    fn trim(&mut self) {
+        let count = self.limits.count;
+        while self.kept.len() > count || self.kept_bytes() > self.limits.bytes {
+            if self.kept.pop_front().is_none() {
+                break;
+            }
+        }
+        let live: Vec<u64> = self.kept.iter().map(|k| k.id).collect();
+        self.fresh.retain(|id| live.contains(id));
+    }
+
+    /// The pictures' total size in memory.
+    pub fn kept_bytes(&self) -> u64 {
+        self.kept.iter().map(|k| k.frame.rect().bgra_bytes()).sum()
+    }
+
+    /// The kept captures, oldest first.
+    pub fn kept(&self) -> &VecDeque<Kept> {
+        &self.kept
+    }
+
+    pub fn kept_entry(&self, id: u64) -> Option<&Kept> {
+        self.kept.iter().find(|k| k.id == id)
+    }
+
+    /// Ids kept since the last call (to write to disk when that is on).
+    pub fn take_fresh(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.fresh)
+    }
+
+    /// Forgets one entry (its picture is freed).
+    pub fn forget(&mut self, id: u64) -> bool {
+        let before = self.kept.len();
+        self.kept.retain(|k| k.id != id);
+        self.fresh.retain(|f| *f != id);
+        self.kept.len() != before
+    }
+
+    /// Forgets every entry and the rectangles (`noeul history clear`).
+    pub fn clear_history(&mut self) -> usize {
+        let n = self.kept.len();
+        self.kept.clear();
+        self.fresh.clear();
+        self.history.clear();
+        n
     }
 
     /// Adds a successful capture's rectangle to the history (a repeat of the newest is not
@@ -372,6 +542,14 @@ impl Captures {
             self.cancelled += 1;
         }
         was
+    }
+
+    /// Whether a capture ending as `how` joins the picture history (Step 60): history on, the
+    /// open session not private, and a cancelled one only with `keep_cancelled`.
+    pub fn keeps(&self, how: Outcome) -> bool {
+        self.limits.count > 0
+            && !self.is_private()
+            && (how != Outcome::Cancelled || self.limits.keep_cancelled)
     }
 
     /// The rectangle of the last successful capture.
@@ -517,6 +695,10 @@ mod tests {
     fn the_history_keeps_successful_rectangles_in_memory_bounded() {
         let ledger = Ledger::new();
         let mut c = Captures::new();
+        c.set_limits(KeepLimits {
+            count: 20,
+            ..KeepLimits::default()
+        });
         let pic = Rect::new(0, 0, 100, 100);
         let run = |c: &mut Captures, r: Rect, how: Outcome| {
             let f = Frame::solid(&ledger, pic, [0; 4]).unwrap();
@@ -549,6 +731,87 @@ mod tests {
             "the oldest fell out"
         );
         assert_eq!(c.last(), Some(Rect::new(29, 0, 5, 5)));
+        // Step 60: the session keeps no picture by itself (the caller hands over what it
+        // produced, `Captures::keep`); clearing forgets the rectangles too.
+        assert!(c.kept().is_empty());
         assert_eq!(ledger.live(), (0, 0), "rectangles only: no picture is kept");
+        c.clear_history();
+        assert!(c.history().is_empty());
+    }
+
+    /// Step 60 (NOEUL-FR-050, NOEUL-FR-051): pictures kept by count and memory; a private
+    /// capture joins nothing; a cancelled one only with `keep_cancelled`; ids continue.
+    #[test]
+    fn the_picture_history_is_bounded_and_private_captures_are_left_out() {
+        let ledger = Ledger::new();
+        let mut c = Captures::new();
+        let pic = Rect::new(0, 0, 100, 100);
+        let start = |c: &mut Captures| {
+            let f = Frame::solid(&ledger, pic, [1, 2, 3, 255]).unwrap();
+            let id = c.begin(Origin::Hotkey, f, Vec::new()).unwrap();
+            c.select(id, Rect::new(0, 0, 10, 10)).unwrap();
+            id
+        };
+        c.set_limits(KeepLimits {
+            count: 3,
+            bytes: 10 * 10 * 4 * 2,
+            keep_cancelled: false,
+        });
+        c.continue_from(41);
+        for _ in 0..3 {
+            let id = start(&mut c);
+            assert!(c.keeps(Outcome::Copied));
+            let sel = c.selection(id).unwrap();
+            c.keep(sel.into_frame(), Outcome::Copied);
+            c.complete(id, Outcome::Copied).unwrap();
+        }
+        let ids: Vec<u64> = c.kept().iter().map(|k| k.id).collect();
+        assert_eq!(
+            ids,
+            [42, 43],
+            "numbered after the disk history; two fit in the memory budget"
+        );
+        assert_eq!(c.take_fresh(), [42, 43]);
+        // Private: no picture, no rectangle.
+        let id = start(&mut c);
+        assert!(c.set_private(id, true) && c.is_private());
+        assert!(!c.keeps(Outcome::Saved), "a private capture keeps nothing");
+        let before = c.history().len();
+        c.complete(id, Outcome::Saved).unwrap();
+        assert_eq!((c.kept().len(), c.history().len()), (2, before));
+        assert!(c.take_fresh().is_empty());
+        // Cancelled: kept only when asked.
+        let _ = start(&mut c);
+        assert!(!c.keeps(Outcome::Cancelled));
+        c.cancel();
+        c.set_limits(KeepLimits {
+            count: 3,
+            bytes: 1 << 20,
+            keep_cancelled: true,
+        });
+        let _ = start(&mut c);
+        assert!(c.keeps(Outcome::Cancelled));
+        c.cancel();
+        // A kept copy is separate from the pin's own frame.
+        let id = start(&mut c);
+        let pinned = c.finish_pin(id).unwrap();
+        let kept = c
+            .keep(pinned.crop(pinned.rect()).unwrap(), Outcome::Pinned)
+            .unwrap();
+        assert_eq!(c.kept().back().unwrap().rect, pinned.rect());
+        assert!(c.forget(kept));
+        // Too large for the whole budget: not kept.
+        c.set_limits(KeepLimits {
+            count: 3,
+            bytes: 16,
+            keep_cancelled: false,
+        });
+        assert!(c.kept().is_empty(), "trimmed to the new budget");
+        assert_eq!(
+            c.keep(Frame::solid(&ledger, pic, [0; 4]).unwrap(), Outcome::Copied),
+            None
+        );
+        drop(pinned);
+        assert_eq!(ledger.live(), (0, 0));
     }
 }

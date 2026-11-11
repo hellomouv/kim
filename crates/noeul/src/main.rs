@@ -13,6 +13,7 @@
 mod config_cmd;
 mod hotkeys_cmd;
 mod instance;
+mod keep_cmd;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use noeul::error::{Code, NoeulError};
@@ -137,6 +138,10 @@ enum Command {
     /// F3 does), `noeul pin <file>` an image file; the subcommands list, hide, show, close,
     /// reopen and change pins, and switch groups
     Pin(PinArgs),
+    /// The capture history of the running Noeul: list it, pin a capture again, forget one or
+    /// clear it (Step 60; on disk only with `[history] disk = "on"`)
+    #[command(subcommand)]
+    History(keep_cmd::HistoryCommand),
     /// Noeul's keyboard shortcuts: list, change, disable, reset, check conflicts (never
     /// registers a hotkey or opens a window)
     #[command(subcommand)]
@@ -273,6 +278,12 @@ enum PinCommand {
     /// Pin groups: list them, or switch to one (its pins show, the others hide)
     #[command(subcommand)]
     Group(PinGroupCommand),
+    /// Restore the backed-up pins that are not open (with `[pins] backup = "on"`; never
+    /// duplicates an open pin, never captures)
+    Restore(DryRun),
+    /// The pin backup: its status, write it now, or remove it
+    #[command(subcommand)]
+    Backup(keep_cmd::BackupCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -527,7 +538,10 @@ fn main() -> ExitCode {
             Some(PinCommand::Group(PinGroupCommand::Switch(a))) => {
                 instance::pin_group_switch(&ctx, a)
             }
+            Some(PinCommand::Restore(a)) => keep_cmd::restore(&ctx, a.dry_run),
+            Some(PinCommand::Backup(c)) => keep_cmd::backup(&ctx, c),
         },
+        Command::History(c) => keep_cmd::history(&ctx, c),
         Command::Hotkeys(c) => hotkeys_cmd::run(c, &ctx),
         Command::Config(ConfigCommand::Show) => instance::config_show(),
         Command::Config(ConfigCommand::Set(a)) => config_cmd::set(&ctx, a),
@@ -557,6 +571,16 @@ fn command_name(c: &Command) -> &'static str {
             Some(PinCommand::Set(_)) => "pin.set",
             Some(PinCommand::Group(PinGroupCommand::List)) => "pin.group.list",
             Some(PinCommand::Group(PinGroupCommand::Switch(_))) => "pin.group.switch",
+            Some(PinCommand::Restore(_)) => "pin.restore",
+            Some(PinCommand::Backup(keep_cmd::BackupCommand::Status)) => "pin.backup.status",
+            Some(PinCommand::Backup(keep_cmd::BackupCommand::Save(_))) => "pin.backup.save",
+            Some(PinCommand::Backup(keep_cmd::BackupCommand::Clear(_))) => "pin.backup.clear",
+        },
+        Command::History(c) => match c {
+            keep_cmd::HistoryCommand::List => "history.list",
+            keep_cmd::HistoryCommand::Pin(_) => "history.pin",
+            keep_cmd::HistoryCommand::Forget(_) => "history.forget",
+            keep_cmd::HistoryCommand::Clear(_) => "history.clear",
         },
         Command::Hotkeys(c) => hotkeys_cmd::command_name(c),
         Command::Config(ConfigCommand::Show) => "config.show",

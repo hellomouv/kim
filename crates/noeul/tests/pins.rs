@@ -333,9 +333,10 @@ fn many_pins_are_independent_windows_driven_by_cli_ipc_and_their_own_messages() 
     let (code, re) = sb.json(&["pin", "reopen"]);
     assert_eq!((code, re["data"]["pin"].as_str()), (0, Some("pin-2")));
     assert_eq!(rect_tuple(&pin(&list(&sb), "pin-2")["rect"]), regions[1]);
-    // Memory: exactly the three pictures; nothing else is held.
+    // Memory: exactly the three pictures and, since Step 60, the in-memory capture history's
+    // copies of them (NOEUL-FR-050); nothing else is held.
     let bytes: i64 = regions.iter().map(|r| i64::from(r.2 * r.3 * 4)).sum();
-    assert_eq!(status(&sb)["memory"]["bytes"], bytes);
+    assert_eq!(status(&sb)["memory"]["bytes"], 2 * bytes);
 
     // No pin ever became the foreground window.
     assert_ne!(
@@ -350,7 +351,15 @@ fn many_pins_are_independent_windows_driven_by_cli_ipc_and_their_own_messages() 
     assert!(pin_windows(pid).is_empty());
     let st = status(&sb);
     assert_eq!(st["pins"]["open"], 0);
-    assert_eq!(st["memory"]["frames"], 1, "only the reopen memory");
+    // The reopen memory and, since Step 60, the in-memory capture history's three copies;
+    // clearing the history leaves only the reopen memory.
+    assert_eq!(
+        st["memory"]["frames"], 4,
+        "the reopen memory and the history"
+    );
+    let (code, _) = sb.json(&["history", "clear", "--yes"]);
+    assert_eq!(code, 0);
+    assert_eq!(status(&sb)["memory"]["frames"], 1, "only the reopen memory");
     assert!(
         files_under(&sb.temp_dir()).is_empty(),
         "no temporary image files"

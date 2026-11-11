@@ -102,6 +102,8 @@ const WM_NOEUL_WAKE: u32 = WM_APP + 0x4E; // 'N'
 const WM_NOEUL_TRAY: u32 = WM_APP + 0x4F;
 /// The control window's one-shot timer for a pending display change (Step 58).
 const DISPLAY_TIMER: usize = 0x4E44;
+/// Step 60: the pin backup's one-shot timer (armed only after the pins changed).
+const BACKUP_TIMER: usize = 0x4E42;
 /// Most connections served at once; more are refused with `busy`.
 const MAX_CONNECTIONS: usize = 16;
 /// An idle connection is closed after this long without a request.
@@ -460,6 +462,13 @@ fn pump(app: &mut App<WinShell>) {
     if let Some(delay) = app.take_display_timer() {
         arm_display_timer(CONTROL.get() as HWND, delay);
     }
+    // Step 60: new history pictures to disk (when on), the backup timer when the pins changed.
+    app.housekeeping();
+    if let Some(delay) = app.take_backup_timer() {
+        let ms = u32::try_from(delay.as_millis()).unwrap_or(u32::MAX);
+        // SAFETY: a timer of our own control window, killed when it fires.
+        unsafe { SetTimer(CONTROL.get() as HWND, BACKUP_TIMER, ms, None) };
+    }
     if app.quitting() {
         // SAFETY: ends this thread's message loop.
         unsafe { PostQuitMessage(0) };
@@ -620,6 +629,17 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             if done.is_none() {
                 DISPLAY_MISSED.set(missed);
                 arm_display_timer(hwnd, crate::displays::SETTLE);
+            }
+            return 0;
+        }
+        // Step 60: the pins have been still for a second: back them up once.
+        WM_TIMER if wp == BACKUP_TIMER => {
+            // SAFETY: our own window's timer.
+            unsafe { KillTimer(hwnd, BACKUP_TIMER) };
+            if with_app(App::backup_due).is_none() {
+                // The core is busy (a modal loop): try again shortly.
+                // SAFETY: as above.
+                unsafe { SetTimer(hwnd, BACKUP_TIMER, 1000, None) };
             }
             return 0;
         }

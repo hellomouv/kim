@@ -25,6 +25,10 @@ pub enum MenuItem {
     /// the nearest work area.
     BringPinsOnScreen,
     ReopenClosedPin,
+    /// Step 60: shown while the capture history holds a picture: pins the newest again.
+    PinLastCapture,
+    /// Step 60: shown while the pin backup holds pins that are not open: restores them.
+    RestorePins,
     /// Shown while a pin lets clicks through (NOEUL-FR-063): makes every pin clickable again.
     MakeAllPinsClickable,
     /// Switches to the group at this index of the group list (shown while there are several).
@@ -45,6 +49,8 @@ impl MenuItem {
             MenuItem::ShowAllPins => "Show all pins",
             MenuItem::BringPinsOnScreen => "Bring pins on screen",
             MenuItem::ReopenClosedPin => "Reopen closed pin",
+            MenuItem::PinLastCapture => "Pin last capture again",
+            MenuItem::RestorePins => "Restore pins from last time",
             MenuItem::MakeAllPinsClickable => "Make all pins clickable",
             // The core names the group (`App::tray_entries`).
             MenuItem::Group(_) => "Group",
@@ -64,6 +70,8 @@ impl MenuItem {
             MenuItem::BringPinsOnScreen => 7,
             MenuItem::ReopenClosedPin => 2,
             MenuItem::MakeAllPinsClickable => 8,
+            MenuItem::PinLastCapture => 10,
+            MenuItem::RestorePins => 11,
             MenuItem::Group(i) => 100 + u32::from(i),
             MenuItem::Shortcuts { .. } => 3,
             MenuItem::Quit => 9,
@@ -94,6 +102,9 @@ pub struct MenuState {
     pub click_through: usize,
     /// How many groups there are (the current one included).
     pub groups: usize,
+    /// Step 60: pictures in the capture history, and backed-up pins that are not open.
+    pub history: usize,
+    pub restorable: usize,
 }
 
 /// One menu entry as shown: its item, its text and whether it is checked.
@@ -120,6 +131,12 @@ pub fn menu(s: &MenuState) -> Vec<MenuItem> {
     if s.reopenable {
         items.push(MenuItem::ReopenClosedPin);
     }
+    if s.history > 0 {
+        items.push(MenuItem::PinLastCapture);
+    }
+    if s.restorable > 0 {
+        items.push(MenuItem::RestorePins);
+    }
     if s.groups > 1 {
         items.extend((0..s.groups.min(32)).map(|i| MenuItem::Group(i as u16)));
     }
@@ -145,6 +162,8 @@ mod tests {
             off_screen: 0,
             click_through: 0,
             groups: 1,
+            history: 0,
+            restorable: 0,
         };
         assert_eq!(
             menu(&base),
@@ -208,6 +227,16 @@ mod tests {
         let ids: std::collections::BTreeSet<u32> = m.iter().map(|i| i.command_id()).collect();
         assert_eq!(ids.len(), m.len(), "command ids stay unique");
         assert!(!with(2, 0, 0).contains(&MenuItem::MakeAllPinsClickable));
+        // Step 60: the history and the backup offer their items only when they hold something.
+        assert!(!menu(&base).contains(&MenuItem::PinLastCapture));
+        let m = menu(&MenuState {
+            history: 2,
+            restorable: 3,
+            ..base
+        });
+        assert!(m.contains(&MenuItem::PinLastCapture) && m.contains(&MenuItem::RestorePins));
+        let ids: std::collections::BTreeSet<u32> = m.iter().map(|i| i.command_id()).collect();
+        assert_eq!(ids.len(), m.len(), "command ids stay unique");
         assert!(
             !with(2, 0, 0)
                 .iter()

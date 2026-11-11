@@ -116,8 +116,8 @@ fn a_one_pixel_pin_lives_closes_and_reopens() {
     assert_eq!(cap["data"]["pin"]["id"], "pin-1");
     let st = status(&sb);
     assert_eq!(
-        st["memory"]["bytes"], 4,
-        "1×1 BGRA, the frozen picture is gone"
+        st["memory"]["bytes"], 8,
+        "1×1 BGRA and its history copy (Step 60); the frozen picture is gone"
     );
     assert_eq!(st["pins"]["open"], 1);
     let (_, list) = sb.json(&["pin", "list"]);

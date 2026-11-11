@@ -39,7 +39,7 @@ fn endpoint(ctx: &Ctx) -> Result<String> {
 
 /// Connects to the running instance; `Ok(None)` when none runs.
 #[cfg(windows)]
-fn connect(ctx: &Ctx) -> Result<Option<client::Session>> {
+pub(crate) fn connect(ctx: &Ctx) -> Result<Option<client::Session>> {
     let ep = endpoint(ctx)?;
     match client::open(&ep) {
         Ok(s) => Ok(Some(s)),

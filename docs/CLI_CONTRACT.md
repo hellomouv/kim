@@ -212,6 +212,7 @@ this document with its exit code.
 | `noeul_not_running` | 3 | The command needs the running Noeul (pins, capture, quit), and none runs; start it or pass `--start`. |
 | `pin_not_found` | 3 | No open pin with this ID, or no closed pin to reopen. |
 | `nothing_to_pin` | 3 | The clipboard or file holds nothing Noeul can pin: it is empty, holds no supported content (or not the kind asked for with `--as`), holds content its program marked private, or the file is missing, a folder or not a picture (Step 55). |
+| `history_entry_not_found` | 3 | `noeul history pin|forget <n>` names a capture the history does not hold (or the history is empty); `noeul history list` shows it (Step 60). |
 | `monitor_not_found` | 3 | `noeul capture --monitor <n>` names a monitor that is not attached now (`noeul status` lists them, 1 is the leftmost; Step 58). |
 | `window_not_found` | 3 | `noeul capture --window active` (or the `capture.window` key) found no window to capture: none has the keyboard focus, the desktop has it, or the window is minimized, hidden by Windows or off every monitor (Step 58). |
 | `noeul_identity_mismatch` | 4 | The endpoint is served by a process that is not `noeul.exe` of this user (a pipe squatter, or a process that cannot be verified). Nothing was sent to it. |

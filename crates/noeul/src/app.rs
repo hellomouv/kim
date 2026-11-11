@@ -98,6 +98,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+mod keeping;
 mod pasting;
 
 /// What the core needs from the desktop besides capturing.
@@ -471,6 +472,9 @@ pub fn overlay_help(m: &Manager, gestures: Gestures) -> Vec<String> {
     if let Some(x) = k("magnifier.toggle") {
         fourth.push(format!("{x} magnifier"));
     }
+    if let Some(x) = k("capture.private") {
+        fourth.push(format!("{x} private"));
+    }
     if let (Some(p), Some(n)) = (k("history.previous"), k("history.next")) {
         fourth.push(format!("{p}/{n} earlier areas"));
     }
@@ -696,6 +700,8 @@ pub struct App<S: Shell> {
     /// The colour format last chosen with `color.format-next` while this instance runs (memory
     /// only; a settings reload forgets it, Step 59).
     color_format: Option<pick::Format>,
+    /// The opt-in history on disk and the pin backup (Step 60).
+    keeping: keeping::Keeping,
 }
 
 impl<S: Shell> std::fmt::Debug for App<S> {
@@ -732,7 +738,7 @@ impl<S: Shell> App<S> {
     ) -> App<S> {
         let mut pins = Pins::new();
         pins.set_look(settings.settings.pin_look);
-        App {
+        let mut app = App {
             shell,
             capture,
             ledger: Ledger::new(),
@@ -757,7 +763,10 @@ impl<S: Shell> App<S> {
             displays: Debounce::default(),
             display_timer: None,
             color_format: None,
-        }
+            keeping: keeping::Keeping::default(),
+        };
+        app.apply_keeping(true);
+        app
     }
 
     /// Whether the capture overlay is open.
@@ -813,6 +822,22 @@ impl<S: Shell> App<S> {
             "pin.set" => self.pin_set(params, dry_run),
             "group.list" => Ok(self.group_list()),
             "group.switch" => self.group_switch(params, dry_run),
+            "history.list" => Ok(self.history_list()),
+            "history.pin" => self.history_pin(params, dry_run),
+            "history.forget" => self.history_forget(params, dry_run),
+            "history.clear" => self.history_clear(dry_run),
+            "backup.status" => Ok(self.backup_status()),
+            "backup.save" => {
+                if dry_run {
+                    Ok(
+                        json!({"dry_run": true, "saved": self.pins.len() + self.restorable(), "written": 0}),
+                    )
+                } else {
+                    self.save_backup()
+                }
+            }
+            "backup.restore" => self.restore_pins(dry_run),
+            "backup.clear" => self.clear_backup(dry_run),
             "hotkeys.reload" => {
                 let problem = self.hotkeys.reload();
                 Ok(json!({"reloaded": problem.is_none(), "problem": problem,
@@ -833,6 +858,7 @@ impl<S: Shell> App<S> {
     pub fn reload_settings(&mut self) -> Value {
         self.settings = settings::load(&self.paths.config_file());
         self.pins.set_look(self.settings.settings.pin_look);
+        self.apply_keeping(false);
         // `[color] format` applies again from the next capture (Step 59).
         self.color_format = None;
         self.settings.to_json()
@@ -1196,6 +1222,7 @@ impl<S: Shell> App<S> {
             .map_err(session_error)?;
         self.captures.select(sid, region).map_err(session_error)?;
         let frame = self.captures.finish_pin(sid).map_err(session_error)?;
+        self.keep_pinned(&frame);
         let id = if origin == Origin::Cli {
             self.create_pin(&desktop, frame, Source::Capture, Placement::Exact)?
         } else {
@@ -1256,6 +1283,16 @@ impl<S: Shell> App<S> {
     /// A pin requested over IPC: never with focus, so it never takes the keyboard from the
     /// program the user is in (NOEUL-FR-060); announced like every CLI capture or clipboard read
     /// (the default notice of NOEUL-SEC-010).
+    /// Step 60: a capture pinned without the overlay (CLI, `capture.monitor`/`window`) joins the
+    /// history as it was pinned.
+    fn keep_pinned(&mut self, frame: &Frame) {
+        if self.captures.keeps(SessionOutcome::Pinned)
+            && let Some(copy) = frame.crop(frame.rect())
+        {
+            self.captures.keep(copy, SessionOutcome::Pinned);
+        }
+    }
+
     fn create_pin(
         &mut self,
         desktop: &crate::capture::Desktop,
@@ -1355,6 +1392,7 @@ impl<S: Shell> App<S> {
                     .map_err(session_error)?;
                 self.captures.select(sid, region).map_err(session_error)?;
                 let frame = self.captures.finish_pin(sid).map_err(session_error)?;
+                self.keep_pinned(&frame);
                 let id = self.create_pin(&desktop, frame, Source::Capture, Placement::Exact)?;
                 self.last_action = Some(("pin.create".into(), "pinned"));
                 Ok(json!({"dry_run": false, "source": "region", "pin": self.pin_ref(id)}))
@@ -1541,6 +1579,10 @@ impl<S: Shell> App<S> {
     /// hotkeys (NOEUL-FR-002). Idempotent; the runtime calls it again on any exit path.
     pub fn shutdown(&mut self) {
         self.quit = true;
+        // Step 60: the last state of the pins, before they close.
+        if self.settings.settings.pin_backup && !self.pins.is_empty() {
+            let _ = self.save_backup();
+        }
         if let Some(mut ov) = self.overlay.take() {
             ov.window.destroy();
             if let SessionKind::PinEdit(id) = ov.kind {
@@ -2285,11 +2327,42 @@ impl<S: Shell> App<S> {
             return true;
         }
         self.shell.end_detection();
+        if let Some(id) = self.captures.open_id() {
+            self.captures.set_private(id, ov.model.private());
+            if self.captures.keeps(SessionOutcome::Cancelled)
+                && let Ok(sel) = self.captures.selection(id)
+            {
+                let rect = sel.rect();
+                let anns = annotation::inside(ov.model.annotations(), rect);
+                if let Some(f) = annotation::flatten(sel.frame(), &anns, rect) {
+                    self.captures.keep(f, SessionOutcome::Cancelled);
+                }
+            }
+        }
         self.captures.cancel();
         self.overlay_menu = None;
         self.save_request = None;
         self.last_action = Some(("capture.cancel".into(), "cancelled"));
         true
+    }
+
+    /// Step 60: the picture an overlay capture produced — the selection with its annotations and
+    /// redactions drawn in — joins the history, unless the user marked it private (`P`).
+    fn keep_overlay_output(&mut self, id: u64, how: SessionOutcome) {
+        let Some(private) = self.overlay.as_ref().map(|o| o.model.private()) else {
+            return;
+        };
+        self.captures.set_private(id, private);
+        if !self.captures.keeps(how) {
+            return;
+        }
+        let Ok(sel) = self.captures.selection(id) else {
+            return;
+        };
+        let rect = sel.rect();
+        if let Some(f) = annotation::flatten(sel.frame(), &self.overlay_annotations(rect), rect) {
+            self.captures.keep(f, how);
+        }
     }
 
     /// The annotations of the open capture overlay inside `rect`, in picture pixels.
@@ -2318,6 +2391,7 @@ impl<S: Shell> App<S> {
         action: &'static str,
         result: &'static str,
     ) {
+        self.keep_overlay_output(id, how);
         let _ = self.captures.complete(id, how);
         if let Some(mut ov) = self.overlay.take() {
             ov.window.destroy();
@@ -3249,6 +3323,8 @@ impl<S: Shell> App<S> {
             off_screen: self.pins.off_screen(&self.capture.desktop()),
             click_through: self.pins.click_through(),
             groups: self.pins.groups().len(),
+            history: self.captures.kept().len(),
+            restorable: self.restorable(),
         })
     }
 
@@ -3324,6 +3400,16 @@ impl<S: Shell> App<S> {
                 let _ = self.pins.reopen(self.shell.pin_windows(), focus);
             }
             MenuItem::MakeAllPinsClickable => self.action(PINS_CLICKABLE, None),
+            MenuItem::PinLastCapture => {
+                if let Err(e) = self.history_pin(&json!({}), false) {
+                    self.shell.notice(&e.message);
+                }
+            }
+            MenuItem::RestorePins => {
+                if let Err(e) = self.restore_pins(false) {
+                    self.shell.notice(&e.message);
+                }
+            }
             MenuItem::Group(i) => {
                 if let Some(g) = self.pins.groups().get(usize::from(i)) {
                     let name = g.name.clone();
@@ -3715,6 +3801,9 @@ mod display_tests;
 mod color_tests;
 
 #[cfg(test)]
+mod keeping_tests;
+
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::capture::{CaptureError, Desktop, Monitor, Synthetic};
@@ -4043,7 +4132,19 @@ pub(crate) mod tests {
         }
     }
 
+    /// A test instance. Its capture history is off (count 0) so the memory checks of the other
+    /// features count only their own pictures; the Step 60 tests turn it on.
     pub fn app(dir: &std::path::Path, state: DesktopState) -> App<FakeShell> {
+        let mut a = app_with_history(dir, state);
+        a.captures.set_limits(crate::selection::KeepLimits {
+            count: 0,
+            ..crate::selection::KeepLimits::default()
+        });
+        a
+    }
+
+    /// A test instance with the history as its settings say.
+    pub fn app_with_history(dir: &std::path::Path, state: DesktopState) -> App<FakeShell> {
         let paths = Paths::under(dir);
         let hotkeys = Manager::start(&paths, Some("--no-hotkeys"), || unreachable!());
         App::new(
@@ -4085,7 +4186,7 @@ pub(crate) mod tests {
             pointer_at: Some((500, 300)),
             ..FakeShell::default()
         };
-        let a = App::new(
+        let mut a = App::new(
             shell,
             Box::new(Arc::clone(&syn)),
             hotkeys,
@@ -4097,6 +4198,11 @@ pub(crate) mod tests {
                 session: 1,
             },
         );
+        // The history off, as in `app` (the Step 60 tests turn it on).
+        a.captures.set_limits(crate::selection::KeepLimits {
+            count: 0,
+            ..crate::selection::KeepLimits::default()
+        });
         (a, syn, dir)
     }
 
@@ -4431,7 +4537,7 @@ pub(crate) mod tests {
                 "Double-click inside pins it \u{b7} Ctrl+C copies \u{b7} Ctrl+S saves \u{b7} Ctrl+Shift+S quick-saves",
                 "Arrows move \u{b7} Ctrl+arrows grow \u{b7} Shift+arrows shrink",
                 "Ctrl+A whole monitor \u{b7} R last area \u{b7} Enter pins the selection",
-                "W A S D move the pointer \u{b7} Space marks a corner \u{b7} E windows, elements, off \u{b7} M magnifier \u{b7} Comma/Period earlier areas",
+                "W A S D move the pointer \u{b7} Space marks a corner \u{b7} E windows, elements, off \u{b7} M magnifier \u{b7} P private \u{b7} Comma/Period earlier areas",
                 "C copies the colour \u{b7} Shift+C switches HEX, RGB, HSL",
             ]
         );
@@ -5889,7 +5995,16 @@ pub(crate) mod tests {
         let path = a.paths.config_file();
         let edited = settings::set(&path, values).unwrap();
         settings::write(&path, &edited.text).unwrap();
+        let history_was_off =
+            a.captures.kept().is_empty() && !a.captures.keeps(SessionOutcome::Pinned);
         a.reload_settings();
+        // A test that had the history off keeps it off unless it changes `[history]`.
+        if history_was_off && !values.iter().any(|(k, _)| k.starts_with("history.")) {
+            a.captures.set_limits(crate::selection::KeepLimits {
+                count: 0,
+                ..crate::selection::KeepLimits::default()
+            });
+        }
         assert!(a.settings.problems.is_empty(), "{:?}", a.settings.problems);
     }
 

@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": 42,
+  "result": {
+    "dry_run": false,
+    "cleared": 2,
+    "disk_cleared": 2
+  }
+}

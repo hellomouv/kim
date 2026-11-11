@@ -137,17 +137,18 @@
       "properties": {
         "type": { "const": "request" },
         "id": { "type": "integer", "minimum": 1 },
-        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "hotkeys.reload", "settings.reload", "quit"] },
+        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "history.list", "history.pin", "history.forget", "history.clear", "backup.status", "backup.save", "backup.restore", "backup.clear", "hotkeys.reload", "settings.reload", "quit"] },
         "params": { "$ref": "#/$defs/params" }
       }
     },
     "params": {
-      "description": "Parameters of every method (absent flags are false). capture: exactly one of region, monitor or window (monitor and window since Step 58), pin (required) and pointer; capture.region and capture.cancel: dry_run only; pin.create: source (region with region, clipboard with an optional at and as, or file with path and an optional at; Step 55); pin.hide, pin.show, pin.close and pin.set: id, group or all; pin.show: on_screen; pin.set: at (one pin), zoom, opacity, rotation, mirrored, rotate, flip, thumbnail, click_through, move_to_group (Step 54); group.switch: group; quit: force.",
+      "description": "Parameters of every method (absent flags are false). capture: exactly one of region, monitor or window (monitor and window since Step 58), pin (required) and pointer; capture.region and capture.cancel: dry_run only; pin.create: source (region with region, clipboard with an optional at and as, or file with path and an optional at; Step 55); pin.hide, pin.show, pin.close and pin.set: id, group or all; pin.show: on_screen; pin.set: at (one pin), zoom, opacity, rotation, mirrored, rotate, flip, thumbnail, click_through, move_to_group (Step 54); group.switch: group; history.pin and history.forget: entry (Step 60); quit: force.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "dry_run": { "type": "boolean" },
         "region": { "$ref": "#/$defs/rect" },
+        "entry": { "description": "history.pin (default: the newest) and history.forget: a kept capture's number (Step 60).", "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
         "monitor": { "description": "capture: a whole monitor — the primary one, the one under the pointer, or the n-th in the order `status` lists them (Step 58, NOEUL-FR-017).", "oneOf": [{ "enum": ["primary", "pointer"] }, { "type": "integer", "minimum": 1, "maximum": 64 }] },
         "window": { "description": "capture: the window that has the keyboard focus, as the user sees it on screen (Step 58, NOEUL-FR-017).", "const": "active" },
         "pointer": { "description": "capture: draw the mouse pointer into the picture (Step 58, NOEUL-FR-016).", "type": "boolean" },
@@ -196,6 +197,14 @@
             { "$ref": "#/$defs/pin_set_result" },
             { "$ref": "#/$defs/group_list_result" },
             { "$ref": "#/$defs/group_switch_result" },
+            { "$ref": "#/$defs/history_list_result" },
+            { "$ref": "#/$defs/history_pin_result" },
+            { "$ref": "#/$defs/history_forget_result" },
+            { "$ref": "#/$defs/history_clear_result" },
+            { "$ref": "#/$defs/backup_status_result" },
+            { "$ref": "#/$defs/backup_save_result" },
+            { "$ref": "#/$defs/backup_restore_result" },
+            { "$ref": "#/$defs/backup_clear_result" },
             { "$ref": "#/$defs/reload_result" },
             { "$ref": "#/$defs/settings_reload_result" },
             { "$ref": "#/$defs/quit_result" }
@@ -288,7 +297,7 @@
     },
     "settings_state": {
       "type": "object",
-      "required": ["path", "state", "tray_icon", "keyboard_help", "quick_save_folder", "detection", "magnifier", "pointer", "pins", "paste", "color", "gestures", "problems"],
+      "required": ["path", "state", "tray_icon", "keyboard_help", "quick_save_folder", "detection", "magnifier", "pointer", "pins", "history", "paste", "color", "gestures", "problems"],
       "additionalProperties": false,
       "properties": {
         "path": { "type": "string", "minLength": 1 },
@@ -300,13 +309,27 @@
         "magnifier": { "description": "`[capture] magnifier` (Step 52, NOEUL-FR-041): whether the overlay shows the magnifier when it opens.", "enum": ["on", "off"] },
         "pointer": { "description": "`[capture] pointer` (Step 58, NOEUL-FR-016): whether the mouse pointer is drawn into the pictures F1, capture.monitor and capture.window take.", "enum": ["on", "off"] },
         "pins": {
-          "description": "`[pins]` (Step 54, UX spec §10): the outline and the shadow around every pin.",
+          "description": "`[pins]` (Step 54, UX spec §10): the outline and the shadow around every pin; `backup` (Step 60, NOEUL-FR-066): the opt-in pin backup.",
           "type": "object",
-          "required": ["border", "shadow"],
+          "required": ["border", "shadow", "backup"],
           "additionalProperties": false,
           "properties": {
             "border": { "enum": ["on", "off"] },
-            "shadow": { "enum": ["on", "off"] }
+            "shadow": { "enum": ["on", "off"] },
+            "backup": { "enum": ["on", "off"] }
+          }
+        },
+        "history": {
+          "description": "`[history]` (Step 60, NOEUL-FR-050, NOEUL-FR-051): how many earlier captures and how much memory, whether they are also kept on disk and for how long, whether cancelled captures are kept.",
+          "type": "object",
+          "required": ["count", "memory_mb", "disk", "keep_days", "keep_cancelled"],
+          "additionalProperties": false,
+          "properties": {
+            "count": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "memory_mb": { "type": "integer", "minimum": 16, "maximum": 2048 },
+            "disk": { "enum": ["on", "off"] },
+            "keep_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+            "keep_cancelled": { "enum": ["on", "off"] }
           }
         },
         "paste": {
@@ -902,6 +925,107 @@
         "dry_run": { "type": "boolean" },
         "closed": { "type": "array", "items": { "$ref": "#/$defs/pin_id" } },
         "reopenable": { "oneOf": [{ "$ref": "#/$defs/pin_id" }, { "type": "null" }] }
+      }
+    },
+    "history_list_result": {
+      "description": "history.list (Step 60, NOEUL-FR-050): the kept captures, oldest first — geometry, time and outcome only, never pixels.",
+      "type": "object",
+      "required": ["disk", "count", "bytes", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "disk": { "type": "boolean" },
+        "count": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "rect", "at", "outcome", "on_disk"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "integer", "minimum": 1 },
+              "rect": { "$ref": "#/$defs/rect" },
+              "at": { "type": "string" },
+              "outcome": { "enum": ["pinned", "copied", "saved", "cancelled"] },
+              "on_disk": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "history_pin_result": {
+      "type": "object",
+      "required": ["dry_run", "entry", "pin"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "entry": { "type": "integer", "minimum": 1 },
+        "pin": { "oneOf": [{ "$ref": "#/$defs/pin_id" }, { "type": "null" }] }
+      }
+    },
+    "history_forget_result": {
+      "type": "object",
+      "required": ["dry_run", "entry", "forgotten"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "entry": { "type": "integer", "minimum": 1 },
+        "forgotten": { "type": "boolean" }
+      }
+    },
+    "history_clear_result": {
+      "type": "object",
+      "required": ["dry_run", "cleared", "disk_cleared"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "cleared": { "type": "integer", "minimum": 0 },
+        "disk_cleared": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "backup_status_result": {
+      "description": "backup.status (Step 60, NOEUL-FR-066).",
+      "type": "object",
+      "required": ["enabled", "saved_at", "pins", "restorable", "problems"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "saved_at": { "type": ["string", "null"] },
+        "pins": { "type": "integer", "minimum": 0 },
+        "restorable": { "type": "integer", "minimum": 0 },
+        "problems": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "backup_save_result": {
+      "type": "object",
+      "required": ["dry_run", "saved", "written"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "saved": { "type": "integer", "minimum": 0 },
+        "written": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "backup_restore_result": {
+      "type": "object",
+      "required": ["dry_run", "restored", "already_open", "would_restore", "skipped", "problems"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "restored": { "type": "array", "items": { "$ref": "#/$defs/pin_id" } },
+        "already_open": { "type": "integer", "minimum": 0 },
+        "would_restore": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "problems": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "backup_clear_result": {
+      "type": "object",
+      "required": ["dry_run", "removed"],
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "removed": { "type": "integer", "minimum": 0 }
       }
     },
     "pin_reopen_result": {

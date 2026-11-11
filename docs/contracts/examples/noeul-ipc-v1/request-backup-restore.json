@@ -1,0 +1,6 @@
+{
+  "type": "request",
+  "id": 43,
+  "method": "backup.restore",
+  "params": {}
+}

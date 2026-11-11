@@ -77,6 +77,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "capture.save",
     "capture.quick-save",
     "capture.cancel",
+    "capture.private",
     "selection.mark",
     "selection.full",
     "selection.last",
@@ -964,6 +965,7 @@ mod tests {
             ),
             (c("E", false, false, false), false, Some("detect.cycle")),
             (c("M", false, false, false), false, Some("magnifier.toggle")),
+            (c("P", false, false, false), false, Some("capture.private")),
             (
                 c("Comma", false, false, false),
                 false,

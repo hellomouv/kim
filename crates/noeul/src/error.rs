@@ -19,6 +19,8 @@ pub enum Code {
     PinNotFound,
     NothingToPin,
     MonitorNotFound,
+    /// Step 60: no capture with this number in the history.
+    HistoryEntryNotFound,
     WindowNotFound,
     ProtocolError,
     NoeulIdentityMismatch,
@@ -54,6 +56,7 @@ impl Code {
         Code::PinNotFound,
         Code::NothingToPin,
         Code::MonitorNotFound,
+        Code::HistoryEntryNotFound,
         Code::WindowNotFound,
         Code::ProtocolError,
         Code::NoeulIdentityMismatch,
@@ -89,6 +92,7 @@ impl Code {
             Code::PinNotFound => "pin_not_found",
             Code::NothingToPin => "nothing_to_pin",
             Code::MonitorNotFound => "monitor_not_found",
+            Code::HistoryEntryNotFound => "history_entry_not_found",
             Code::WindowNotFound => "window_not_found",
             Code::ProtocolError => "protocol_error",
             Code::NoeulIdentityMismatch => "noeul_identity_mismatch",
@@ -126,6 +130,7 @@ impl Code {
             | Code::PinNotFound
             | Code::NothingToPin
             | Code::MonitorNotFound
+            | Code::HistoryEntryNotFound
             | Code::WindowNotFound => 3,
             Code::ProtocolError
             | Code::NoeulIdentityMismatch
