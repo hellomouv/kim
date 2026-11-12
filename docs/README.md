@@ -25,7 +25,7 @@ did.
 | [DDALGAK_AHK_MIGRATION.md](DDALGAK_AHK_MIGRATION.md) | current (Step 80) | Moving from AutoHotkey: importing a v2 script (what converts, what needs manual migration, never run), after the import, what Ddalgak adds, what it does not claim |
 | [DDALGAK_MCP.md](DDALGAK_MCP.md) | current (Step 81) | Ddalgak for scripts, agents and Kim: the headless CLI by area, the opt-in MCP adapter (read always, changes by grant, audit), the Kim interop capabilities |
 | [DDALGAK_GUIDE.md](DDALGAK_GUIDE.md) | current (Step 82) | The Ddalgak user guide: first run, the emergency chord, rules, modes, programs, schedules, profiles, the playground, privacy, scripts and agents, limits |
-| [DDALGAK_ACCEPTANCE.md](DDALGAK_ACCEPTANCE.md) | current (Step 82) | The real Windows acceptance script (20 rows) with the automated evidence of each |
+| [DDALGAK_ACCEPTANCE.md](DDALGAK_ACCEPTANCE.md) | current (Step 82) | The real Windows acceptance script (22 rows) with the automated evidence of each |
 
 ## Architecture and compatibility
 
