@@ -72,11 +72,15 @@ pub fn fit(w: u32, h: u32, max_w: u32, max_h: u32) -> u32 {
 }
 
 /// The new top-left corner when a pin at `origin` with zoom `from` is zoomed to `to` around the
-/// screen point `anchor` (the point under it stays where it is).
+/// screen point `anchor` (the point under it stays where it is). The distance is rounded to the
+/// nearest pixel, so zooming in and back out at the same point returns the pin exactly to where it
+/// was (truncating crept about a pixel per step; found by the real-UI check of #58).
 pub fn around(origin: (i32, i32), anchor: (i32, i32), from: u32, to: u32) -> (i32, i32) {
     let f = |o: i32, a: i32| {
         let rel = i64::from(a) - i64::from(o);
-        let moved = rel * i64::from(to) / i64::from(from.max(1));
+        let (num, den) = (rel * i64::from(to), i64::from(from.max(1)));
+        // Round half away from zero.
+        let moved = (2 * num + num.signum() * den) / (2 * den);
         i32::try_from(i64::from(a) - moved).unwrap_or(o)
     };
     (f(origin.0, anchor.0), f(origin.1, anchor.1))
@@ -205,6 +209,22 @@ mod tests {
         assert_eq!(around((100, 100), (150, 120), 100, 200), (50, 80));
         assert_eq!(around((100, 100), (100, 100), 100, 50), (100, 100));
         assert_eq!(around((-500, 0), (-400, 50), 200, 100), (-450, 25));
+        // Zooming in and back out at the same point returns exactly (the real-UI check moved the
+        // pin 5 px right and 1 px down over five wheel cycles with truncation).
+        for z in [110_u32, 125, 150, 175, 200, 300] {
+            for (o, a) in [
+                ((1700, 300), (1777, 341)),
+                ((0, 0), (13, 7)),
+                ((-91, 40), (-3, 99)),
+            ] {
+                let mut at = o;
+                for _ in 0..5 {
+                    at = around(at, a, 100, z);
+                    at = around(at, a, z, 100);
+                }
+                assert_eq!(at, o, "zoom {z} around {a:?}");
+            }
+        }
     }
 
     fn frame(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 4]) -> (std::sync::Arc<Ledger>, Frame) {

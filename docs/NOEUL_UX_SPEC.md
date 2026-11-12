@@ -444,6 +444,18 @@ monitors and their scales, and the date in the Step report and the matrix Eviden
 11. After about twenty captures, `noeul status --json` → `captures.first_frame` gives p50/p95 of
     the first frame on this machine (NOEUL-NFR-003); `noeul quit --yes` ends it.
 
+**Result (2026-11-13, Windows 10 Pro 22H2 (19045), one monitor 5120×1440 at 100 %, release build, real mouse and keyboard driven on the visible desktop (only the test's own Noeul and Notepad windows; a sandboxed profile; the test's own clipboard checks only read the sequence number)):** steps 2–8 and 11 pass. `F1` is registered by another program on
+this PC, so Noeul reports it `taken` and leaves it alone (a real conflict made with a held chord
+is reported the same way); the fallback `Shift+F1` opens the overlay for real. The pointer is a
+crosshair before it moves; a drag selects exactly (301×201 at 1000, 400), `Shift` gives a square,
+moving, the corner handle, arrows, `Ctrl`/`Shift`+arrows and `Ctrl+A` work; `Esc` closes with
+`memory.bytes` 0; `Enter` pins exactly with focus and leaves the clipboard untouched; six rapid
+triggers give one overlay and `captures.ignored` 5; right-click without a selection cancels, outside
+a selection clears it. First frame (release, 25 captures): p50 111 ms, p95 115 ms (NOEUL-NFR-003:
+p95 ≤ 150 ms on 3840×2160; the 100 ms target is not reached, GDI capture alone takes about 88 ms).
+Not run here: step 9 (one monitor at 100 %), step 10 (locking the session would interrupt the
+user working on this PC).
+
 ### 4.6 Step 53: manual check of real pins
 
 Step 53 ships the pin engine ([ADR 0029](adr/0029-noeul-pin-engine.md)): independent topmost pin
@@ -489,6 +501,19 @@ their scales, and the date in the Step report and the matrix Evidence column):
     pins nothing; `Esc` leaves the overlay and the pins are still there.
 13. `noeul quit` with pins open asks for `--yes`; `noeul quit --yes`, then `noeul start`: no pin
     comes back (pins live in memory only), and `%LOCALAPPDATA%\mouv\noeul` holds no picture.
+
+**Result (2026-11-13, Windows 10 Pro 22H2 (19045), one monitor 5120×1440 at 100 %, release build, real mouse and keyboard driven on the visible desktop (only the test's own Noeul and Notepad windows; a sandboxed profile; the test's own clipboard checks only read the sequence number)):** steps 2–9 and 13 pass: the pin is exactly the selected rectangle and
+has focus; it is topmost and a tool window (no taskbar button, not in `Alt+Tab`); typing goes
+to Notepad while the pin stays above it; dragging, arrows (1 px), the wheel, `Plus`/`Minus`, `0`
+and the middle click work; the menu key and `Shift+F10` open the menu and `Esc` closes only the
+menu; `H` hides and hands the keyboard back to Notepad; `noeul pin show|hide --all` keep
+Notepad in the foreground; `Esc` closes only the clicked pin, a second `Esc` closes nothing,
+`Shift+Esc` destroys and `noeul pin reopen` brings back only the closed one; a 7000×2400 picture
+fits the work area at 58 %; a whole-desktop pin closes with `Esc`; `noeul quit` needs `--yes`
+and a restart brings back no pin and leaves no picture on disk. The check found and fixed one
+defect: zooming in and back out with the wheel crept the pin about a pixel per step
+(`zoom::around` truncated; it now rounds). Not run here: step 6's tray item (tray off in the
+sandbox), steps 10–11 (one monitor at 100 %), step 12's `F3` (no paste key in the sandbox).
 
 ### 4.7 Step 51: manual check of the signature flow
 
@@ -550,6 +575,19 @@ report and the matrix Evidence column):
     file is 600×450 pixels; the toolbar's text is crisp at that scale.
 14. Ten captures in a row as fast as possible (`F1`, drag, double-click): ten pins, none lost;
     `noeul pin list` shows ten IDs.
+
+**Result (2026-11-13, Windows 10 Pro 22H2 (19045), one monitor 5120×1440 at 100 %, release build, real mouse and keyboard driven on the visible desktop (only the test's own Noeul and Notepad windows; a sandboxed profile; the test's own clipboard checks only read the sequence number)):** steps 2, 4–9, 12 and 14 pass: a double-click inside pins exactly the
+rectangle and never touches the clipboard; double-clicks outside, on a handle and two slow
+clicks pin nothing and keep the selection; a quadruple click gives one pin; a moved and resized
+selection pins as shown; the overlay menu lists Pin, Copy, Save…, Quick save, Select monitor,
+Last rectangle and Cancel with their keys; the real save dialog cancels back to the overlay and
+saves; two quick saves in the same second give `…-2`; a pin saves through its dialog at
+401×251; `gestures.double_click save` opens the dialog on a double-click while `Enter` still
+pins, and `config reset gestures` restores it; ten fast captures give ten pins of exactly
+301×201. The check found and fixed one defect: a pin's quick save ignored `[output] format`
+(always PNG). Not run here: the clipboard writes of steps 7 and 9–10 and the paste into Paint
+(the user's clipboard stays untouched), step 11 (it changes a Windows setting), step 13 (no
+150 % monitor).
 
 ### 4.8 Step 52: manual check of smart selection and precision
 

@@ -36,6 +36,22 @@ fn quick_save_writes_jpeg_when_asked() {
     assert_eq!(&bytes[..3], &[0xFF, 0xD8, 0xFF], "a JPEG file");
     let img = image::load_from_memory(&bytes).unwrap();
     assert_eq!((img.width(), img.height()), (200, 100));
+    // A quick save from a pin follows the same setting.
+    a.action("capture.region", None);
+    drag(&mut a, (100, 100), (299, 199));
+    key(&mut a, "Enter", false, false);
+    let pin = a.pins.ids()[0];
+    a.pin_menu_choice(pin, "pin.quick-save");
+    assert_eq!(
+        files(&shots),
+        ["noeul-20261104-090507-2.jpg", "noeul-20261104-090507.jpg"]
+    );
+    let bytes = std::fs::read(shots.join("noeul-20261104-090507-2.jpg")).unwrap();
+    assert_eq!(
+        &bytes[..3],
+        &[0xFF, 0xD8, 0xFF],
+        "the pin's file is a JPEG too"
+    );
 }
 
 #[test]

@@ -3100,9 +3100,12 @@ impl<S: Shell> App<S> {
             return "not_found";
         };
         let name = output::file_name(self.shell.local_time());
-        let written = output::png(frame)
+        // In `[output] format`, like a quick save from the overlay (`OUT-07`; the real-UI check
+        // of #99 found pins always wrote PNG).
+        let o = self.settings.settings.output;
+        let written = output::encode(frame, o.format, &o)
             .map_err(std::io::Error::other)
-            .and_then(|bytes| output::quick_save(&folder, &name, &bytes));
+            .and_then(|bytes| output::quick_save_as(&folder, &name, &bytes, o.format.ext()));
         drop(rendered);
         match written {
             Ok(path) => {
@@ -5538,7 +5541,8 @@ pub(crate) mod tests {
         a.shell.pointer_at = Some((20, 15));
         press(&mut a, id, "Plus", false);
         let info = a.pins.info(id).unwrap();
-        assert_eq!((info.zoom, info.rect), (110, Rect::new(9, 10, 22, 11)));
+        // 5 px above the pointer × 1.1 = 5.5, rounded to 6 (`zoom::around`).
+        assert_eq!((info.zoom, info.rect), (110, Rect::new(9, 9, 22, 11)));
         press(&mut a, id, "Minus", false);
         press(&mut a, id, "Minus", false);
         assert_eq!(a.pins.info(id).unwrap().zoom, 90);
