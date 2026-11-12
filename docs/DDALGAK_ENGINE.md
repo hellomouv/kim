@@ -1109,7 +1109,13 @@ window and notification steps in `<test launch root>\desktop.jsonl`.
 | `e2e/tests/step79_ddalgak_actions.rs` | headless rules and previews; the running engine fires a 1-minute schedule and records a window step and `tool_missing` |
 | #102: `rules::tests::run_command_needs_consent_…`, `worker::tests::run_command_stages_…`, `win::desktop::tests::win_commands_…` | `run_command` (ADR 0083): consent bound to the exact commands; the stage reaches `Env::commands`; the real runner (hidden) maps exit codes and ends overruns |
 | #102: `win::desktop::tests::running_programs_…`, `capabilities_are_read_…`, e2e step81 | the editor's program picker (file names only, never titles, elevated and own windows left out) and its capability finder (`kim tools list` + `describe`, hidden, 10 s each) |
-| `e2e/tests/issue102_ddalgak_commands.rs` | an agent's command rule needs `run-commands`; previews hide arguments; the test host records a command (`commands.jsonl`) without running it |
+| `e2e/tests/issue102_ddalgak_commands.rs` | an agent's command rule needs `run-commands`; previews hide arguments; the test host records a command (`commands.jsonl`) without running it; an injected F15 arms a 500 ms `timer` whose rule's notification is recorded once, after the delay |
+| #102: `worker::tests::a_timer_starts_its_rule_once_later_…`, `missed_times_run_once_…`, `rules::tests::timers_load_…`, `actions::tests::missed_option_…` | timers (ADR 0084): one start per arming, re-arming restarts, a pause cancels, no timer for its own rule; `missed: run_once` decides run, skip or nothing |
+
+**Manual check (#102, maintainer, real desktop).** With the tray icon moved to the overflow area,
+a `notify` rule still shows a toast (and it stays in the notification center). A schedule
+`{"every_minutes": 2, "missed": "run_once"}`: sleep the computer for five minutes; on waking it
+runs once (one entry `ok`), while without `missed` the entry is `skipped_missed`.
 
 **Manual check (maintainer, real desktop).** A rule `Ctrl+Alt+Shift+F21` → `window` `maximize`
 with `app: notepad.exe`: with Notepad open (not elevated) it maximizes; with an elevated Notepad

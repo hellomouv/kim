@@ -131,6 +131,8 @@ pub enum Stage {
     Tool(Arc<crate::actions::ToolSpec>),
     /// #102.
     Command(Arc<crate::actions::CommandSpec>),
+    /// #102.
+    Timer(Arc<crate::actions::TimerSpec>),
 }
 
 impl Stage {

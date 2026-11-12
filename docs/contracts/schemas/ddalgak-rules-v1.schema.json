@@ -317,7 +317,7 @@
       }
     },
     "known_step_types": {
-      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command"]
+      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command", "timer"]
     },
     "injecting_step": {
       "description": "Steps that synthesize keyboard or mouse input.",
@@ -578,13 +578,14 @@
       "properties": {"type": {"const": "delay"}, "ms": {"type": "integer", "minimum": 1, "maximum": 10000}}
     },
     "schedule": {
-      "description": "Step 79: every `every_minutes` minutes (1–1440) from when the engine starts, or at `at` (local HH:MM) on `days` (default every day). Runs only while the engine runs: a time missed while the device slept, the session was locked or the engine was paused or off is skipped, never caught up.",
+      "description": "Step 79: every `every_minutes` minutes (1–1440) from when the engine starts, or at `at` (local HH:MM) on `days` (default every day). Runs only while the engine runs: a time missed while the device slept is skipped (or with `missed: run_once`, #102, run once on waking); times passed while paused or off are skipped, never caught up.",
       "type": "object",
       "oneOf": [{"required": ["every_minutes"], "not": {"anyOf": [{"required": ["at"]}, {"required": ["days"]}]}}, {"required": ["at"], "not": {"required": ["every_minutes"]}}],
       "properties": {
         "every_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
         "at": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"},
-        "days": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]}}
+        "days": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]}},
+        "missed": {"description": "#102: `skip` (default) records a time missed while the computer slept as `skipped_missed`; `run_once` runs it once on waking. Times passed while paused or off never run.", "enum": ["skip", "run_once"]}
       }
     },
     "step_window": {
@@ -655,6 +656,16 @@
         "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 600000}
       }
     },
+    "step_timer": {
+      "description": "#102: starts the rule `rule` of the same profile once, `after_ms` from now, while the engine runs (AutoHotkey's one-shot `SetTimer`). Arming it again restarts the countdown; a pause, a turn-off, a reload, a profile switch or the emergency cancels it. It never starts its own rule. No permission of its own: the started rule needs its own consent.",
+      "type": "object",
+      "required": ["type", "rule", "after_ms"],
+      "properties": {
+        "type": {"const": "timer"},
+        "rule": {"$ref": "#/$defs/rule_id"},
+        "after_ms": {"type": "integer", "minimum": 1, "maximum": 86400000}
+      }
+    },
     "step_future": {
       "description": "A step type added by a later version (additive). Valid in the document; the rule is inactive with `step_unsupported` in a version that does not know it.",
       "type": "object",
@@ -680,6 +691,7 @@
         {"$ref": "#/$defs/step_notify"},
         {"$ref": "#/$defs/step_tool"},
         {"$ref": "#/$defs/step_run_command"},
+        {"$ref": "#/$defs/step_timer"},
         {"$ref": "#/$defs/step_future"}
       ]
     },

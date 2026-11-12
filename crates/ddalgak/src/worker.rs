@@ -243,6 +243,7 @@ impl Worker {
                     epoch: Arc::new(AtomicU32::new(0)),
                     motions: Vec::new(),
                     clock: Instant::now(),
+                    timers: Vec::new(),
                 };
                 run(&rx, &control, &st, &mut ctx);
             })
@@ -338,6 +339,9 @@ struct Ctx<'a> {
     motions: Vec<Moving>,
     /// The motions' clock (milliseconds since the worker started).
     clock: Instant,
+    /// #102: one-shot timers: the rule to start and when (one per rule; cleared by a pause, a
+    /// turn-off, a reload, a profile switch and the emergency).
+    timers: Vec<(String, Instant)>,
 }
 
 impl Ctx<'_> {
@@ -811,6 +815,12 @@ impl Ctx<'_> {
                     let code = self.env.desktop.notify(&n);
                     self.stage_done(code);
                 }
+                // #102: arms (or re-arms) a one-shot timer; the stage itself is done at once.
+                Stage::Timer(t) => {
+                    self.timers.retain(|(r, _)| *r != t.rule);
+                    self.timers.push((t.rule.clone(), now + t.after));
+                    self.stage_done("ok");
+                }
                 Stage::Clip(c) => {
                     let code = crate::actions::clipboard(&mut *self.env.clipboard, &c);
                     self.stage_done(code);
@@ -1013,6 +1023,25 @@ fn schedules(r: &Rules, local: &crate::time::LocalTime) -> Vec<Due> {
         .collect()
 }
 
+/// What a schedule's due time does (Step 79; `missed: run_once` since #102).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DueAction {
+    /// Runs now (on time, or late after a sleep with `run_once`).
+    Run,
+    /// Recorded once as `skipped_missed` (the computer slept past it).
+    Missed,
+    /// Nothing: the engine is paused or off.
+    Nothing,
+}
+
+fn due_action(late: Duration, catch_up: bool, running: bool) -> DueAction {
+    match (late > crate::actions::MISSED, catch_up, running) {
+        (true, false, _) => DueAction::Missed,
+        (_, _, false) => DueAction::Nothing,
+        _ => DueAction::Run,
+    }
+}
+
 /// The monotonic time of a wall-clock time (now when it is past).
 fn instant_of(at: std::time::SystemTime) -> Instant {
     Instant::now()
@@ -1034,6 +1063,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             .chain(ctx.macro_due())
             .chain(ctx.motion_due())
             .chain(due.iter().map(|d| instant_of(d.at)))
+            .chain(ctx.timers.iter().map(|t| t.1))
             .min();
         let msg = match next {
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -1062,7 +1092,8 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                     if let Some(s) = &spec {
                         d.at = s.next(wall, &local);
                     }
-                    if late > crate::actions::MISSED {
+                    let catch_up = spec.as_ref().is_some_and(|s| s.catch_up);
+                    if due_action(late, catch_up, running) == DueAction::Missed {
                         record(
                             rules.as_ref(),
                             d.generation,
@@ -1090,8 +1121,23 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                         ctx.start(r, b, None);
                     }
                 }
+                // #102: one-shot timers that are due start their rule (when it is active).
+                let (fired, keep): (Vec<_>, Vec<_>) =
+                    ctx.timers.drain(..).partition(|t| t.1 <= now);
+                ctx.timers = keep;
+                for (rule, _) in fired {
+                    if running
+                        && let Some(r) = rules.as_ref()
+                        && let Some(b) = r.bindings.iter().find(|b| b.rule == rule)
+                    {
+                        ctx.start(r, b, None);
+                    }
+                }
             }
             Ok(Msg::Engine { running: on }) => {
+                if !on {
+                    ctx.timers.clear();
+                }
                 if on && !running {
                     // Counting starts again from now: nothing missed is caught up.
                     if let Some(r) = rules.as_ref() {
@@ -1102,6 +1148,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             }
             Ok(Msg::Rules(r)) => {
                 holds.clear();
+                ctx.timers.clear();
                 due = schedules(&r, &(ctx.env.clock)());
                 // Requests for the old table are ignored by the hook thread: no answer comes.
                 ctx.mode_pending.clear();
@@ -1111,6 +1158,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             }
             Ok(Msg::Cancel) => {
                 holds.clear();
+                ctx.timers.clear();
                 ctx.cancel();
                 ctx.stop_motions("cancelled");
                 ctx.inj.release_all();
@@ -1118,6 +1166,7 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
             Ok(Msg::Signal { generation, signal }) => match signal {
                 Signal::Emergency => {
                     holds.clear();
+                    ctx.timers.clear();
                     ctx.cancel();
                     ctx.stop_motions("cancelled");
                     ctx.inj.release_all();
@@ -3003,5 +3052,92 @@ mod tests {
         assert_eq!(*cmds.runs.lock().unwrap(), [spec]);
         let j = w.activity.lock().unwrap().to_json(10).to_string();
         assert!(!j.contains("secret-token") && !j.contains("backup"), "{j}");
+    }
+
+    // ---- #102: one-shot timers and the schedule's `missed: run_once`.
+
+    #[test]
+    fn missed_times_run_once_only_with_run_once_and_only_while_running() {
+        let late = Duration::from_secs(600);
+        let on_time = Duration::from_secs(1);
+        assert_eq!(due_action(on_time, false, true), DueAction::Run);
+        assert_eq!(due_action(late, false, true), DueAction::Missed);
+        assert_eq!(due_action(late, true, true), DueAction::Run);
+        assert_eq!(due_action(late, true, false), DueAction::Nothing);
+        assert_eq!(due_action(on_time, false, false), DueAction::Nothing);
+        assert_eq!(due_action(late, false, false), DueAction::Missed);
+    }
+
+    fn timer_rules(after_ms: u64) -> Rules {
+        let mut r = macro_rules(
+            vec![Stage::Timer(Arc::new(crate::actions::TimerSpec {
+                rule: "later".into(),
+                after: Duration::from_millis(after_ms),
+            }))],
+            false,
+        );
+        let mut later = r.bindings[0].clone();
+        later.rule = "later".into();
+        later.trigger = Trigger::parse("F14").unwrap();
+        later.action = Action::Sequence(Arc::new(SeqPlan {
+            stages: vec![Stage::Notify(Arc::new(crate::actions::NotifySpec {
+                title: "Later".into(),
+                body: String::new(),
+            }))],
+            continue_on_error: false,
+        }));
+        let mut all = (*r.bindings).clone();
+        all.push(later);
+        r.bindings = Arc::new(all);
+        r
+    }
+
+    #[test]
+    fn a_timer_starts_its_rule_once_later_and_rearming_restarts_it() {
+        let desk = Arc::new(crate::actions::FakeDesktop::default());
+        let w = Worker::start(
+            Arc::new(Stats::default()),
+            Box::new(|_| {}),
+            Arc::new(Mutex::new(Activity::default())),
+            Box::new(Recorder::default()),
+            Env {
+                desktop: Arc::clone(&desk) as Arc<dyn crate::actions::Desktop>,
+                ..Env::inert()
+            },
+        );
+        let q = w.queue();
+        q.send(Msg::Rules(timer_rules(300)));
+        let t0 = Instant::now();
+        q.signal(1, fire(0));
+        std::thread::sleep(Duration::from_millis(150));
+        // Armed again before it fired: the countdown restarts, and it fires only once.
+        q.signal(1, fire(0));
+        let got = wait_outcomes(&w, 3);
+        let elapsed = t0.elapsed();
+        assert_eq!(
+            got,
+            [
+                ("macro".to_string(), "ok".to_string()),
+                ("macro".to_string(), "ok".to_string()),
+                ("later".to_string(), "ok".to_string())
+            ]
+        );
+        assert!(elapsed >= Duration::from_millis(440), "{elapsed:?}");
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(outcomes(&w).len(), 3, "fired once: {:?}", outcomes(&w));
+        assert_eq!(desk.notes.lock().unwrap().len(), 1);
+
+        // A pause (the engine is not running) cancels a timer that has not fired.
+        q.signal(1, fire(0));
+        std::thread::sleep(Duration::from_millis(50));
+        q.send(Msg::Engine { running: false });
+        q.send(Msg::Engine { running: true });
+        std::thread::sleep(Duration::from_millis(600));
+        assert_eq!(
+            outcomes(&w).iter().filter(|o| o.0 == "later").count(),
+            1,
+            "{:?}",
+            outcomes(&w)
+        );
     }
 }

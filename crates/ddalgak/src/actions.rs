@@ -203,15 +203,51 @@ pub fn clipboard(c: &mut dyn Clipboard, spec: &ClipSpec) -> &'static str {
     code
 }
 
-/// A compiled `trigger.schedule`.
+/// When a `trigger.schedule` fires.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ScheduleSpec {
+pub enum When {
     Every(u32),
     /// Minutes after midnight, and the weekdays (0 = Monday) it runs on.
     At {
         minute: u32,
         days: [bool; 7],
     },
+}
+
+/// A compiled `trigger.schedule`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScheduleSpec {
+    pub when: When,
+    /// #102 (`missed: run_once`): a time missed while the computer slept runs once when it wakes
+    /// (default: skipped as `skipped_missed`). Times passed while paused or off never run.
+    pub catch_up: bool,
+}
+
+/// #102: a compiled `timer` step: starts the rule `rule` (same profile) once, `after` from now,
+/// while the engine runs. Arming it again restarts the countdown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimerSpec {
+    pub rule: String,
+    pub after: Duration,
+}
+
+impl TimerSpec {
+    pub fn compile(v: &Value) -> Result<TimerSpec, String> {
+        let rule = v
+            .get("rule")
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+            .ok_or("`rule` names the rule to start")?;
+        let ms = v
+            .get("after_ms")
+            .and_then(Value::as_u64)
+            .filter(|n| (1..=86_400_000).contains(n))
+            .ok_or("`after_ms` is 1–86400000 (24 hours)")?;
+        Ok(TimerSpec {
+            rule: rule.to_string(),
+            after: Duration::from_millis(ms),
+        })
+    }
 }
 
 /// The weekday of a civil date, 0 = Monday (Sakamoto's method).
@@ -227,10 +263,15 @@ impl ScheduleSpec {
         let o = v.as_object().ok_or("`schedule` must be an object")?;
         if let Some(k) = o
             .keys()
-            .find(|k| !["every_minutes", "at", "days"].contains(&k.as_str()))
+            .find(|k| !["every_minutes", "at", "days", "missed"].contains(&k.as_str()))
         {
             return Err(format!("unknown field `schedule.{k}`"));
         }
+        let catch_up = match o.get("missed").map(|m| m.as_str()) {
+            None | Some(Some("skip")) => false,
+            Some(Some("run_once")) => true,
+            Some(_) => return Err("`missed` is skip or run_once".into()),
+        };
         if let Some(n) = o.get("every_minutes") {
             let n = n
                 .as_u64()
@@ -239,7 +280,10 @@ impl ScheduleSpec {
             if o.contains_key("at") || o.contains_key("days") {
                 return Err("`every_minutes` takes no `at` or `days`".into());
             }
-            return Ok(ScheduleSpec::Every(u32::try_from(n).unwrap_or(1)));
+            return Ok(ScheduleSpec {
+                when: When::Every(u32::try_from(n).unwrap_or(1)),
+                catch_up,
+            });
         }
         let at = o
             .get("at")
@@ -266,17 +310,20 @@ impl ScheduleSpec {
                 days[i] = true;
             }
         }
-        Ok(ScheduleSpec::At {
-            minute: h * 60 + m,
-            days,
+        Ok(ScheduleSpec {
+            when: When::At {
+                minute: h * 60 + m,
+                days,
+            },
+            catch_up,
         })
     }
 
     /// When it fires next after `now` (whose local time is `local`).
     pub fn next(&self, now: SystemTime, local: &crate::time::LocalTime) -> SystemTime {
-        match self {
-            ScheduleSpec::Every(n) => now + Duration::from_secs(u64::from(*n) * 60),
-            ScheduleSpec::At { minute, days } => {
+        match &self.when {
+            When::Every(n) => now + Duration::from_secs(u64::from(*n) * 60),
+            When::At { minute, days } => {
                 let now_min = u32::from(local.hour) * 60 + u32::from(local.minute);
                 let today = weekday(local.year, local.month, local.day);
                 let into_minute = u64::from(local.second);
@@ -296,7 +343,8 @@ impl ScheduleSpec {
     }
 }
 
-/// A due time more than this late was missed (the computer slept): skipped, never caught up.
+/// A due time more than this late was missed (the computer slept): skipped, or with
+/// `missed: run_once` run once on waking (#102).
 pub const MISSED: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
@@ -397,6 +445,37 @@ mod tests {
             json!({"at": "09:00", "cron": "*"}),
         ] {
             assert!(ScheduleSpec::compile(&bad).is_err(), "{bad}");
+        }
+    }
+
+    /// #102: `missed` and one-shot timers compile; bad values are refused.
+    #[test]
+    fn missed_option_and_timers_compile() {
+        let s = ScheduleSpec::compile(&json!({"every_minutes": 5, "missed": "run_once"})).unwrap();
+        assert!(s.catch_up);
+        assert!(
+            !ScheduleSpec::compile(&json!({"at": "09:00"}))
+                .unwrap()
+                .catch_up
+        );
+        assert!(
+            !ScheduleSpec::compile(&json!({"at": "09:00", "missed": "skip"}))
+                .unwrap()
+                .catch_up
+        );
+        assert!(ScheduleSpec::compile(&json!({"at": "09:00", "missed": "later"})).is_err());
+        let t = TimerSpec::compile(&json!({"rule": "later", "after_ms": 1500})).unwrap();
+        assert_eq!(
+            (t.rule.as_str(), t.after),
+            ("later", Duration::from_millis(1500))
+        );
+        for bad in [
+            json!({"rule": "", "after_ms": 10}),
+            json!({"rule": "x", "after_ms": 0}),
+            json!({"rule": "x", "after_ms": 86_400_001u64}),
+            json!({"rule": "x"}),
+        ] {
+            assert!(TimerSpec::compile(&bad).is_err(), "{bad}");
         }
     }
 }

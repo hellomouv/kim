@@ -948,6 +948,20 @@ fn extend(
                         crate::launch::compile_step(&v).map(|_| ())
                     }
                     Action::RunCommand(_) => crate::rules::compile_command(&v).map(|_| ()),
+                    // #102: a timer starts another rule of the same profile.
+                    Action::Timer(t) => crate::actions::TimerSpec::compile(&v).and_then(|_| {
+                        if t.rule == rule.id {
+                            Err("a timer cannot start its own rule".to_string())
+                        } else if profile
+                            .rules
+                            .iter()
+                            .any(|x| x.id() == Some(t.rule.as_str()))
+                        {
+                            Ok(())
+                        } else {
+                            Err(format!("no rule `{}` in this profile", t.rule))
+                        }
+                    }),
                     _ => Ok(()),
                 };
                 if let Err(e) = check {

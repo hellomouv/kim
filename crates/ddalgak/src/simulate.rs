@@ -397,6 +397,16 @@ fn effect(
         }
         // #102: the program's file name, the argument count and the timeout (never the
         // arguments, which may hold secrets).
+        // #102: which rule a timer starts, and when.
+        Action::Timer(t) => {
+            let p = json!({"rule": t.rule, "after_ms": t.after_ms});
+            (
+                "timer".into(),
+                format!("Starts rule {} once after {} ms.", t.rule, t.after_ms),
+                p,
+                0,
+            )
+        }
         Action::RunCommand(c) => {
             let name = crate::launch::program_name(&c.program).to_string();
             let found = crate::launch::expand(&c.program, &crate::launch::process_var)

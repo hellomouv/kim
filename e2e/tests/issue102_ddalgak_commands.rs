@@ -283,3 +283,92 @@ fn issue102_the_running_engine_records_a_command_without_its_arguments() {
     assert_eq!(code, 0);
     drop(host);
 }
+
+/// #102: a one-shot timer. F15 arms a 500 ms timer for a notification rule; the test host
+/// records the notification once, after the delay; the activity names both rules.
+#[test]
+#[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
+fn issue102_a_timer_starts_another_rule_once_later() {
+    require_e2e();
+    let sb = TempDir::new("issue102-timer");
+    let e = Env {
+        sb: &sb,
+        endpoint: format!("kim-e2e-issue102t-{}", std::process::id()),
+    };
+    std::fs::create_dir_all(e.config()).unwrap();
+    std::fs::create_dir_all(sb.path().join("Local")).unwrap();
+    let rules = json!({
+        "schema": "ddalgak.rules", "schema_version": 1, "hotkey_contract": 1, "revision": 1,
+        "active_profile": "work",
+        "profiles": [ { "id": "work", "title": "Work", "default_mode": "base",
+            "modes": [ { "id": "base", "title": "Base" } ],
+            "rules": [
+                { "id": "arm", "title": "F15 arms a timer", "enabled": true,
+                  "trigger": { "keys": "F15", "injected": "accept" },
+                  "steps": [ { "type": "timer", "rule": "later", "after_ms": 500 } ] },
+                { "id": "later", "title": "Later", "enabled": true,
+                  "trigger": { "keys": "Ctrl+Alt+Shift+F23" },
+                  "steps": [ { "type": "notify", "title": "Later" } ] }
+            ] } ]
+    });
+    std::fs::write(e.config().join("rules.json"), rules.to_string()).unwrap();
+    let (code, d) = e.json(&["rule", "check"]);
+    assert_eq!(code, 0, "{d:#}");
+    let root = sb.path().join("launch-root");
+    std::fs::create_dir_all(&root).unwrap();
+    let mut c = e.cmd(&bin_debug("ddalgak-gui"));
+    c.args([
+        "--test-host",
+        "--test-max-seconds",
+        "60",
+        "--endpoint",
+        &e.endpoint,
+        "--test-launch-root",
+    ])
+    .arg(&root)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+    let mut host = Host(c.spawn().unwrap());
+    let until = Instant::now() + Duration::from_secs(20);
+    while e.json(&["status"]).1["data"]["app"]["running"] != true {
+        assert!(host.0.try_wait().unwrap().is_none(), "the app exited early");
+        assert!(Instant::now() < until, "the app never answered");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if ddalgak::win::is_elevated() {
+        eprintln!("skipped (elevated): the app refuses to turn its engine on as administrator");
+        e.json(&["quit"]);
+        return;
+    }
+    e.ok(&["engine", "start"]);
+    let tap = |vk: u16| {
+        ddalgak::win::inject::send_as_other_program(&[
+            ddalgak::inject::OutKey { vk, up: false },
+            ddalgak::inject::OutKey { vk, up: true },
+        ]) == 2
+    };
+    if !ddalgak::win::input_desktop_available() || !tap(0x7E) {
+        eprintln!("skipped (locked): the timer part needs SendInput on an unlocked desktop");
+    } else {
+        let t0 = Instant::now();
+        let record = root.join("desktop.jsonl");
+        while !record.exists() && t0.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let fired = t0.elapsed();
+        assert!(record.exists(), "the timer never fired");
+        assert!(fired >= Duration::from_millis(400), "fired after {fired:?}");
+        std::thread::sleep(Duration::from_millis(800));
+        let text = std::fs::read_to_string(&record).unwrap();
+        assert_eq!(text.lines().count(), 1, "{text}");
+        let act = e.ok(&["status"])["activity"].to_string();
+        assert!(
+            act.contains("\"arm\"") && act.contains("\"later\""),
+            "{act}"
+        );
+    }
+    let (code, _) = e.json(&["quit"]);
+    assert_eq!(code, 0);
+    drop(host);
+}

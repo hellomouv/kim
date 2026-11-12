@@ -715,6 +715,28 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "No installed tool provides a capability.",
         "기능을 제공하는 설치된 도구가 없습니다.",
     ),
+    (
+        "tile.timer",
+        "Start another rule later",
+        "나중에 다른 규칙 실행",
+    ),
+    (
+        "tile.timer.example",
+        "A reminder after 10 minutes",
+        "10분 뒤 알림",
+    ),
+    ("field.timer.rule", "Rule", "규칙"),
+    ("field.timer.after", "After", "대기 시간"),
+    (
+        "field.timer.note",
+        "Starts the chosen rule once, after this time, while Ddalgak is on. Running this again restarts the countdown; pausing, turning off or switching profiles cancels it.",
+        "Ddalgak이 켜져 있는 동안 이 시간이 지나면 선택한 규칙을 한 번 실행합니다. 다시 실행하면 처음부터 다시 셉니다. 일시정지, 끄기, 프로필 전환 시 취소됩니다.",
+    ),
+    (
+        "form.schedule_catch_up",
+        "If the computer was asleep at that time, run it once when it wakes",
+        "그 시각에 컴퓨터가 절전 중이었다면 깨어날 때 한 번 실행",
+    ),
     ("tile.remap", "Act as another key", "다른 키로 바꾸기"),
     ("tile.remap.example", "CapsLock → Ctrl", "CapsLock → Ctrl"),
     ("tile.send_keys", "Press a shortcut", "단축키 누르기"),

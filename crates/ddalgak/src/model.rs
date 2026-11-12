@@ -832,6 +832,14 @@ step_struct!(
     }
 );
 step_struct!(
+    /// `timer` (#102): starts another rule of the profile once, `after_ms` from now, while the
+    /// engine runs (AutoHotkey's one-shot `SetTimer`); arming it again restarts the countdown.
+    TimerStep {
+        rule: String,
+        after_ms: u64,
+    }
+);
+step_struct!(
     /// `trigger.schedule` (Step 79).
     Schedule {
         #[serde(default, skip_serializing_if = "none")]
@@ -840,6 +848,9 @@ step_struct!(
         at: Option<String>,
         #[serde(default, skip_serializing_if = "none")]
         days: Option<Vec<String>>,
+        /// #102: `skip` (default) or `run_once`.
+        #[serde(default, skip_serializing_if = "none")]
+        missed: Option<String>,
     }
 );
 
@@ -932,6 +943,8 @@ pub enum Action {
     Tool(ToolStep),
     /// #102.
     RunCommand(RunCommand),
+    /// #102.
+    Timer(TimerStep),
     /// A step type of a later version: kept as written; the rule is inactive
     /// (`step_unsupported`, §5.13).
     Future {
@@ -941,7 +954,7 @@ pub enum Action {
 }
 
 /// The step types of rules document v1 (schema `known_step_types`).
-pub const STEP_TYPES: [&str; 17] = [
+pub const STEP_TYPES: [&str; 18] = [
     "remap",
     "block",
     "send_keys",
@@ -959,6 +972,7 @@ pub const STEP_TYPES: [&str; 17] = [
     "notify",
     "tool",
     "run_command",
+    "timer",
 ];
 
 impl Action {
@@ -981,6 +995,7 @@ impl Action {
             Action::Notify(_) => "notify",
             Action::Tool(_) => "tool",
             Action::RunCommand(_) => "run_command",
+            Action::Timer(_) => "timer",
             Action::Future { kind, .. } => kind,
         }
     }
@@ -1017,6 +1032,7 @@ impl Action {
             Action::Notify(s) => first(&s.extra, ""),
             Action::Tool(s) => first(&s.extra, ""),
             Action::RunCommand(s) => first(&s.extra, ""),
+            Action::Timer(s) => first(&s.extra, ""),
             Action::Future { .. } => None,
         }
     }
@@ -1084,6 +1100,7 @@ impl Serialize for Action {
             Action::Notify(x) => serde_json::to_value(x),
             Action::Tool(x) => serde_json::to_value(x),
             Action::RunCommand(x) => serde_json::to_value(x),
+            Action::Timer(x) => serde_json::to_value(x),
             Action::Future { fields, .. } => Ok(Value::Object(fields.clone())),
         }
         .map_err(serde::ser::Error::custom)?;
@@ -1129,6 +1146,7 @@ impl<'de> Deserialize<'de> for Action {
             "notify" => Action::Notify(de(rest)?),
             "tool" => Action::Tool(de(rest)?),
             "run_command" => Action::RunCommand(de(rest)?),
+            "timer" => Action::Timer(de(rest)?),
             _ => Action::Future { kind, fields: m },
         })
     }

@@ -1915,6 +1915,7 @@ fn keys_stage(
                 });
             }
         }
+        ui.checkbox(&mut t.catch_up, lang.t("form.schedule_catch_up"));
         ui.label(small(lang.t("form.schedule_note"), c.text_muted));
         problems_for(ui, problems, &["trigger"]);
         return;
@@ -2435,6 +2436,40 @@ fn details_stage(
                 .accessible_name(lang.t("field.cmd.timeout"));
             });
             ui.label(small(lang.t("field.cmd.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
+        }
+        Effect::Timer => {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(small(lang.t("field.timer.rule"), c.text_secondary));
+                let current = fl.timer.rule.clone();
+                egui::ComboBox::from_id_salt("timer-rule")
+                    .selected_text(if current.is_empty() {
+                        "—".to_string()
+                    } else {
+                        current
+                    })
+                    .show_ui(ui, |ui| {
+                        for r in profile.map(|p| p.rules.as_slice()).unwrap_or_default() {
+                            if let Some(id) = r.id() {
+                                ui.selectable_value(
+                                    &mut fl.timer.rule,
+                                    id.to_string(),
+                                    r.title().unwrap_or(id),
+                                );
+                            }
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.label(lang.t("field.timer.after"));
+                ui.add(
+                    egui::DragValue::new(&mut fl.timer.after_s)
+                        .range(1..=86_400)
+                        .suffix(" s"),
+                )
+                .accessible_name(lang.t("field.timer.after"));
+            });
+            ui.label(small(lang.t("field.timer.note"), c.text_muted));
             problems_for(ui, problems, &["steps[0]"]);
         }
         Effect::Tool => {

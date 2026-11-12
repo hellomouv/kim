@@ -151,7 +151,7 @@
       "required": ["step", "type", "performed", "summary", "preview"],
       "properties": {
         "step": {"type": "integer", "minimum": 0, "maximum": 31},
-        "type": {"enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command"]},
+        "type": {"enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command", "timer"]},
         "performed": {"description": "Whether this effect really happened (live only).", "type": "boolean"},
         "needs_confirmation": {"description": "Live: the user must confirm this launch first; it was not performed.", "type": "boolean"},
         "confirmed": {"description": "Live: the user confirmed this launch.", "type": "boolean"},
@@ -183,6 +183,7 @@
         {"anyOf": [{"properties": {"type": {"not": {"const": "notify"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_notify"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "tool"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_tool"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "run_command"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_run_command"}}}]},
+        {"anyOf": [{"properties": {"type": {"not": {"const": "timer"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_timer"}}}]},
         {"anyOf": [{"properties": {"type": {"not": {"const": "block"}}}}, {"properties": {"preview": {"$ref": "#/$defs/preview_block"}}}]}
       ]
     },
@@ -313,6 +314,13 @@
       "additionalProperties": false,
       "required": ["capability", "arguments"],
       "properties": {"capability": {"type": "string"}, "arguments": {"type": "array", "items": {"type": "string"}}}
+    },
+    "preview_timer": {
+      "description": "#102: the rule a timer starts and after how long.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "after_ms"],
+      "properties": {"rule": {"type": "string"}, "after_ms": {"type": "integer", "minimum": 1}}
     },
     "preview_run_command": {
       "description": "#102: the program's file name, whether it exists, the argument count (never the arguments) and the timeout.",

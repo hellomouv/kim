@@ -588,6 +588,7 @@ per rule, like AutoHotkey's default of one thread per hotkey).
 | `clipboard` | `op` `set` (`text`, 1–20000 characters), `clear`, or `transform` (`to`: `plain`, `trim`, `upper`, `lower`) | `clipboard_busy`, `clipboard_no_text` |
 | `notify` | `title` (1–63), `body` (0–255): a balloon of Ddalgak's tray icon | `unsupported_platform` (no tray icon), `notify_failed` |
 | `tool` | `capability` (`pin.list`), `args` (an object): `kim tools invoke` of the installed Kim, hidden, at most 30 s, without consent flags | `tool_missing` (no Kim or provider; nothing is installed), `consent_missing`, `tool_incompatible`, `timeout`, `tool_failed` |
+| `timer` (#102) | `rule` (another rule of the profile, never its own), `after_ms` (1–86400000): starts that rule once, later, while the engine runs; arming it again restarts the countdown; a pause, a turn-off, a reload, a profile switch or the emergency cancels it | — (the stage is `ok` once armed; the started rule records its own outcome) |
 | `run_command` (#102) | `program` (a full path, or one starting with a known-folder token), `args` (at most 32 texts, each passed as one argument with Windows quoting; never a shell string), `working_dir` (a full path), `timeout_ms` (100–600000, default 60000) | `command_failed` (a non-zero exit code), `program_not_found`, `launch_failed`, `timeout` (the process is ended) |
 
 Window steps never touch an elevated or locked-session window and never read titles; clipboard
@@ -607,7 +608,9 @@ timeout; nothing runs.
 `trigger.schedule` replaces `keys`: `{"every_minutes": n}` (1–1440, from when the engine starts)
 or `{"at": "HH:MM", "days": ["mon", …]}` (local time; every day without `days`). Schedules fire
 only while the engine runs; a time missed by more than a minute (the computer slept) is recorded
-once as `skipped_missed` and never caught up; times passed while paused or off are skipped. A
+once as `skipped_missed` and never caught up — unless the schedule says `"missed": "run_once"`
+(#102), then it runs once on waking (several missed times run once, not once each); times passed
+while paused or off are always skipped. A
 scheduled rule never injects input. `ddalgak rule add --schedule '<json>'` writes one; the
 editor's Keys step has *On a schedule instead of keys*.
 

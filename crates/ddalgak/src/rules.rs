@@ -115,7 +115,7 @@ impl Loaded {
 /// `block` steps is an engine-control rule; a `remap`, a `block` among other steps, a held button,
 /// a mode hold and a move while held are always the rule's only step (schema `holds_trigger`);
 /// any other mix, a delay or `times` above 1 is a macro (Step 78, ADR 0079).
-pub const RUNNABLE_STEPS: [&str; 17] = [
+pub const RUNNABLE_STEPS: [&str; 18] = [
     "engine",
     "remap",
     "block",
@@ -133,6 +133,7 @@ pub const RUNNABLE_STEPS: [&str; 17] = [
     "notify",
     "tool",
     "run_command",
+    "timer",
 ];
 
 const HOTSTRING_STEPS: &str =
@@ -390,6 +391,10 @@ fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'sta
             }
             // #102: a local command, waited for; hidden; its output is never read.
             "run_command" => Stage::Command(Arc::new(compile_command(s).map_err(bad)?)),
+            // #102: a one-shot timer for another rule.
+            "timer" => Stage::Timer(Arc::new(
+                crate::actions::TimerSpec::compile(s).map_err(bad)?,
+            )),
             "tool" => {
                 let cap = s.get("capability").and_then(Value::as_str).unwrap_or("");
                 let ok = cap.len() <= 64
@@ -815,7 +820,7 @@ fn compile(
         || kinds.iter().any(|k| {
             matches!(
                 *k,
-                "delay" | "window" | "clipboard" | "notify" | "tool" | "run_command"
+                "delay" | "window" | "clipboard" | "notify" | "tool" | "run_command" | "timer"
             )
         })
         || (kinds.len() > 1
@@ -838,6 +843,14 @@ fn compile(
     if macro_run {
         let continue_on_error = r.get("on_error").and_then(Value::as_str) == Some("continue");
         let once = compile_stages(steps, modes)?;
+        // #102: a timer never restarts its own rule (that would be a hidden periodic loop).
+        let own = r.get("id").and_then(Value::as_str).unwrap_or_default();
+        if once
+            .iter()
+            .any(|st| matches!(st, Stage::Timer(t) if t.rule == own))
+        {
+            return Err(("step_invalid", "a timer cannot start its own rule".into()));
+        }
         let total = once
             .len()
             .saturating_mul(usize::try_from(times).unwrap_or(1));
@@ -2101,5 +2114,38 @@ mod tests {
         let c = compile_command(&json!({"program": r"C:\x.exe"})).unwrap();
         assert_eq!((c.args.len(), c.timeout_ms), (0, 60_000));
         assert!(codes.contains(&("slow", "step_invalid")), "{codes:?}");
+    }
+
+    /// #102: a timer loads as a stage; a timer for its own rule is refused; the schedule's
+    /// `missed: run_once` loads; the validator reports a timer for a rule that does not exist.
+    #[test]
+    fn timers_load_and_never_restart_their_own_rule() {
+        let mut arm = engine_rule("arm", "F13", "pause");
+        arm["steps"] = json!([{"type": "timer", "rule": "later", "after_ms": 600_000}]);
+        let mut later = engine_rule("later", "F14", "pause");
+        later["steps"] = json!([{"type": "notify", "title": "Later"}]);
+        let mut own = engine_rule("own", "F15", "pause");
+        own["steps"] = json!([{"type": "timer", "rule": "own", "after_ms": 1000}]);
+        let mut wake = engine_rule("wake", "F16", "pause");
+        wake["trigger"] = json!({"schedule": {"every_minutes": 5, "missed": "run_once"}});
+        wake["steps"] = json!([{"type": "notify", "title": "Wake"}]);
+        let d = doc(json!([arm, later, own, wake]));
+        let l = parse(&d);
+        let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
+        assert_eq!(active, ["arm", "later", "wake"], "{:?}", l.inactive);
+        assert!(l.bindings[2].schedule.as_ref().is_some_and(|s| s.catch_up));
+        assert_eq!(l.inactive[0].rule, "own");
+
+        let mut ghost = engine_rule("ghost", "F17", "pause");
+        ghost["steps"] = json!([{"type": "timer", "rule": "nobody", "after_ms": 1000}]);
+        let report = {
+            let v: Value = serde_json::from_slice(&doc(json!([ghost]))).unwrap();
+            crate::validate::check(&v, &Context::default())
+        };
+        assert!(
+            report.problems.iter().any(|p| p.code == "step_invalid"),
+            "{:?}",
+            report.problems
+        );
     }
 }

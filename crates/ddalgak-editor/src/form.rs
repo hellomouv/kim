@@ -50,16 +50,18 @@ pub enum Effect {
     /// #102.
     Command,
     Tool,
+    Timer,
 }
 
 impl Effect {
     /// Step 79: the effects under "More" (with `Block`).
-    pub const MORE: [Effect; 6] = [
+    pub const MORE: [Effect; 7] = [
         Effect::Window,
         Effect::Clipboard,
         Effect::Notify,
         Effect::Command,
         Effect::Tool,
+        Effect::Timer,
         Effect::Block,
     ];
 
@@ -92,6 +94,7 @@ impl Effect {
             Effect::Notify => "notify",
             Effect::Command => "run_command",
             Effect::Tool => "tool",
+            Effect::Timer => "timer",
         }
     }
 
@@ -112,6 +115,7 @@ impl Effect {
             Effect::Notify => "✉",
             Effect::Command => "▶",
             Effect::Tool => "⚙",
+            Effect::Timer => "⏲",
         }
     }
 
@@ -132,6 +136,7 @@ impl Effect {
             Action::Notify(_) => Effect::Notify,
             Action::RunCommand(_) => Effect::Command,
             Action::Tool(_) => Effect::Tool,
+            Action::Timer(_) => Effect::Timer,
             Action::Delay(_) | Action::Future { .. } => return None,
         })
     }
@@ -182,6 +187,8 @@ pub struct TriggerFields {
     /// `HH:MM` and the weekdays (Monday first) for *at a time*.
     pub at: String,
     pub days: [bool; 7],
+    /// #102: a time missed while the computer slept runs once on waking.
+    pub catch_up: bool,
 }
 
 impl Default for TriggerFields {
@@ -197,6 +204,7 @@ impl Default for TriggerFields {
             every: Some(60),
             at: "09:00".into(),
             days: [true; 7],
+            catch_up: false,
         }
     }
 }
@@ -333,6 +341,22 @@ impl Default for CommandFields {
     }
 }
 
+/// #102: "Start another rule later" (a one-shot timer).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct TimerFields {
+    pub rule: String,
+    pub after_s: u32,
+}
+
+impl Default for TimerFields {
+    fn default() -> TimerFields {
+        TimerFields {
+            rule: String::new(),
+            after_s: 60,
+        }
+    }
+}
+
 /// #102: "Another Kim tool".
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct ToolFields {
@@ -383,6 +407,7 @@ pub struct Fields {
     pub notify: NotifyFields,
     pub command: CommandFields,
     pub tool: ToolFields,
+    pub timer: TimerFields,
     /// Only in these modes (empty: every mode).
     pub modes: Vec<String>,
     /// Only in these apps (file names or full paths, one per line; Step 77).
@@ -430,6 +455,7 @@ impl Default for Fields {
             notify: NotifyFields::default(),
             command: CommandFields::default(),
             tool: ToolFields::default(),
+            timer: TimerFields::default(),
             modes: Vec::new(),
             apps: String::new(),
             except_apps: String::new(),
@@ -751,6 +777,7 @@ impl RuleForm {
             f.trigger.scheduled = true;
             f.trigger.every = s.every_minutes;
             f.trigger.at = s.at.clone().unwrap_or_else(|| "09:00".into());
+            f.trigger.catch_up = s.missed.as_deref() == Some("run_once");
             if let Some(d) = &s.days {
                 let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
                 f.trigger.days = names.map(|n| d.iter().any(|x| x == n));
@@ -872,6 +899,12 @@ impl RuleForm {
                             args: c.args.clone().unwrap_or_default().join("\n"),
                             working_dir: c.working_dir.clone().unwrap_or_default(),
                             timeout_ms: c.timeout_ms.unwrap_or(60_000),
+                        };
+                    }
+                    Action::Timer(t) => {
+                        f.timer = TimerFields {
+                            rule: t.rule.clone(),
+                            after_s: u32::try_from(t.after_ms.div_ceil(1000)).unwrap_or(60),
                         };
                     }
                     Action::Tool(t) => {
@@ -1188,6 +1221,18 @@ impl RuleForm {
                 }
                 s
             }
+            Effect::Timer => {
+                let t = &f.timer;
+                let rule = t.rule.trim();
+                let known = profile.is_none_or(|p| p.rules.iter().any(|r| r.id() == Some(rule)));
+                if rule.is_empty() || !known {
+                    out.push(problem("steps[0].rule", "choose a rule of this profile"));
+                }
+                if !(1..=86_400).contains(&t.after_s) {
+                    out.push(problem("steps[0].after_ms", "1 s – 24 h"));
+                }
+                json!({ "type": "timer", "rule": rule, "after_ms": u64::from(t.after_s) * 1000 })
+            }
             Effect::Tool => {
                 let t = &f.tool;
                 let cap = t.capability.trim();
@@ -1377,6 +1422,7 @@ impl RuleForm {
                 every_minutes: tf.every,
                 at: tf.every.is_none().then(|| tf.at.trim().to_string()),
                 days: (tf.every.is_none() && days.len() < 7).then_some(days),
+                missed: tf.catch_up.then(|| "run_once".to_string()),
                 extra: Map::new(),
             });
             t
@@ -1526,6 +1572,11 @@ impl RuleForm {
                 ddalgak::launch::program_name(f.command.program.trim())
             ),
             Some(Effect::Tool) => format!("Asks another Kim tool for {}", f.tool.capability.trim()),
+            Some(Effect::Timer) => format!(
+                "Starts {} once after {} s",
+                f.timer.rule.trim(),
+                f.timer.after_s
+            ),
         }
     }
 
@@ -1767,7 +1818,8 @@ impl RuleForm {
                 | Effect::Clipboard
                 | Effect::Notify
                 | Effect::Command
-                | Effect::Tool,
+                | Effect::Tool
+                | Effect::Timer,
             ) => sim
                 .lines
                 .push("Simulation: no window, clipboard or notification was touched".into()),

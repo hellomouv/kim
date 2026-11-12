@@ -645,4 +645,6 @@ result (pass, fail, remark) in the Step 74 issue.
 - **Not tested here (maintainer, real desktop):** open the menus with a few programs running and
   check the list, the keyboard path (Tab, Enter) and Narrator's names; with Kim and Noeul
   installed, *Find installed capabilities* lists `pin.list`, `image.pin`, `screen.capture-file`.
-
+- **Start another rule later** (More): choose a rule of the profile and a delay (1 s – 24 h); in
+  a macro it works like AutoHotkey's one-shot `SetTimer`. A schedule has *If the computer was
+  asleep at that time, run it once when it wakes* (`missed: run_once`).

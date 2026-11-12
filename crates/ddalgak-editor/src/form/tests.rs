@@ -645,3 +645,43 @@ fn command_and_tool_forms_build_and_round_trip() {
     assert_eq!(back.fields.effect, Some(Effect::Tool));
     assert_eq!(back.fields.tool.capability, "pin.list");
 }
+
+/// #102: the timer form needs a rule of the profile and 1 s – 24 h, saves `after_ms`, and
+/// round-trips; a schedule's "run once on waking" saves `missed: run_once`.
+#[test]
+fn timer_form_and_wake_option_build_and_round_trip() {
+    let mut p = profile();
+    let mut n = with(Effect::Notify, "Ctrl+Alt+Shift+F17");
+    n.fields.notify.title = "Stretch".into();
+    p.rules.push(ddalgak::model::RuleEntry::Typed(Box::new(
+        n.build("stretch", Some(&profile())).unwrap(),
+    )));
+    let mut t = with(Effect::Timer, "Ctrl+Alt+Shift+F18");
+    let probs = |f: &RuleForm| -> Vec<&'static str> {
+        f.problems(Some(&p)).iter().map(|x| x.path).collect()
+    };
+    assert!(probs(&t).contains(&"steps[0].rule"));
+    t.fields.timer.rule = "stretch".into();
+    t.fields.timer.after_s = 600;
+    assert!(probs(&t).is_empty(), "{:?}", probs(&t));
+    assert_eq!(
+        t.step(Some(&p)).unwrap(),
+        serde_json::json!({"type": "timer", "rule": "stretch", "after_ms": 600_000})
+    );
+    assert!(t.permissions(Some(&p)).is_empty());
+    let back = RuleForm::edit("default", &t.build("arm", Some(&p)).unwrap());
+    assert_eq!(back.fields.effect, Some(Effect::Timer));
+    assert_eq!(back.fields.timer, t.fields.timer);
+
+    let mut s = with(Effect::Notify, "");
+    s.fields.notify.title = "Backup".into();
+    s.fields.trigger.scheduled = true;
+    s.fields.trigger.every = Some(30);
+    s.fields.trigger.catch_up = true;
+    let r = s.build("sched", Some(&profile())).unwrap();
+    assert_eq!(
+        serde_json::to_value(&r.trigger).unwrap(),
+        serde_json::json!({"schedule": {"every_minutes": 30, "missed": "run_once"}})
+    );
+    assert!(RuleForm::edit("default", &r).fields.trigger.catch_up);
+}
