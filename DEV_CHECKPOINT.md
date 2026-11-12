@@ -8,16 +8,17 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: **none eligible** — every open Step issue is blocked (Linux work is not done on this PC; the rest wait for the maintainer's visible/physical checks); #97–#102 are follow-up trackers, not Steps
+- Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100 delivered and closed; #99 in progress (15 rows to partial, 14 planned left; APP-03 moved to #69); then #98 and #97
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
-- Next action: the maintainer runs the open acceptance scripts (DDALGAK_ACCEPTANCE, NOEUL_ACCEPTANCE, GUI_JOURNEYS §8, ENGINE §18–§20) and decides on the follow-ups; then re-query. Steps 76–79 and 82 (#81–#84, #87) were delivered in this session and stay OPEN for those checks; 80 (#85) and 81 (#86) are closed.
+- Next action: continue #99 (remaining planned rows need new overlay, pin and annotation UI), then #98 (Tabby) and #97 (tmux). Maintainer-check and Linux issues stay open. The repository moved to madebymouv/kim (old URL redirects).
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
+- 2026-11-13: #102, #101, #100 closed; #99 batches (output, pins, tray, Space drag) with e2e issue99/100/101/102 passing; `cargo xtask ci` EXIT 0 at a20f86d.
 - 2026-11-12: Step 82 — `cargo xtask bench-ddalgak --record`: 8/8 budgets (0 ms CPU and 0
   wakeups / 10 s at 100 and 1000 rules, hook p99 ≤ 100 µs, 1000 rules checked in 78 ms, profile
   switch 510 ms after the reload fix, CLI 4.9 MiB; debug-host memory 31 MiB informational);
