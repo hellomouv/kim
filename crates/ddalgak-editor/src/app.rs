@@ -305,6 +305,8 @@ pub struct EditorApp {
     recorder: crate::recorder::Recorder,
     /// #101: a running mouse recording (the observing hook lives as long as this).
     mouse_rec: Option<ddalgak::win::mouse_record::MouseRecording>,
+    /// #100: the per-app profile section's fields (filled from the file when first shown).
+    app_map: Option<(bool, Vec<(String, String)>)>,
 }
 
 /// The document checks of the form's rule for one state of the form and the file.
@@ -380,6 +382,7 @@ impl EditorApp {
             launcher: Arc::clone(&opts.launcher),
             recorder: crate::recorder::Recorder::default(),
             mouse_rec: None,
+            app_map: None,
         };
         app.start_watch();
         app.link.send(Job::Status);

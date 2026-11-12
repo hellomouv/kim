@@ -674,7 +674,10 @@
                     "id": { "type": "string" },
                     "mode": { "type": "string" },
                     "mode_state": { "$ref": "#/$defs/mode_state" },
-                    "enabled": { "type": "boolean" }
+                    "enabled": { "type": "boolean" },
+                    "saved": { "description": "#100: the rules file's own active profile.", "type": "string" },
+                    "by_app": { "description": "#100: a per-app profile (settings.app_profiles) is loaded in memory instead of `saved`.", "type": "boolean" },
+                    "app_profiles": { "description": "#100: per-app profile switching is enabled.", "type": "boolean" }
                   }
                 },
                 "indicator": { "$ref": "#/$defs/indicator" },

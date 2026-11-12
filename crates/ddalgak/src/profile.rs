@@ -357,6 +357,54 @@ pub fn apply(doc: &mut Document, id: &str) -> Result<Change, EditError> {
     Ok(change)
 }
 
+/// #100: sets `settings.app_profiles` from `(profile, programs)` pairs (programs: file names
+/// like `Code.exe`, one per entry; pairs without programs are left out). Every profile must
+/// exist; nothing else in the settings changes.
+pub fn set_app_profiles(
+    doc: &mut Document,
+    enabled: bool,
+    rows: &[(String, Vec<String>)],
+) -> Result<Change, EditError> {
+    let mut map = Vec::new();
+    for (profile, apps) in rows {
+        index(doc, profile)?;
+        let apps: Vec<crate::model::AppMatcher> = apps
+            .iter()
+            .map(|a| a.trim())
+            .filter(|a| !a.is_empty())
+            .map(|a| crate::model::AppMatcher {
+                exe: Some(a.to_string()),
+                path: None,
+                extra: Map::new(),
+            })
+            .collect();
+        if apps.is_empty() {
+            continue;
+        }
+        let v = serde_json::json!({ "apps": serde_json::to_value(&apps).unwrap_or_default() });
+        if let Err(e) = crate::context::Cond::compile(&v) {
+            return Err(EditError::Usage(format!("profile `{profile}`: {e}")));
+        }
+        map.push(crate::model::AppProfile {
+            apps,
+            profile: profile.clone(),
+            extra: Map::new(),
+        });
+    }
+    let next = crate::model::AppProfiles {
+        enabled,
+        map,
+        extra: Map::new(),
+    };
+    let settings = doc.settings.get_or_insert_with(Default::default);
+    let changed = settings.app_profiles.as_ref() != Some(&next);
+    settings.app_profiles = Some(next);
+    Ok(Change {
+        changed,
+        ..Change::default()
+    })
+}
+
 /// `profile restore` / `profile rollback`: puts `version` (a profile as a snapshot or save point
 /// holds it) back as a new change. It replaces the profile with the same ID in its place, or
 /// comes back at the end when that profile was deleted. The active profile stays what it is. A

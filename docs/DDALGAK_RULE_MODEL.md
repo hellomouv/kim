@@ -949,6 +949,20 @@ do not block an unrelated change.
   would keep it inactive; launch targets are shown only with `--show-targets` (always in the
   editor's preview). Profiles arrive **not active, every rule off, without consent**.
 
+## 10.2 Profiles by program (#100)
+
+`settings.app_profiles` ([ADR 0087](adr/0087-ddalgak-class-time-and-app-profiles.md)) is **off
+until the user turns it on** (`enabled: true`; the editor's Profiles page, *Switch profiles by
+program*). While the engine runs, 400 ms after the foreground settles, the first `map` entry whose
+`apps` match the program in front has its `profile` loaded **in memory** — `rules.json` and its
+`active_profile` are not rewritten — and any other program gets `active_profile` back. An
+elevated or unknown window, a locked session and the secure desktop never decide (the current
+profile stays); rapid focus changes restart the 400 ms. Every switch is a profile switch (§7.3):
+runs end and held outputs are released. `ddalgak status` shows `profile.saved`, `profile.by_app`
+and `profile.app_profiles`; the tray tooltip names the profile while one is loaded for a program.
+Turning the setting off returns to the saved profile; an entry naming a missing profile is
+ignored.
+
 ## 10.1 Importing AutoHotkey v2 scripts (Step 80)
 
 `ddalgak profile import file.ahk [--dry-run]` and the editor's *Import profile…* convert the

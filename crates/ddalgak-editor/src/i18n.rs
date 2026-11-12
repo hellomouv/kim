@@ -765,6 +765,31 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ),
     ("form.time_from", "From (HH:MM)", "시작 (HH:MM)"),
     ("form.time_to", "Until (HH:MM)", "끝 (HH:MM)"),
+    (
+        "profiles.by_app",
+        "Switch profiles by program",
+        "프로그램별 프로필 전환",
+    ),
+    (
+        "profiles.by_app_note",
+        "Off until you turn it on. While Ddalgak is on, the profile listed for the program in front is used (rules.json keeps its active profile); other programs use the active profile. Administrator programs, the lock screen and the secure desktop never switch. The tray and `ddalgak status` show it.",
+        "직접 켜기 전까지 꺼져 있습니다. Ddalgak이 켜져 있는 동안 앞에 있는 프로그램에 지정된 프로필을 사용합니다(rules.json의 활성 프로필은 그대로). 다른 프로그램에서는 활성 프로필을 씁니다. 관리자 권한 프로그램, 잠금 화면, 보안 데스크톱에서는 바뀌지 않습니다. 트레이와 `ddalgak status`에 표시됩니다.",
+    ),
+    (
+        "profiles.by_app_on",
+        "Switch profiles by the program in front",
+        "앞에 있는 프로그램에 따라 프로필 전환",
+    ),
+    (
+        "profiles.by_app_save",
+        "Save program profiles",
+        "프로그램별 프로필 저장",
+    ),
+    (
+        "profiles.by_app_saved",
+        "Saved program profiles",
+        "프로그램별 프로필을 저장했습니다",
+    ),
     ("tile.remap", "Act as another key", "다른 키로 바꾸기"),
     ("tile.remap.example", "CapsLock → Ctrl", "CapsLock → Ctrl"),
     ("tile.send_keys", "Press a shortcut", "단축키 누르기"),

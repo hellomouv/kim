@@ -128,6 +128,76 @@ impl EditorApp {
                 self.acts.push(Act::OpenProfileExport(ids));
             }
         });
+        self.app_profiles_ui(ui);
+    }
+
+    /// #100 (ADR 0087): *Switch profiles by program*: off until the user turns it on; one line of
+    /// program file names per profile; saved into `settings.app_profiles`.
+    fn app_profiles_ui(&mut self, ui: &mut egui::Ui) {
+        let c = Colors::get();
+        let lang = self.lang;
+        let Some(doc) = self.doc() else {
+            return;
+        };
+        if self.app_map.is_none() {
+            let ap = doc.settings.as_ref().and_then(|s| s.app_profiles.as_ref());
+            let rows = doc
+                .profiles
+                .iter()
+                .map(|p| {
+                    let apps: Vec<String> = ap
+                        .into_iter()
+                        .flat_map(|a| a.map.iter())
+                        .filter(|e| e.profile == p.id)
+                        .flat_map(|e| e.apps.iter().filter_map(|m| m.exe.clone()))
+                        .collect();
+                    (p.id.clone(), apps.join(", "))
+                })
+                .collect();
+            self.app_map = Some((ap.is_some_and(|a| a.enabled), rows));
+        }
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new(lang.t("profiles.by_app")).strong());
+        ui.label(small(lang.t("profiles.by_app_note"), c.text_muted));
+        let mut save = false;
+        if let Some((enabled, rows)) = self.app_map.as_mut() {
+            ui.checkbox(enabled, lang.t("profiles.by_app_on"));
+            for (id, apps) in rows.iter_mut() {
+                ui.horizontal(|ui| {
+                    let l = ui.label(small(id.as_str(), c.text_secondary));
+                    ui.add(
+                        egui::TextEdit::singleline(apps)
+                            .hint_text("Code.exe, devenv.exe")
+                            .desired_width(320.0),
+                    )
+                    .labelled_by(l.id);
+                });
+            }
+            save = ui.button(lang.t("profiles.by_app_save")).clicked();
+        }
+        if save && let Some((enabled, rows)) = self.app_map.clone() {
+            let rows: Vec<(String, Vec<String>)> = rows
+                .into_iter()
+                .map(|(p, a)| {
+                    (
+                        p,
+                        a.split(',')
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty())
+                            .collect(),
+                    )
+                })
+                .collect();
+            let label = lang.t("profiles.by_app_saved").to_string();
+            if self
+                .commit(label, "settings.app_profiles", move |d| {
+                    profile::set_app_profiles(d, enabled, &rows)
+                })
+                .is_some()
+            {
+                self.app_map = None;
+            }
+        }
     }
 
     fn profile_row_ui(&mut self, ui: &mut egui::Ui, r: &profile::Row) {

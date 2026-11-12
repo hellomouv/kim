@@ -840,3 +840,29 @@ fn versions_save_points_restore_and_rollback() {
     );
     usable(&clash);
 }
+
+/// #100: per-app profiles are saved into the settings (other settings stay), rows without
+/// programs are left out, unknown profiles are refused and the result loads as a usable file.
+#[test]
+fn app_profiles_are_set_in_the_settings() {
+    let mut d = doc();
+    let rows = vec![
+        (
+            "gaming".to_string(),
+            vec!["Game.exe".to_string(), " ".to_string()],
+        ),
+        ("work".to_string(), Vec::new()),
+    ];
+    let c = set_app_profiles(&mut d, true, &rows).unwrap();
+    assert!(c.changed);
+    let s = d.settings.as_ref().unwrap();
+    assert_eq!(s.engine_on_start, Some(crate::model::OnOff::On));
+    let ap = s.app_profiles.as_ref().unwrap();
+    assert!(ap.enabled);
+    assert_eq!(ap.map.len(), 1);
+    assert_eq!(ap.map[0].profile, "gaming");
+    assert_eq!(ap.map[0].apps[0].exe.as_deref(), Some("Game.exe"));
+    assert!(!set_app_profiles(&mut d, true, &rows).unwrap().changed);
+    assert!(usable(&d).state.usable());
+    assert!(set_app_profiles(&mut d, true, &[("nope".into(), vec!["a.exe".into()])]).is_err());
+}

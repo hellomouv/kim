@@ -79,6 +79,10 @@ pub struct Loaded {
     pub total: usize,
     /// A hash of the file's bytes: a reload applies only real changes.
     pub hash: u64,
+    /// #100: the file's own `active_profile` (this `profile` may differ when a per-app profile
+    /// was loaded in memory), and the compiled `settings.app_profiles` when enabled.
+    pub saved_profile: String,
+    pub app_profiles: Vec<(crate::context::Cond, String)>,
     /// Errors and warnings in the whole document (every profile).
     pub errors: usize,
     pub warnings: usize,
@@ -105,6 +109,8 @@ impl Loaded {
             hash,
             errors: 0,
             warnings: 0,
+            saved_profile: "default".into(),
+            app_profiles: Vec::new(),
         }
     }
 }
@@ -183,6 +189,34 @@ pub fn load(path: &Path) -> Loaded {
 /// shortcuts).
 pub fn load_with(path: &Path, ctx: &Context) -> Loaded {
     from_store(&store::read_path(path, ctx, MIGRATIONS))
+}
+
+/// #100: the rules file with `profile` active in memory (the file is not changed); the file's
+/// own active profile when `profile` does not exist.
+pub fn load_profile(path: &Path, ctx: &Context, profile: &str) -> Loaded {
+    let mut l = store::read_path(path, ctx, MIGRATIONS);
+    if let Some(doc) = l.doc.as_mut()
+        && doc.profile_index(profile).is_some()
+    {
+        let saved = std::mem::replace(&mut doc.active_profile, profile.to_string());
+        let mut out = from_store(&l);
+        out.saved_profile = saved;
+        return out;
+    }
+    from_store(&l)
+}
+
+/// #100: the profile `settings.app_profiles` chooses for the foreground program `app` (a
+/// lowercase path): the first entry that matches, else `None` (the saved profile).
+pub fn app_profile_for(l: &Loaded, app: &str) -> Option<String> {
+    let fg = crate::context::FixedForeground {
+        app: Some(app.to_string()),
+        ..crate::context::FixedForeground::default()
+    };
+    l.app_profiles
+        .iter()
+        .find(|(c, _)| c.holds(&fg, &mut crate::context::Probe::default()))
+        .map(|(_, p)| p.clone())
 }
 
 /// Interprets the bytes of a rules file.
@@ -795,6 +829,22 @@ pub fn from_store(l: &store::Loaded) -> Loaded {
         ..Loaded::empty(l.state.clone(), l.revision, l.hash)
     };
     out.profile_enabled = profile.is_enabled();
+    out.saved_profile = doc.active_profile.clone();
+    // #100: entries naming a profile that no longer exists, or with apps that do not compile,
+    // are left out (never broader).
+    if let Some(ap) = settings
+        .and_then(|s| s.app_profiles.as_ref())
+        .filter(|a| a.enabled)
+    {
+        for e in ap.map.iter().take(32) {
+            let apps = serde_json::to_value(&e.apps).unwrap_or_default();
+            if doc.profile_index(&e.profile).is_some()
+                && let Ok(c) = crate::context::Cond::compile(&json!({ "apps": apps }))
+            {
+                out.app_profiles.push((c, e.profile.clone()));
+            }
+        }
+    }
     let mut candidates: Vec<Candidate> = Vec::new();
     for (ri, entry) in profile.rules.iter().enumerate() {
         let id = entry.id().unwrap_or_default().to_string();
@@ -2437,5 +2487,67 @@ mod tests {
         let l = parse(&doc(json!([r, t])));
         let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
         assert_eq!(active, ["count", "typed"], "{:?}", l.inactive);
+    }
+
+    /// #100: `settings.app_profiles` compiles only when enabled, skips missing profiles, picks the
+    /// first matching entry; `load_profile` loads another profile in memory and keeps the file's
+    /// own active profile as `saved_profile`, without changing the file.
+    #[test]
+    fn app_profiles_choose_a_profile_in_memory() {
+        let doc_with = |enabled: bool| {
+            json!({
+                "schema": "ddalgak.rules", "schema_version": 1, "hotkey_contract": 1, "revision": 3,
+                "active_profile": "default",
+                "settings": {"app_profiles": {"enabled": enabled, "map": [
+                    {"apps": [{"exe": "nobody.exe"}], "profile": "gone"},
+                    {"apps": [{"exe": "Code.exe"}], "profile": "coding"}
+                ]}},
+                "profiles": [
+                    {"id": "default", "title": "Default", "default_mode": "base", "modes": [{"id": "base", "title": "Base"}], "rules": []},
+                    {"id": "coding", "title": "Coding", "default_mode": "base", "modes": [{"id": "base", "title": "Base"}],
+                     "rules": [{"id": "kk", "title": "k", "enabled": true, "trigger": {"keys": "F13"}, "steps": [{"type": "engine", "op": "pause"}]}]}
+                ]
+            })
+        };
+        let on = parse(&serde_json::to_vec(&doc_with(true)).unwrap());
+        assert_eq!(
+            on.app_profiles.len(),
+            1,
+            "the missing profile is left out: {:?}",
+            on.state
+        );
+        assert_eq!(
+            app_profile_for(&on, r"c:pps\code.exe").as_deref(),
+            Some("coding")
+        );
+        assert_eq!(
+            app_profile_for(
+                &on,
+                r"c:\windows
+otepad.exe"
+            ),
+            None
+        );
+        let off = parse(&serde_json::to_vec(&doc_with(false)).unwrap());
+        assert!(off.app_profiles.is_empty());
+        let dir = std::env::temp_dir().join(format!("ddalgak-app-profiles-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rules.json");
+        let bytes = serde_json::to_vec(&doc_with(true)).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let l = load_profile(&path, &Context::default(), "coding");
+        assert_eq!(
+            (l.profile.as_str(), l.saved_profile.as_str()),
+            ("coding", "default")
+        );
+        assert_eq!(l.bindings.len(), 1);
+        let missing = load_profile(&path, &Context::default(), "nope");
+        assert_eq!(missing.profile, "default");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            bytes,
+            "the file is not changed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

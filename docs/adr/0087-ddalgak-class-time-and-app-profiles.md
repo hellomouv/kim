@@ -26,8 +26,20 @@ remains after modes and layers", and opt-in profile switching per app.
    hook's thread, whose key state is not the foreground's. A condition that is sometimes wrong
    is worse than none. Revisit if the hook tracks lock state itself.
 
+4. **Per-app profiles** (`settings.app_profiles {enabled, map: [{apps, profile}]}`), off unless
+   the user enables it. The host loads the mapped profile **in memory** (`rules::load_profile`)
+   instead of rewriting `rules.json` on every focus change, so the file keeps the user's choice
+   and a crash never leaves a per-app profile behind. The foreground watcher posts a message; a
+   400 ms one-shot timer debounces rapid focus changes (no polling). Never decided by an elevated
+   or unknown window, a locked session or the secure desktop. Shown in `status.profile`
+   (`saved`, `by_app`, `app_profiles`) and the tray tooltip; turning it off restores the saved
+   profile.
+
 ## Consequences
 
 - Rules v1 `when` gains two fields (additive; older versions keep such rules inactive with
   `condition_unsupported`).
-- The editor's conditions section gains the class and a time window.
+- The editor's conditions section gains the class and a time window; its Profiles page gains
+  *Switch profiles by program*.
+- Not done: per-app profiles while the engine is off (no watcher then), and switching by window
+  title or class (programs only).

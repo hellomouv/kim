@@ -62,6 +62,28 @@ pub struct Settings {
     /// Step 73: the optional floating status indicator (off by default; drawn by Step 74).
     #[serde(default, skip_serializing_if = "none")]
     pub floating_indicator: Option<FloatingIndicator>,
+    /// #100: opt-in profile switching by the foreground program (off unless `enabled`).
+    #[serde(default, skip_serializing_if = "none")]
+    pub app_profiles: Option<AppProfiles>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// #100 (ADR 0087): `settings.app_profiles`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppProfiles {
+    pub enabled: bool,
+    #[serde(default)]
+    pub map: Vec<AppProfile>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// One entry: when one of `apps` has the focus, `profile` is active.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppProfile {
+    pub apps: Vec<AppMatcher>,
+    pub profile: String,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }

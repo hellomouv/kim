@@ -70,17 +70,19 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, MSG,
-    PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, TranslateMessage,
-    WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_ENDSESSION, WM_HOTKEY, WM_LBUTTONUP,
-    WM_QUERYENDSESSION, WM_RBUTTONUP, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_TOOLWINDOW,
-    WS_OVERLAPPED,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, KillTimer, MSG,
+    PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetTimer,
+    TranslateMessage, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_ENDSESSION, WM_HOTKEY,
+    WM_LBUTTONUP, WM_QUERYENDSESSION, WM_RBUTTONUP, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW,
+    WS_EX_TOOLWINDOW, WS_OVERLAPPED,
 };
 
 const WM_HOST_CMD: u32 = WM_APP + 1;
 const WM_HOST_CONTROL: u32 = WM_APP + 2;
 const WM_TRAY: u32 = WM_APP + 3;
 const WM_HOST_RELOAD: u32 = WM_APP + 4;
+/// #100: the per-app profile timer.
+const TIMER_APP_PROFILE: usize = 0xDA10;
 
 // WTS session change codes (documented WM_WTSSESSION_CHANGE wParam values).
 const WTS_CONSOLE_CONNECT: usize = 0x1;
@@ -300,10 +302,16 @@ impl Host {
                     ));
                 }
             }
-            self.watcher = Some(Watcher::install(Arc::clone(&self.shared)));
+            self.watcher = Some(Watcher::install(
+                Arc::clone(&self.shared),
+                self.hwnd as isize,
+            ));
             let _ = self.markers.engine_on();
             // Every start begins in the default mode; the active mode is never restored (ADR 0043).
             self.set_mode(Some(self.loaded.modes.initial()));
+            // #100: the program in front may choose another profile right away.
+            // SAFETY: a timer of this window (handled like a foreground change).
+            unsafe { SetTimer(self.hwnd, TIMER_APP_PROFILE, 10, None) };
         }
         self.shared.set_state(match change.to {
             State::Off => STATE_OFF,
@@ -430,6 +438,8 @@ impl Host {
             match outcome {
                 "applied" => {
                     self.apply_rules(next);
+                    // #100: a per-app profile is chosen again for the new file.
+                    self.app_profile_check();
                     self.last_reload = Some(json!({
                         "at": crate::time::now_rfc3339(), "origin": origin, "outcome": outcome,
                         "revision": revision, "code": null, "reason": null,
@@ -541,7 +551,7 @@ impl Host {
 
     /// The status indicator (Step 73) from what the host knows now.
     fn indicator(&self) -> indicator::Status {
-        indicator::build(&indicator::Facts {
+        let mut status = indicator::build(&indicator::Facts {
             state: Some(self.state()),
             off_reason: self.lifecycle.off_reason(),
             mode: self
@@ -553,10 +563,67 @@ impl Host {
             rules_kept_previous: !self.saved.state.usable(),
             shortcut_taken: self.registered.iter().any(|(_, _, s)| *s == "taken"),
             floating: self.loaded.floating_indicator,
-        })
+        });
+        // #100: the tray says when a per-app profile is loaded (status.profile.by_app).
+        if self.loaded.profile != self.loaded.saved_profile {
+            status.tooltip = format!(
+                "{} · profile {} (for this program)",
+                status.tooltip, self.loaded.profile
+            )
+            .chars()
+            .take(127)
+            .collect();
+        }
+        status
     }
 
     /// Shows the indicator in the tray (event-driven: called after every change).
+    /// #100 (ADR 0087): with `settings.app_profiles` enabled, the profile mapped to the
+    /// foreground program is loaded in memory (the file's active profile is not changed); other
+    /// programs get the saved profile back. Never while the engine is off, the session is locked
+    /// or the secure desktop is shown, and never for an elevated or unknown window (the current
+    /// profile stays). Called after the foreground settled (a 400 ms one-shot timer), after a
+    /// reload and when the engine starts.
+    fn app_profile_check(&mut self) {
+        if !self.state().has_hook() {
+            return;
+        }
+        let by_app = self.loaded.profile != self.loaded.saved_profile;
+        if self.loaded.app_profiles.is_empty() {
+            if by_app {
+                self.switch_in_memory(None);
+            }
+            return;
+        }
+        if self.locked || !super::input_desktop_available() {
+            return;
+        }
+        let Some(app) = crate::context::Foreground::app(&*super::context::foreground()) else {
+            return;
+        };
+        let target = rules::app_profile_for(&self.loaded, &app)
+            .unwrap_or_else(|| self.loaded.saved_profile.clone());
+        if target != self.loaded.profile {
+            let saved = self.loaded.saved_profile.clone();
+            self.switch_in_memory((target != saved).then_some(target.as_str()));
+        }
+    }
+
+    /// Loads `profile` in memory (`None`: the file's own active profile) and applies it like a
+    /// profile switch: runs end and every held output is released first.
+    fn switch_in_memory(&mut self, profile: Option<&str>) {
+        let ctx = self.ctx();
+        let path = self.opts.paths.rules();
+        let next = match profile {
+            Some(p) => rules::load_profile(&path, &ctx, p),
+            None => rules::load_with(&path, &ctx),
+        };
+        if next.state.usable() {
+            self.apply_rules(next);
+            self.refresh_indicator();
+        }
+    }
+
     fn refresh_indicator(&mut self) {
         let status = self.indicator();
         if let Some(t) = &mut self.tray {
@@ -830,6 +897,10 @@ impl Host {
                 "mode": mode["active"],
                 "mode_state": mode,
                 "enabled": self.loaded.profile_enabled,
+                // #100: the file's own active profile, and whether a per-app profile is loaded.
+                "saved": self.loaded.saved_profile,
+                "by_app": self.loaded.profile != self.loaded.saved_profile,
+                "app_profiles": !self.loaded.app_profiles.is_empty(),
             },
             "rules": rules_json,
             "shortcuts": self.shortcuts.to_json(&|a| self.registration(a)),
@@ -1161,6 +1232,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_HOST_RELOAD => {
             with_host(|h| h.reload("watcher", false));
+            0
+        }
+        // #100: the foreground changed; decide once it settled (rapid focus changes restart it).
+        super::context::WM_FOREGROUND_CHANGED => {
+            // SAFETY: a timer of this window; SetTimer replaces a pending one with the same ID.
+            unsafe { SetTimer(hwnd, TIMER_APP_PROFILE, 400, None) };
+            0
+        }
+        WM_TIMER if wparam == TIMER_APP_PROFILE => {
+            // SAFETY: the one-shot timer above.
+            unsafe { KillTimer(hwnd, TIMER_APP_PROFILE) };
+            with_host(Host::app_profile_check);
             0
         }
         WM_HOOK_LOST => {

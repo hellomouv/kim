@@ -34,7 +34,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 struct Ctx {
     shared: Arc<Shared>,
     own_il: u32,
+    /// #100: a window told about foreground changes (`WM_FOREGROUND_CHANGED`; 0: none).
+    notify: isize,
 }
+
+/// #100: posted to the host's window when the foreground window changed (per-app profiles).
+pub const WM_FOREGROUND_CHANGED: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 9;
 
 /// Step 77 (ADR 0078): the focused window for rule conditions. The process path is cached per
 /// (window, process) and warmed by the foreground watcher, so the hook callback normally reads a
@@ -208,6 +213,17 @@ unsafe extern "system" fn on_event(
                 ctx.shared.bump_focus();
                 ctx.shared.set_ime_composing(false);
                 refresh(ctx, hwnd);
+                if ctx.notify != 0 {
+                    // SAFETY: posts a plain message to the host's own window.
+                    unsafe {
+                        windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
+                            ctx.notify as HWND,
+                            WM_FOREGROUND_CHANGED,
+                            0,
+                            0,
+                        )
+                    };
+                }
             }
             EVENT_OBJECT_FOCUS => {
                 ctx.shared.bump_focus();
@@ -228,9 +244,13 @@ pub struct Watcher {
 }
 
 impl Watcher {
-    pub fn install(shared: Arc<Shared>) -> Watcher {
+    pub fn install(shared: Arc<Shared>, notify: isize) -> Watcher {
         let own_il = own_integrity().unwrap_or(0x2000);
-        let ctx = Ctx { shared, own_il };
+        let ctx = Ctx {
+            shared,
+            own_il,
+            notify,
+        };
         // SAFETY: no preconditions.
         refresh(&ctx, unsafe { GetForegroundWindow() });
         CTX.with(|c| *c.borrow_mut() = Some(ctx));

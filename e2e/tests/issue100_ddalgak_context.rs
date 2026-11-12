@@ -108,3 +108,121 @@ fn issue100_class_and_time_conditions_decide_in_explain() {
         before
     );
 }
+
+struct Host(std::process::Child);
+
+impl Drop for Host {
+    fn drop(&mut self) {
+        if self.0.try_wait().ok().flatten().is_none() {
+            let _ = self.0.kill();
+        }
+        let _ = self.0.wait();
+    }
+}
+
+/// Scenario B (debug test host, no tray, no window): with `settings.app_profiles` enabled for the
+/// program that is in front right now, the running engine loads that profile in memory
+/// (`status.profile.by_app`, `saved` stays the file's) without rewriting rules.json; turning the
+/// setting off gives the saved profile back. Skipped when nothing readable is in front (locked,
+/// elevated) or when the person at the computer switches windows meanwhile.
+#[test]
+#[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
+fn issue100_the_program_in_front_chooses_a_profile_in_memory() {
+    use ddalgak::context::Foreground;
+    require_e2e();
+    let front = || ddalgak::win::context::foreground().app();
+    let Some(app) = front() else {
+        eprintln!("skipped: no readable program is in front (locked or elevated)");
+        return;
+    };
+    let exe = app.rsplit('\\').next().unwrap().to_string();
+    let sb = TempDir::new("issue100-app");
+    let cfg = config(&sb);
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::create_dir_all(sb.path().join("Local")).unwrap();
+    let doc = |enabled: bool| {
+        json!({
+            "schema": "ddalgak.rules", "schema_version": 1, "hotkey_contract": 1, "revision": 1,
+            "active_profile": "default",
+            "settings": {"app_profiles": {"enabled": enabled, "map": [
+                {"apps": [{"exe": exe}], "profile": "focus"}]}},
+            "profiles": [
+                {"id": "default", "title": "Default", "default_mode": "base",
+                 "modes": [{"id": "base", "title": "Base"}], "rules": []},
+                {"id": "focus", "title": "Focus", "default_mode": "base",
+                 "modes": [{"id": "base", "title": "Base"}], "rules": []}
+            ]
+        })
+        .to_string()
+    };
+    std::fs::write(cfg.join("rules.json"), doc(false)).unwrap();
+    let ep = format!("kim-e2e-issue100-{}", std::process::id());
+    let status = || {
+        let (_, d) = run(&sb, &["status", "--endpoint", &ep]);
+        d["data"].clone()
+    };
+    let mut c = Command::new(kim_e2e::bin_debug("ddalgak-gui"));
+    c.args(["--test-host", "--test-max-seconds", "60", "--endpoint", &ep])
+        .env("APPDATA", sb.path().join("Roaming"))
+        .env("LOCALAPPDATA", sb.path().join("Local"))
+        .creation_flags(0x0800_0000)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let host = Host(c.spawn().unwrap());
+    let wait = |what: &str, cond: &dyn Fn(&Value) -> bool| -> Option<Value> {
+        let t = std::time::Instant::now();
+        loop {
+            let s = status();
+            if cond(&s) {
+                return Some(s);
+            }
+            if t.elapsed() > std::time::Duration::from_secs(15) {
+                eprintln!("timed out waiting for {what}: {s:#}");
+                return None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    };
+    wait("the app", &|s| s["app"]["running"] == true).expect("the app answers");
+    if ddalgak::win::is_elevated() {
+        eprintln!("skipped (elevated)");
+        run(&sb, &["quit", "--endpoint", &ep]);
+        return;
+    }
+    let (code, _) = run(&sb, &["engine", "start", "--endpoint", &ep]);
+    assert_eq!(code, 0);
+    assert_eq!(status()["profile"]["by_app"], false, "off unless enabled");
+    let enabled = doc(true);
+    std::fs::write(cfg.join("rules.json"), &enabled).unwrap();
+    let got = wait("the per-app profile", &|s| s["profile"]["id"] == "focus");
+    if front().as_deref() != Some(app.as_str()) {
+        eprintln!("skipped: the program in front changed during the test");
+        run(&sb, &["quit", "--endpoint", &ep]);
+        return;
+    }
+    let s = got.expect("the profile of the program in front is loaded");
+    assert_eq!(
+        (
+            &s["profile"]["saved"],
+            &s["profile"]["by_app"],
+            &s["profile"]["app_profiles"]
+        ),
+        (&json!("default"), &json!(true), &json!(true)),
+        "{s:#}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(cfg.join("rules.json")).unwrap(),
+        enabled,
+        "rules.json is not rewritten"
+    );
+    std::fs::write(cfg.join("rules.json"), doc(false)).unwrap();
+    let s = wait("the saved profile back", &|s| {
+        s["profile"]["id"] == "default"
+    })
+    .expect("back");
+    assert_eq!(s["profile"]["by_app"], false);
+    let (code, _) = run(&sb, &["quit", "--endpoint", &ep]);
+    assert_eq!(code, 0);
+    drop(host);
+}
