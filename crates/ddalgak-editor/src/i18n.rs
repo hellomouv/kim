@@ -746,6 +746,17 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ("macro.if_var", "or variable", "또는 변수"),
     ("macro.var_name", "Variable name", "변수 이름"),
     ("macro.var_value", "Variable value", "변수 값"),
+    ("macro.record_mouse", "Record mouse", "마우스 녹화"),
+    (
+        "macro.recording_mouse_note",
+        "Your clicks and wheel turns in other windows are recorded with their screen points (not in Ddalgak, not in windows of administrator programs, never on the secure desktop). Moves without a click are not kept. Press Stop recording to review the steps.",
+        "다른 창에서의 클릭과 휠 동작을 화면 좌표와 함께 녹화합니다(Ddalgak 창, 관리자 권한 프로그램 창, 보안 데스크톱은 제외). 클릭 없는 이동은 남기지 않습니다. 녹화 중지를 눌러 단계를 검토하세요.",
+    ),
+    (
+        "macro.record_mouse_failed",
+        "Mouse recording could not start",
+        "마우스 녹화를 시작할 수 없습니다",
+    ),
     ("tile.remap", "Act as another key", "다른 키로 바꾸기"),
     ("tile.remap.example", "CapsLock → Ctrl", "CapsLock → Ctrl"),
     ("tile.send_keys", "Press a shortcut", "단축키 누르기"),

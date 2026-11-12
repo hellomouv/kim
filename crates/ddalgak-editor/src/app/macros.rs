@@ -51,7 +51,10 @@ impl EditorApp {
     }
 
     pub(super) fn stop_recording(&mut self) {
-        let steps = self.recorder.stop();
+        let steps = match self.mouse_rec.take() {
+            Some(m) => crate::recorder::mouse_steps(&m.stop()),
+            None => self.recorder.stop(),
+        };
         if let Some(f) = self.form.as_mut() {
             let room = 32usize.saturating_sub(f.fields.macro_steps.len());
             f.fields.macro_steps.extend(steps.into_iter().take(room));
@@ -61,9 +64,13 @@ impl EditorApp {
     pub(super) fn macro_section(&mut self, ui: &mut egui::Ui, profile: Option<&Profile>) {
         let lang = self.lang;
         let c = Colors::get();
-        let recording = self.recorder.is_on();
+        let mouse = self
+            .mouse_rec
+            .as_ref()
+            .map(ddalgak::win::mouse_record::MouseRecording::len);
+        let recording = self.recorder.is_on() || mouse.is_some();
         let full = self.recorder.full;
-        let count = self.recorder.len();
+        let count = mouse.unwrap_or_else(|| self.recorder.len());
         let Some(f) = self.form.as_mut() else {
             return;
         };
@@ -71,6 +78,7 @@ impl EditorApp {
         ui.label(egui::RichText::new(lang.t("macro.title")).strong());
         ui.label(small(lang.t("macro.note"), c.text_muted));
         let mut start = false;
+        let mut start_mouse = false;
         let mut stop = false;
         if recording {
             egui::Frame::new()
@@ -82,7 +90,14 @@ impl EditorApp {
                             .color(c.danger)
                             .strong(),
                     );
-                    ui.label(small(lang.t("macro.recording_note"), c.text_secondary));
+                    ui.label(small(
+                        lang.t(if mouse.is_some() {
+                            "macro.recording_mouse_note"
+                        } else {
+                            "macro.recording_note"
+                        }),
+                        c.text_secondary,
+                    ));
                     if full {
                         ui.label(small(lang.t("macro.full"), c.warning));
                     }
@@ -111,6 +126,13 @@ impl EditorApp {
             }
             if !recording && ui.button(format!("● {}", lang.t("macro.record"))).clicked() {
                 start = true;
+            }
+            if !recording
+                && ui
+                    .button(format!("● {}", lang.t("macro.record_mouse")))
+                    .clicked()
+            {
+                start_mouse = true;
             }
         });
         // #101: blocks and variables.
@@ -210,6 +232,21 @@ impl EditorApp {
         }
         if start {
             self.recorder.start();
+        }
+        if start_mouse {
+            match ddalgak::win::mouse_record::MouseRecording::start() {
+                Ok(r) => self.mouse_rec = Some(r),
+                Err(e) => {
+                    self.toast = Some(Toast {
+                        text: format!("{}: {e}", lang.t("macro.record_mouse_failed")),
+                        undo: false,
+                    });
+                }
+            }
+        }
+        if mouse.is_some() {
+            // The count in the banner follows the recording without a busy loop.
+            ui.ctx().request_repaint_after(Duration::from_millis(250));
         }
         if stop {
             self.stop_recording();

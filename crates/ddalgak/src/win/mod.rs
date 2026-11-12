@@ -11,6 +11,7 @@ pub mod inject;
 pub mod instance;
 pub mod launch;
 pub mod mouse;
+pub mod mouse_record;
 pub mod pipe;
 pub mod recovery;
 pub mod startup;

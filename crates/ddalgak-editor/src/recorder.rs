@@ -2,8 +2,8 @@
 //!
 //! Recording is **explicit and local**: it starts only with *Record keys*, shows a banner the
 //! whole time, ends with *Stop recording* or `Esc`, and sees only the keys typed into the
-//! editor's own window — never another program, never a password field elsewhere, never the
-//! mouse. There is no hook, no background recording and nothing is written until the user saves
+//! editor's own window — never another program, never a password field elsewhere. Since #101 *Record mouse*
+//! records presses and wheel turns (`ddalgak::win::mouse_record`, ADR 0086) the same explicit way. There is no hook, no background recording and nothing is written until the user saves
 //! the rule after reviewing (and editing or removing) every recorded step.
 //!
 //! Typed characters become `type_text` steps, keys and shortcuts that type nothing (Enter, Tab,
@@ -220,6 +220,90 @@ pub fn ctrl() -> Modifiers {
     }
 }
 
+/// #101: the steps a mouse recording becomes: a `mouse_click` at each press's screen point (two
+/// presses of one button within 500 ms and 4 px become a `double_click`), wheel turns in one
+/// direction within 300 ms one `mouse_scroll` (notches rounded, at least 1, at most 50), and a
+/// pause longer than [`PAUSE_S`] a `delay` (rounded to 50 ms, at most 10 s). At most
+/// [`MAX_STEPS`] steps.
+pub fn mouse_steps(events: &[ddalgak::mouse::RecEvent]) -> Vec<Value> {
+    use ddalgak::mouse::RecEvent;
+    let mut out: Vec<Value> = Vec::new();
+    let mut last: Option<(u64, &RecEvent)> = None;
+    let mut wheel_delta = 0i32;
+    for e in events {
+        let at = match e {
+            RecEvent::Click { at_ms, .. } | RecEvent::Wheel { at_ms, .. } => *at_ms,
+        };
+        let gap = last.map_or(0, |(t, _)| at.saturating_sub(t));
+        let joined = match (e, last) {
+            (
+                RecEvent::Click { button, x, y, .. },
+                Some((
+                    _,
+                    RecEvent::Click {
+                        button: b,
+                        x: px,
+                        y: py,
+                        ..
+                    },
+                )),
+            ) if button == b
+                && gap <= 500
+                && (x - px).abs() <= 4
+                && (y - py).abs() <= 4
+                && out
+                    .last()
+                    .is_some_and(|s| s["type"] == "mouse_click" && s.get("op").is_none()) =>
+            {
+                if let Some(s) = out.last_mut() {
+                    s["op"] = json!("double_click");
+                }
+                true
+            }
+            (
+                RecEvent::Wheel {
+                    direction, delta, ..
+                },
+                Some((_, RecEvent::Wheel { direction: d, .. })),
+            ) if direction == d && gap <= 300 => {
+                wheel_delta += delta;
+                if let Some(s) = out.last_mut() {
+                    s["notches"] = json!(((wheel_delta + 60) / 120).clamp(1, 50));
+                }
+                true
+            }
+            _ => false,
+        };
+        if !joined {
+            if last.is_some() && gap as f64 / 1000.0 > PAUSE_S {
+                let ms = ((gap + 25) / 50 * 50).clamp(50, 10_000);
+                out.push(json!({ "type": "delay", "ms": ms }));
+            }
+            match e {
+                RecEvent::Click { button, x, y, .. } => out.push(json!({
+                    "type": "mouse_click", "button": button,
+                    "at": { "x": (*x).clamp(-32768, 32767), "y": (*y).clamp(-32768, 32767) }
+                })),
+                RecEvent::Wheel {
+                    direction, delta, ..
+                } => {
+                    wheel_delta = *delta;
+                    out.push(json!({
+                        "type": "mouse_scroll", "direction": direction,
+                        "notches": ((delta + 60) / 120).clamp(1, 50)
+                    }));
+                }
+            }
+        }
+        last = Some((at, e));
+        if out.len() >= MAX_STEPS {
+            out.truncate(MAX_STEPS);
+            break;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +359,60 @@ mod tests {
         }
         assert!(r.full);
         assert_eq!(r.stop().len(), MAX_STEPS);
+    }
+
+    /// #101: presses become clicks at their points, a quick second press a double click, wheel
+    /// turns one scroll step, pauses delays; the result is bounded.
+    #[test]
+    fn mouse_events_become_steps() {
+        use ddalgak::mouse::RecEvent::{Click, Wheel};
+        let ev = [
+            Click {
+                button: "left",
+                x: 100,
+                y: 200,
+                at_ms: 0,
+            },
+            Click {
+                button: "left",
+                x: 101,
+                y: 201,
+                at_ms: 200,
+            },
+            Wheel {
+                direction: "down",
+                delta: 120,
+                at_ms: 1000,
+            },
+            Wheel {
+                direction: "down",
+                delta: 240,
+                at_ms: 1100,
+            },
+            Click {
+                button: "right",
+                x: -5,
+                y: 40_000,
+                at_ms: 1150,
+            },
+        ];
+        assert_eq!(
+            mouse_steps(&ev),
+            [
+                json!({"type": "mouse_click", "button": "left", "op": "double_click", "at": {"x": 100, "y": 200}}),
+                json!({"type": "delay", "ms": 800}),
+                json!({"type": "mouse_scroll", "direction": "down", "notches": 3}),
+                json!({"type": "mouse_click", "button": "right", "at": {"x": -5, "y": 32767}}),
+            ]
+        );
+        let many: Vec<_> = (0..100)
+            .map(|i| Click {
+                button: "left",
+                x: i * 10,
+                y: 0,
+                at_ms: u64::try_from(i).unwrap() * 1000,
+            })
+            .collect();
+        assert_eq!(mouse_steps(&many).len(), MAX_STEPS);
     }
 }

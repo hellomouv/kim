@@ -303,6 +303,8 @@ pub struct EditorApp {
     launcher: Arc<dyn ddalgak::launch::Launcher>,
     // Step 78: the macro recorder (this window's keys only).
     recorder: crate::recorder::Recorder,
+    /// #101: a running mouse recording (the observing hook lives as long as this).
+    mouse_rec: Option<ddalgak::win::mouse_record::MouseRecording>,
 }
 
 /// The document checks of the form's rule for one state of the form and the file.
@@ -377,6 +379,7 @@ impl EditorApp {
             },
             launcher: Arc::clone(&opts.launcher),
             recorder: crate::recorder::Recorder::default(),
+            mouse_rec: None,
         };
         app.start_watch();
         app.link.send(Job::Status);

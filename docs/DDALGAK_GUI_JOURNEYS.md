@@ -657,4 +657,5 @@ result (pass, fail, remark) in the Step 74 issue.
   and the rule cannot be saved until it is closed.
 - **Not tested here (maintainer):** build a macro with a repeat and an if in the editor with the
   keyboard only, and check Narrator reads each row's fields.
-
+- **Record mouse** (next to *Record keys*): the banner says clicks and wheel turns in other windows
+  are recorded with their points; *Stop recording* adds them for review (ADR 0086).

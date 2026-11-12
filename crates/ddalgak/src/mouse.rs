@@ -2052,5 +2052,23 @@ pub const MOUSE_FIELDS: &[Field] = &[
     },
 ];
 
+/// #101: one press or wheel turn a mouse recording kept (screen pixels, milliseconds since the
+/// recording started).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecEvent {
+    Click {
+        button: &'static str,
+        x: i32,
+        y: i32,
+        at_ms: u64,
+    },
+    Wheel {
+        direction: &'static str,
+        /// Wheel units (120 per notch).
+        delta: i32,
+        at_ms: u64,
+    },
+}
+
 #[cfg(test)]
 mod tests;

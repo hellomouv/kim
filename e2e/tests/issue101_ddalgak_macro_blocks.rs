@@ -7,6 +7,9 @@
 //! repeat block, a variable and an if/else; `ddalgak test` reports how many steps it unrolls to;
 //! `rule show` hides the variable's value; an unclosed block is refused with nothing written.
 //!
+//! Scenario A also adds the steps a mouse recording produces (a double click at a point, a delay,
+//! three wheel notches) and previews them; the recording hook itself is a maintainer check.
+//!
 //! Scenario B (debug test host with `--test-launch-root`: notifications are recorded, never
 //! shown): `rule run` starts the macro without any key; the variable counted to 3, so the `then`
 //! branch's notification is recorded and the `else` branch's is not; `rule run` of a mode rule
@@ -138,6 +141,38 @@ fn issue101_an_agent_writes_a_macro_with_blocks_and_variables() {
         shown["rule"]["steps"][1]["value"],
         json!({"redacted": true, "characters": SECRET.chars().count()})
     );
+    // #101 item 3: what a mouse recording becomes (the editor's `recorder::mouse_steps`) is a
+    // macro the CLI accepts with input-injection consent and previews without moving anything.
+    let recorded = [
+        json!({"type": "mouse_click", "button": "left", "op": "double_click", "at": {"x": 100, "y": 200}}),
+        json!({"type": "delay", "ms": 800}),
+        json!({"type": "mouse_scroll", "direction": "down", "notches": 3}),
+    ];
+    let rec: Vec<String> = recorded.iter().map(Value::to_string).collect();
+    let mut args = vec![
+        "rule",
+        "add",
+        "--id",
+        "clicks",
+        "--trigger",
+        "Ctrl+Alt+Shift+F23",
+    ];
+    for s in &rec {
+        args.extend(["--step", s.as_str()]);
+    }
+    args.extend(["--allow", "input-injection"]);
+    e.ok(&args);
+    let t = e.ok(&["test", "Ctrl+Alt+Shift+F23"]);
+    assert_eq!(t["decision"]["rule"], "clicks", "{t:#}");
+    assert_eq!(t["injected_events"], 0);
+    let kinds: Vec<&str> = t["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["mouse_click", "delay", "mouse_scroll"]);
+
     let before = std::fs::read(e.config().join("rules.json")).unwrap();
     let open = json!({"type": "repeat", "times": 2}).to_string();
     let note = json!({"type": "notify", "title": "x"}).to_string();

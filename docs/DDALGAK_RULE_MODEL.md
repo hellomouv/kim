@@ -624,7 +624,9 @@ steps (`step_invalid` otherwise). At most 16 variables per rule; `type_text` wit
 previews, and `rule show` replaces a `set_var` `value` with its length unless `--show-text`. An
 unknown foreground never matches (as in `when`). `ddalgak test` reports a winning macro's
 `unrolled` count (`{times, steps}`). The editor's macro builder has *Repeat block*, *If block*,
-*Otherwise*, *End block* and *Set a variable*, edited in place and indented by depth.
+*Otherwise*, *End block* and *Set a variable*, edited in place and indented by depth, and
+*Record mouse* turns clicks and wheel turns into `mouse_click`/`mouse_scroll`/`delay` steps
+([ADR 0086](adr/0086-ddalgak-mouse-recording.md)).
 
 **Run now.** `ddalgak rule run <id> [--dry-run]` asks the running app to start one active rule
 of the active profile as if its keys were pressed: typing, keys, launches, mouse steps and macros
