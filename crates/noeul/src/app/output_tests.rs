@@ -118,3 +118,36 @@ fn tray_clicks_follow_their_settings() {
         serde_json::json!({"left": "pin_clipboard", "middle": "none"})
     );
 }
+
+/// #99 (`PIN-20`): `Ctrl`+click (a drop in place) selects pins; an action on a selected pin acts
+/// on all of them; `pin.select-all` selects every pin; closing ends the selection.
+#[test]
+fn selected_pins_act_together() {
+    let (mut a, _syn, _dir) = overlay_app("pin-select");
+    a.shell.clipboard = Some((40, 30));
+    a.action("paste.float", None);
+    a.shell.pointer_at = Some((700, 400));
+    a.action("paste.float", None);
+    a.shell.pointer_at = Some((200, 600));
+    a.action("paste.float", None);
+    let (p1, p2, p3) = (
+        crate::pins::PinId(1),
+        crate::pins::PinId(2),
+        crate::pins::PinId(3),
+    );
+    for id in [p1, p2] {
+        let r = a.pins.rect(id).unwrap();
+        a.pin_event(super::PinEvent::Dropped(id, r.x, r.y));
+    }
+    assert!(a.pins.info(p1).unwrap().transforms.selected);
+    a.action("pin.zoom-in", Some(p1));
+    assert_eq!(
+        a.pins.info(p2).unwrap().zoom,
+        110,
+        "both selected pins zoomed"
+    );
+    assert_eq!(a.pins.info(p3).unwrap().zoom, 100, "the third did not");
+    a.action("pin.select-all", Some(p3));
+    a.action("pin.close", Some(p3));
+    assert!(a.pins.is_empty(), "every selected pin closed");
+}

@@ -381,6 +381,8 @@ impl Default for Look {
 
 /// `border.subtle` (design/tokens.json), BGRA.
 pub const BORDER_BGRA: [u8; 4] = [0x2F, 0x25, 0x26, 0xFF];
+/// #99: the outline of a selected pin (a strong blue).
+pub const SELECTED_BGRA: [u8; 4] = [0xE0, 0x78, 0x00, 0xFF];
 /// `accent` (design/tokens.json), BGRA: the click-through badge.
 pub const ACCENT_BGRA: [u8; 4] = [0xF5, 0xA6, 0xB7, 0xFF];
 /// The pin shadow `0 2 10 rgba(0,0,0,0.40)` (token `pin.shadow`): offset down, blur radius and
@@ -412,6 +414,40 @@ pub struct View {
     pub resizable: bool,
     /// #99 (`PIN-27`): zoomed out, the nearest pixel instead of the average.
     pub sharp: bool,
+    /// #99 (`PIN-20`): selected with other pins: outlined in [`SELECTED_BGRA`] (always shown).
+    pub selected: bool,
+}
+
+/// #99 (`PIN-17`): how far to move `r` (x, y) so one of its edges lines up with an edge of one
+/// of `others` that is at most `dist` pixels away; each axis snaps on its own to the nearest
+/// edge, and an axis with nothing near stays (0).
+pub fn snap(r: Rect, others: &[Rect], dist: i64) -> (i32, i32) {
+    let best = |mine: [i64; 2], theirs: &mut dyn Iterator<Item = i64>| -> i64 {
+        let mut pick: Option<i64> = None;
+        for t in theirs {
+            for m in mine {
+                let d = t - m;
+                if d.abs() <= dist && pick.is_none_or(|p| d.abs() < p.abs()) {
+                    pick = Some(d);
+                }
+            }
+        }
+        pick.unwrap_or(0)
+    };
+    let xs = [i64::from(r.x), r.right()];
+    let ys = [i64::from(r.y), r.bottom()];
+    let dx = best(
+        xs,
+        &mut others.iter().flat_map(|o| [i64::from(o.x), o.right()]),
+    );
+    let dy = best(
+        ys,
+        &mut others.iter().flat_map(|o| [i64::from(o.y), o.bottom()]),
+    );
+    (
+        i32::try_from(dx).unwrap_or(0),
+        i32::try_from(dy).unwrap_or(0),
+    )
 }
 
 /// #99 (`PIN-21`): how a pin's colours are shown.
@@ -480,12 +516,16 @@ impl View {
             click_through: false,
             resizable: true,
             sharp: false,
+            selected: false,
         }
     }
 
     /// The outline's width: one device pixel per 100 % of scale.
     pub fn border(&self) -> u32 {
-        if self.look.border {
+        if self.selected {
+            // #99: a selected pin is always outlined, twice as wide.
+            (self.dpi / crate::capture::BASE_DPI).max(1) * 2
+        } else if self.look.border {
             (self.dpi / crate::capture::BASE_DPI).max(1)
         } else {
             0
@@ -610,7 +650,11 @@ pub fn paint(frame: &Frame, view: &View, dst: &mut [u8]) {
         let (l, t, r, bt) = (m - b, m - b, m + pw + b, m + ph + b);
         let mut put = |x: usize, y: usize| {
             px[y * ww + x] = if (l..r).contains(&x) && (t..bt).contains(&y) {
-                BORDER_BGRA
+                if view.selected {
+                    SELECTED_BGRA
+                } else {
+                    BORDER_BGRA
+                }
             } else {
                 let a = shadow.as_ref().map_or(0, |(cx, cy)| {
                     (SHADOW_ALPHA * cx[x] * cy[y] * 255.0).round() as u8
@@ -1010,5 +1054,18 @@ mod tests {
         assert!(b.right() <= 5 && b.bottom() <= 3 && b.width == 3);
         v.click_through = false;
         assert_eq!(v.badge(), None);
+    }
+
+    /// #99 (`PIN-17`): each axis snaps to the nearest edge within the distance, or stays.
+    #[test]
+    fn snapping_lines_up_the_nearest_edges() {
+        let others = [Rect::new(100, 100, 200, 50), Rect::new(0, 400, 50, 50)];
+        // Left edge 4 px right of the other's right edge (300): moves left 4; top 3 px below 100.
+        assert_eq!(snap(Rect::new(304, 103, 40, 40), &others, 8), (-4, -3));
+        // Its right edge (90) is 10 px left of 100: too far at 8, snaps at 12.
+        let one = &others[..1];
+        assert_eq!(snap(Rect::new(50, 200, 40, 40), one, 8), (0, 0));
+        assert_eq!(snap(Rect::new(50, 200, 40, 40), one, 12), (10, 0));
+        assert_eq!(snap(Rect::new(500, 600, 10, 10), &[], 8), (0, 0));
     }
 }

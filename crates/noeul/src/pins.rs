@@ -242,6 +242,8 @@ pub struct Transforms {
     pub sharp: bool,
     /// #99 (`PIN-21`): above other windows (the default) or in the normal z-order.
     pub topmost: bool,
+    /// #99 (`PIN-20`): one of the selected pins (outlined in the selection colour).
+    pub selected: bool,
 }
 
 impl Default for Transforms {
@@ -254,6 +256,7 @@ impl Default for Transforms {
             filter: transform::Filter::None,
             sharp: false,
             topmost: true,
+            selected: false,
         }
     }
 }
@@ -325,6 +328,7 @@ impl Pin {
             click_through: self.state.click_through,
             resizable: self.state.thumbnail.is_none(),
             sharp: self.state.sharp,
+            selected: self.state.selected,
         }
     }
 
@@ -553,6 +557,7 @@ impl Pins {
                 click_through: false,
                 resizable: true,
                 sharp: false,
+                selected: false,
             },
             focus,
             guard,
@@ -747,6 +752,7 @@ impl Pins {
             click_through: state.click_through,
             resizable: state.thumbnail.is_none(),
             sharp: state.sharp,
+            selected: state.selected,
         };
         let pic = shown(frame, &annotations, state.orientation);
         p.window
@@ -811,6 +817,7 @@ impl Pins {
                 click_through: c.state.click_through,
                 resizable: c.state.thumbnail.is_none(),
                 sharp: c.state.sharp,
+                selected: c.state.selected,
             },
             focus,
             guard: None,
@@ -1004,6 +1011,17 @@ impl Pins {
                 return false;
             }
             p.state.filter = f;
+            true
+        })
+    }
+
+    /// #99 (`PIN-20`): outlined as selected, or not.
+    pub fn set_selected(&mut self, id: PinId, on: bool) -> Result<bool, PinError> {
+        self.change(id, |p| {
+            if p.state.selected == on {
+                return false;
+            }
+            p.state.selected = on;
             true
         })
     }
@@ -1349,6 +1367,7 @@ impl Pins {
             "filter": p.state.filter.as_str(),
             "sharp": p.state.sharp,
             "topmost": p.state.topmost,
+            "selected": p.state.selected,
             "group": p.group,
             "animation": p.animation.map(|n| json!({"frames": n, "shown": "first_frame"})),
             "content": p.content.kind.as_str(),

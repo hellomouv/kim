@@ -72,21 +72,21 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CS_DBLCLKS, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, GWL_EXSTYLE, GWLP_USERDATA, GetForegroundWindow, GetWindowLongPtrW,
+    DestroyWindow, EnumWindows, GWL_EXSTYLE, GWLP_USERDATA, GetForegroundWindow, GetWindowLongPtrW,
     GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
     HTTOPLEFT, HTTOPRIGHT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL, IDC_SIZENESW,
-    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsWindow, IsWindowVisible, LoadCursorW, MA_ACTIVATE,
-    MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassExW,
-    SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA, UpdateLayeredWindow,
-    WA_INACTIVE, WM_ACTIVATE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY,
-    WM_DPICHANGED, WM_DROPFILES, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCDESTROY, WM_NCHITTEST,
-    WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMBUTTONDBLCLK, WM_NCMBUTTONDOWN,
-    WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP, WM_NULL, WM_RBUTTONDOWN,
-    WM_SETCURSOR, WM_SYSKEYDOWN, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsIconic, IsWindow, IsWindowVisible, LoadCursorW,
+    MA_ACTIVATE, MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW,
+    RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA,
+    UpdateLayeredWindow, WA_INACTIVE, WM_ACTIVATE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU,
+    WM_DESTROY, WM_DPICHANGED, WM_DROPFILES, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_MOVING, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
+    WM_NCMBUTTONDBLCLK, WM_NCMBUTTONDOWN, WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN,
+    WM_NCRBUTTONUP, WM_NULL, WM_RBUTTONDOWN, WM_SETCURSOR, WM_SYSKEYDOWN, WNDCLASSEXW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 const CLASS: &str = "NoeulPin";
@@ -128,6 +128,47 @@ thread_local! {
     static SLOTS: RefCell<BTreeMap<isize, Slot>> = const { RefCell::new(BTreeMap::new()) };
     /// The debug-build test hook: no key state is read ([`ignore_key_state`]).
     static IGNORE_KEYS: Cell<bool> = const { Cell::new(false) };
+    /// #99 (`PIN-17`): the edges a pin being moved may snap to (visible top-level windows,
+    /// other pins included), read once when the move begins.
+    static SNAP_TO: RefCell<Vec<Rect>> = const { RefCell::new(Vec::new()) };
+}
+
+/// How close (device pixels) an edge must come to snap while `Shift` is held.
+const SNAP_PX: i64 = 12;
+
+/// The rectangles of the visible, not minimized top-level windows other than `skip` (only their
+/// position: no title or content is read).
+fn snap_targets(skip: HWND) -> Vec<Rect> {
+    unsafe extern "system" fn collect(h: HWND, data: LPARAM) -> i32 {
+        // SAFETY: `data` is the `&mut Vec<usize>` passed below, alive during EnumWindows.
+        unsafe { (*(data as *mut Vec<usize>)).push(h as usize) };
+        1
+    }
+    let mut handles: Vec<usize> = Vec::new();
+    // SAFETY: the callback only pushes into `handles`, passed by pointer for the call.
+    unsafe { EnumWindows(Some(collect), (&raw mut handles) as LPARAM) };
+    handles
+        .into_iter()
+        .map(|h| h as HWND)
+        .filter(|h| *h != skip)
+        // SAFETY: plain queries of window handles from the enumeration.
+        .filter(|h| unsafe { IsWindowVisible(*h) != 0 && IsIconic(*h) == 0 })
+        .filter_map(|h| {
+            let mut r = RECT::default();
+            // SAFETY: `r` is writable.
+            (unsafe { GetWindowRect(h, &raw mut r) } != 0).then_some(r)
+        })
+        .filter(|r| r.right > r.left && r.bottom > r.top)
+        .map(|r| {
+            Rect::new(
+                r.left,
+                r.top,
+                u32::try_from(r.right - r.left).unwrap_or(1),
+                u32::try_from(r.bottom - r.top).unwrap_or(1),
+            )
+        })
+        .take(512)
+        .collect()
 }
 
 /// Sets what runs after a pin window queued an event (the instance's pump). Same thread.
@@ -510,7 +551,30 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 }
             }
         }
+        // #99 (`PIN-17`): with `Shift` held a moved pin snaps to nearby window and pin edges.
+        WM_ENTERSIZEMOVE => {
+            let targets = snap_targets(hwnd);
+            SNAP_TO.with(|s| *s.borrow_mut() = targets);
+        }
+        WM_MOVING if down(VK_SHIFT) => {
+            // SAFETY: for WM_MOVING `lp` points to the proposed window RECT, writable.
+            let r = unsafe { &mut *(lp as *mut RECT) };
+            let m = i32::try_from(slot(hwnd).map_or(0, |s| s.view.margin())).unwrap_or(0);
+            let pic = Rect::new(
+                r.left + m,
+                r.top + m,
+                u32::try_from(r.right - r.left - 2 * m).unwrap_or(1),
+                u32::try_from(r.bottom - r.top - 2 * m).unwrap_or(1),
+            );
+            let (dx, dy) = SNAP_TO.with(|s| transform::snap(pic, &s.borrow(), SNAP_PX));
+            r.left += dx;
+            r.right += dx;
+            r.top += dy;
+            r.bottom += dy;
+            return 1;
+        }
         WM_EXITSIZEMOVE => {
+            SNAP_TO.with(|s| s.borrow_mut().clear());
             let (x, y) = origin(hwnd);
             let m = slot(hwnd).map_or(0, |s| s.view.margin());
             let m = i32::try_from(m).unwrap_or(0);

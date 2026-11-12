@@ -188,10 +188,10 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `PIN-14` | Image groups: create, switch, close, clear | C, F, H | Named groups; switch, show, hide, close a group. Step 54: every pin in a group (new pins in the current one); switch (its pins shown, the others hidden) from the tray and `noeul pin group switch`, `noeul pin group list`, `--group` on hide, show, close and set; organised by the menu's Move to a new group and by dropping a pin with `Ctrl` onto another; kept with a closed pin, lost at quit; missing: renaming and clearing a group, the manual check | partial | NOEUL-FR-064 | N2 | T | T: `crates/noeul/src/pins/tests.rs` groups_switch_show_hide_and_survive_a_reopen; T: `crates/noeul/src/app.rs` groups_are_switched_and_organised_by_menu_drop_tray_and_cli; T: `crates/noeul/tests/pin_transform.rs` groups_switch_and_act_together |
 | `PIN-15` | Group manager window (Pro) | P | Groups are managed in the settings window | planned | NOEUL-FR-064 | N2 | M | — |
 | `PIN-16` | Automatic backup and restore of image windows | H | ◆ Opt-in (off by default); atomic, user-only, no duplicates on restore Step 60: `[pins] backup = "on"`: written a second after the pins change (no polling), annotations drawn into the picture, offered at the next start (tray "Restore pins from last time", `noeul pin restore`), never restored by itself, never duplicated, damaged pictures skipped and said, off-screen pins brought on screen, click-through never restored | implemented | NOEUL-FR-066 | N4 | T, M | T: `crates/noeul/src/app/keeping_tests.rs` the_pin_backup_is_opt_in_offered_restored_once_and_checked; T: `crates/noeul/tests/history_backup.rs`; T: `crates/noeul/src/store.rs` the_pin_backup_dedupes_pictures_and_commits_atomically |
-| `PIN-17` | Snap to other images and windows while dragging with `Shift` | A | Pin extra | planned | NOEUL-FR-069 | N4 | T | — |
+| `PIN-17` | Snap to other images and windows while dragging with `Shift` | A | Holding `Shift` while moving a pin snaps its edges to the nearest edge (within 12 px) of a visible top-level window or another pin; positions only, no titles read (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/transform.rs` tests::snapping_lines_up_the_nearest_edges |
 | `PIN-18` | Off-screen images after a display change stay put; "restore off-screen images" in the tray | L | Same model: pins stay; "Bring pins on screen" in tray and CLI. Step 53: display and work-area changes keep pins in place, `pin.list` and `status` report off-screen pins, a notice names the way back, the tray's Bring pins on screen and `noeul pin show --all --on-screen` move lost pins into the nearest work area (zoomed out when larger); missing: a real monitor unplug (manual, UX spec §4.6) | partial | NOEUL-FR-067 | N4 | T, M | T: `crates/noeul/src/app.rs` a_monitor_disconnect_keeps_pins_and_offers_the_way_back; T: `crates/noeul/src/pins.rs` a_monitor_disconnect_keeps_pins_in_place_until_they_are_brought_back |
 | `PIN-19` | Animated GIFs: playback speed, previous and next frame | H | GIF playback and frame stepping; a pin says when it shows only the first frame. Step 54: no GIF decoder and no animated pins yet (frame navigation, pause and speed are not implemented and have no actions); an animated GIF offered on the clipboard is pinned as its first frame with a notice, in the pin's menu and in `pin.list` (`animation`), never silently. Step 55: GIF files (pasted, dropped, `noeul pin <file>`) are decoded and pinned the same way; missing: playback, stepping and speed (NOEUL-FR-068, P2) | partial | NOEUL-FR-068 | N2 | T | T: `crates/noeul/src/gif.rs` frames_are_counted_without_decoding_anything; T: `crates/noeul/src/app.rs` an_animated_gif_is_never_flattened_silently; T: `crates/noeul/src/pins/tests.rs` an_animated_picture_says_it_shows_its_first_frame |
-| `PIN-20` | Select several images with `Ctrl`+click, or all with `Ctrl+A` (Pro) | P, K | Pin extra (multi-selection) | planned | NOEUL-FR-069 | N4 | T | — |
+| `PIN-20` | Select several images with `Ctrl`+click, or all with `Ctrl+A` (Pro) | P, K | `Ctrl`+click selects pins (outlined in blue), `Ctrl+A` on a pin selects all; zoom, opacity, rotation, flips, moves, thumbnail, filters, close and hide on a selected pin act on every selected pin (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/app/output_tests.rs` selected_pins_act_together |
 | `PIN-21` | Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro) | P | Per pin: grayscale and inverted views (`pin.grayscale`, `pin.invert`, `pin set --filter`; copy and save keep the colours) and the topmost toggle (`pin.topmost`, `--topmost`) (#99). Missing: solo mode and the background modes for transparency | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/pins/tests.rs` filters_sharp_topmost_and_replace_change_what_they_should, filtered_frames_have_the_expected_pixels; T: `e2e/tests/issue99_noeul_output.rs` |
 | `PIN-22` | Replace an image with the clipboard content (`Ctrl+V`) | K | `pin.paste-replace` (`Ctrl+V` on a pin): the clipboard picture replaces the pin's at the same corner and zoom; other clipboard content leaves it (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/app/output_tests.rs` a_pin_takes_the_clipboard_picture_in_place |
 | `PIN-23` | Copy the original text of a text image (`Ctrl+Shift+C`) | K | `pin.copy-text` (`Ctrl+Shift+C`) Step 55: `pin.copy-text` (`Ctrl+Shift+C`) copies a card's text | implemented | NOEUL-FR-071 | N2 | T | T: `crates/noeul/src/app/paste_tests.rs` copy_text_returns_the_cards_text |
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 111 |
-| `planned` | 36 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 113 |
+| `planned` | 34 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -335,7 +335,7 @@ picture.
 | 4. History (`HIST`) | 3 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 10 | 1 | 1 | 12 |
 | 6. Annotation (`ANN`) | 14 | 3 | 0 | 17 |
-| 7. Floating pins (`PIN`) | 20 | 8 | 2 | 30 |
+| 7. Floating pins (`PIN`) | 22 | 6 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 5 | 0 | 1 | 6 |
 | 10. Settings (`SET`) | 9 | 7 | 6 | 22 |
@@ -368,3 +368,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Pin follow-ups: `PIN-21` (grayscale, invert, topmost), `PIN-22` (replace with the clipboard) and `PIN-27` (sharp pixels) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |

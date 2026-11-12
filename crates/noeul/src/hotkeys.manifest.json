@@ -100,6 +100,7 @@
     { "id": "pin.invert", "title": "Inverted colours on or off (the view only)", "context": "pin", "defaults": [] },
     { "id": "pin.sharp", "title": "Sharp pixels when zoomed out on or off", "context": "pin", "defaults": [] },
     { "id": "pin.topmost", "title": "Above other windows on or off", "context": "pin", "defaults": [] },
-    { "id": "pin.paste-replace", "title": "Replace the picture with the clipboard's image", "context": "pin", "defaults": ["Ctrl+V"] }
+    { "id": "pin.paste-replace", "title": "Replace the picture with the clipboard's image", "context": "pin", "defaults": ["Ctrl+V"] },
+    { "id": "pin.select-all", "title": "Select every pin (actions then apply to all of them)", "context": "pin", "defaults": ["Ctrl+A"] }
   ]
 }

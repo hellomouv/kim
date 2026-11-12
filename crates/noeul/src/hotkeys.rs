@@ -156,6 +156,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "pin.sharp",
     "pin.topmost",
     "pin.paste-replace",
+    "pin.select-all",
 ];
 
 /// Global actions of the final manifest that later Steps add, for `--help` and the docs (none

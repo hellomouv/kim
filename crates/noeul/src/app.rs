@@ -655,6 +655,31 @@ const MENU: &[Option<(&str, &str)>] = &[
     Some(("pin.destroy", "Destroy")),
 ];
 
+/// #99 (`PIN-20`): the pin actions that act on every selected pin at once.
+const SELECTION_ACTIONS: &[&str] = &[
+    "pin.close",
+    "pin.destroy",
+    "pin.hide",
+    "pin.zoom-in",
+    "pin.zoom-out",
+    "pin.zoom-reset",
+    "pin.opacity-up",
+    "pin.opacity-down",
+    "pin.rotate-cw",
+    "pin.rotate-ccw",
+    "pin.flip-horizontal",
+    "pin.flip-vertical",
+    "pin.move-up",
+    "pin.move-down",
+    "pin.move-left",
+    "pin.move-right",
+    "pin.thumbnail",
+    "pin.grayscale",
+    "pin.invert",
+    "pin.sharp",
+    "pin.topmost",
+];
+
 /// "Pin clipboard as…" (Step 55, NOEUL-FR-071): the menu's actions for each kind a paste can pin.
 pub const PASTE_AS: &[(&str, crate::paste::Kind)] = &[
     ("paste.as-image", crate::paste::Kind::Image),
@@ -722,6 +747,8 @@ pub struct App<S: Shell> {
     color_format: Option<pick::Format>,
     /// The opt-in history on disk and the pin backup (Step 60).
     keeping: keeping::Keeping,
+    /// #99 (`PIN-20`): the pins selected together (`Ctrl`+click, `pin.select-all`).
+    selected: std::collections::BTreeSet<PinId>,
 }
 
 impl<S: Shell> std::fmt::Debug for App<S> {
@@ -813,6 +840,7 @@ impl<S: Shell> App<S> {
             display_timer: None,
             color_format: None,
             keeping: keeping::Keeping::default(),
+            selected: std::collections::BTreeSet::new(),
         };
         app.apply_keeping(true);
         app
@@ -1797,6 +1825,48 @@ impl<S: Shell> App<S> {
 
     /// A Noeul action from a global hotkey, the tray, a pin's keys or its menu (by action ID).
     pub fn action(&mut self, action: &str, pin: Option<PinId>) {
+        // #99 (`PIN-20`): an action on one of several selected pins acts on each of them.
+        self.selected.retain(|p| self.pins.info(*p).is_some());
+        if let Some(id) = pin
+            && self.selected.len() > 1
+            && self.selected.contains(&id)
+            && SELECTION_ACTIONS.contains(&action)
+        {
+            for p in self.selected.clone() {
+                self.action_on(action, Some(p));
+            }
+            if matches!(action, "pin.close" | "pin.destroy") {
+                self.selected.clear();
+            }
+            return;
+        }
+        if action == "pin.select-all" {
+            self.selected = self.pins.ids().into_iter().collect();
+            self.show_selection();
+            self.last_action = Some((action.into(), "selected"));
+            return;
+        }
+        self.action_on(action, pin);
+    }
+
+    /// #99 (`PIN-20`): `Ctrl`+click on a pin adds it to the selection or takes it out.
+    fn toggle_selected(&mut self, id: PinId) -> &'static str {
+        let on = self.selected.insert(id);
+        if !on {
+            self.selected.remove(&id);
+        }
+        self.show_selection();
+        if on { "selected" } else { "unselected" }
+    }
+
+    /// Outlines the selected pins (only while more than one pin is selected... or one).
+    fn show_selection(&mut self) {
+        for id in self.pins.ids() {
+            let _ = self.pins.set_selected(id, self.selected.contains(&id));
+        }
+    }
+
+    fn action_on(&mut self, action: &str, pin: Option<PinId>) {
         let found = |ok: bool, word: &'static str| if ok { word } else { "not_found" };
         if let (Some(id), "pin.close" | "pin.destroy") = (pin, action) {
             // A pin that goes away ends its edit (nothing is committed).
@@ -3240,6 +3310,12 @@ impl<S: Shell> App<S> {
                 self.update_dpi(id);
             }
             PinEvent::Dropped(id, x, y) => {
+                // #99 (`PIN-20`): a `Ctrl`+click that did not move the pin selects it.
+                if self.pins.rect(id).is_some_and(|r| (r.x, r.y) == (x, y)) {
+                    let r = self.toggle_selected(id);
+                    self.last_action = Some(("pin.select".into(), r));
+                    return;
+                }
                 // Released with Ctrl over another pin: join its group (Step 54).
                 self.pins.moved(id, x, y);
                 self.update_dpi(id);

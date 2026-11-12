@@ -853,6 +853,7 @@
         "filter": { "description": "#99: how it shows its colours (the view only; copy and save keep them).", "enum": ["none", "grayscale", "invert"] },
         "sharp": { "description": "#99: sharp pixels when zoomed out.", "type": "boolean" },
         "topmost": { "description": "#99: above other windows (the default) or in the normal z-order.", "type": "boolean" },
+        "selected": { "description": "#99 (`PIN-20`): selected with other pins (`Ctrl`+click, `pin.select-all`); a pin action on it acts on every selected pin.", "type": "boolean" },
         "group": { "$ref": "#/$defs/group_name" },
         "animation": {
           "description": "Made from an animated GIF, of which it shows only the first frame (NOEUL-FR-068: never flattened silently); null otherwise.",
