@@ -14,19 +14,19 @@ service, no hot corners).
 
 | Area | Rows | Implemented | Partial | Planned | Not intended |
 | --- | --- | --- | --- | --- | --- |
-| Starting a capture and selecting (`SNIP`) | 22 | 0 | 13 | 1 | 8 |
+| Starting a capture and selecting (`SNIP`) | 22 | 1 | 12 | 1 | 8 |
 | Detection, magnifier, precision (`DET`) | 12 | 0 | 11 | 1 | 0 |
 | Colour picker (`COLOR`) | 7 | 0 | 7 | 0 | 0 |
-| History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
-| Output and clipboard writes (`OUT`) | 12 | 0 | 11 | 0 | 1 |
+| History (`HIST`) | 6 | 5 | 1 | 0 | 0 |
+| Output and clipboard writes (`OUT`) | 12 | 1 | 10 | 0 | 1 |
 | Annotation (`ANN`) | 17 | 0 | 14 | 3 | 0 |
-| Pins (`PIN`) | 30 | 2 | 23 | 3 | 2 |
+| Pins (`PIN`) | 30 | 4 | 21 | 3 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
 | Settings and shortcuts (`SET`) | 22 | 3 | 12 | 1 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **119** | **10** | **24** |
+| **All** | **164** | **16** | **114** | **10** | **24** |
 
 ## 2. The critical workflows
 

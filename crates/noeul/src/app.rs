@@ -536,6 +536,8 @@ pub enum PinEvent {
     Dropped(PinId, i32, i32),
     /// `Shift`+double-click: thumbnail mode on or off (Step 54).
     ShiftDoubleClick(PinId),
+    /// #99 (`PIN-20`): `Ctrl`+click on the picture (no movement): selected, or not any more.
+    CtrlClick(PinId),
     /// Files were dropped on the pin at this screen point (Step 55, NOEUL-FR-073): they are
     /// pinned like `noeul pin <file>`.
     Files(PinId, Vec<PathBuf>, (i32, i32)),
@@ -3366,6 +3368,10 @@ impl<S: Shell> App<S> {
             PinEvent::Moved(id, x, y) => {
                 self.pins.moved(id, x, y);
                 self.update_dpi(id);
+            }
+            PinEvent::CtrlClick(id) => {
+                let r = self.toggle_selected(id);
+                self.last_action = Some(("pin.select".into(), r));
             }
             PinEvent::Dropped(id, x, y) => {
                 // #99 (`PIN-20`): a `Ctrl`+click that did not move the pin selects it.

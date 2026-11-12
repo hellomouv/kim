@@ -56,6 +56,7 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 use std::time::Instant;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows_sys::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
     CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HBITMAP,
@@ -154,7 +155,31 @@ fn snap_targets(skip: HWND) -> Vec<Rect> {
         // SAFETY: plain queries of window handles from the enumeration.
         .filter(|h| unsafe { IsWindowVisible(*h) != 0 && IsIconic(*h) == 0 })
         .filter_map(|h| {
+            // Another pin: its picture, without the outline and shadow margin.
+            if let Some(s) = slot(h) {
+                let p = s.view.rect;
+                return Some(RECT {
+                    left: p.x,
+                    top: p.y,
+                    right: p.x.saturating_add(i32::try_from(p.width).unwrap_or(0)),
+                    bottom: p.y.saturating_add(i32::try_from(p.height).unwrap_or(0)),
+                });
+            }
+            // Another window: its visible frame (Windows 10 and later draw an invisible resize
+            // border outside it), else its window rectangle.
             let mut r = RECT::default();
+            // SAFETY: `r` is a writable RECT of the size passed.
+            let dwm = unsafe {
+                DwmGetWindowAttribute(
+                    h,
+                    DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+                    (&raw mut r).cast(),
+                    u32::try_from(size_of::<RECT>()).unwrap_or(16),
+                )
+            };
+            if dwm == 0 {
+                return Some(r);
+            }
             // SAFETY: `r` is writable.
             (unsafe { GetWindowRect(h, &raw mut r) } != 0).then_some(r)
         })
@@ -457,6 +482,21 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             if guarded(hwnd) =>
         {
             return 0;
+        }
+        // #99 (`PIN-20`): `Ctrl`+press on the picture: the system move loop runs as usual (a
+        // `Ctrl`+drag onto another pin still joins its group); when it ends with the pin where it
+        // was, it was a `Ctrl`+click, which selects the pin. (A click without movement never
+        // sends `WM_EXITSIZEMOVE`, so this is the only place that sees it.)
+        WM_NCLBUTTONDOWN if wp as u32 == HTCAPTION && down(VK_CONTROL) => {
+            let before = origin(hwnd);
+            // SAFETY: the default handling of our own window's message (the modal move loop).
+            let r = unsafe { DefWindowProcW(hwnd, msg, wp, lp) };
+            if origin(hwnd) == before
+                && let Some(id) = pin_of(hwnd)
+            {
+                push(PinEvent::CtrlClick(id));
+            }
+            return r;
         }
         // A press on the border starts a resize (this window's own capture and mouse messages).
         WM_NCLBUTTONDOWN if edge_of(wp as u32).is_some() => {

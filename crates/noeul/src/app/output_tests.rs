@@ -119,7 +119,7 @@ fn tray_clicks_follow_their_settings() {
     );
 }
 
-/// #99 (`PIN-20`): `Ctrl`+click (a drop in place) selects pins; an action on a selected pin acts
+/// #99 (`PIN-20`): `Ctrl`+click selects pins; an action on a selected pin acts
 /// on all of them; `pin.select-all` selects every pin; closing ends the selection.
 #[test]
 fn selected_pins_act_together() {
@@ -136,8 +136,7 @@ fn selected_pins_act_together() {
         crate::pins::PinId(3),
     );
     for id in [p1, p2] {
-        let r = a.pins.rect(id).unwrap();
-        a.pin_event(super::PinEvent::Dropped(id, r.x, r.y));
+        a.pin_event(super::PinEvent::CtrlClick(id));
     }
     assert!(a.pins.info(p1).unwrap().transforms.selected);
     a.action("pin.zoom-in", Some(p1));
