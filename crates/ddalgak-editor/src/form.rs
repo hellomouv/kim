@@ -423,6 +423,14 @@ pub struct Fields {
     /// Step 77: only when the window title contains (or, with `title_exact`, is) this text.
     pub window_title: String,
     pub title_exact: bool,
+    /// #100: only when the window class contains (or, exact, is) this text.
+    pub window_class: String,
+    pub class_exact: bool,
+    /// #100: only between these local times on these days.
+    pub time_on: bool,
+    pub time_from: String,
+    pub time_to: String,
+    pub time_days: [bool; 7],
     pub priority: i64,
     /// Step 78 (ADR 0079): a macro's steps in order (empty: the rule is the one effect above).
     pub macro_steps: Vec<Value>,
@@ -467,6 +475,12 @@ impl Default for Fields {
             except_apps: String::new(),
             window_title: String::new(),
             title_exact: false,
+            window_class: String::new(),
+            class_exact: false,
+            time_on: false,
+            time_from: "09:00".into(),
+            time_to: "17:00".into(),
+            time_days: [true; 7],
             priority: 0,
             macro_steps: Vec::new(),
             macro_at: None,
@@ -775,9 +789,29 @@ impl RuleForm {
                 .as_ref()
                 .and_then(|w| w.window_title.as_ref())
                 .is_some_and(|t| t.equals.is_some()),
+            window_class: rule
+                .when
+                .as_ref()
+                .and_then(|w| w.window_class.as_ref())
+                .and_then(|t| t.contains.clone().or_else(|| t.equals.clone()))
+                .unwrap_or_default(),
+            class_exact: rule
+                .when
+                .as_ref()
+                .and_then(|w| w.window_class.as_ref())
+                .is_some_and(|t| t.equals.is_some()),
             priority: rule.priority(),
             ..Fields::default()
         };
+        if let Some(t) = rule.when.as_ref().and_then(|w| w.time.as_ref()) {
+            f.time_on = true;
+            f.time_from = t.from.clone();
+            f.time_to = t.to.clone();
+            if let Some(d) = &t.days {
+                let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+                f.time_days = names.map(|n| d.iter().any(|x| x == n));
+            }
+        }
         let t = &rule.trigger;
         if let Some(s) = &t.schedule {
             f.trigger.scheduled = true;
@@ -1378,6 +1412,18 @@ impl RuleForm {
         if f.window_title.trim().chars().count() > 200 {
             out.push(problem("when.window_title", "at most 200 characters"));
         }
+        if f.window_class.trim().chars().count() > 200 {
+            out.push(problem("when.window_class", "at most 200 characters"));
+        }
+        if f.time_on {
+            let sample = serde_json::json!({ "time": { "from": f.time_from.trim(), "to": f.time_to.trim() } });
+            if let Err(e) = ddalgak::context::Cond::compile(&sample) {
+                out.push(problem("when.time", e));
+            }
+            if !f.time_days.iter().any(|d| *d) {
+                out.push(problem("when.time", "choose at least one day"));
+            }
+        }
         if !(-1000..=1000).contains(&f.priority) {
             out.push(problem("priority", "−1000…1000"));
         }
@@ -1477,6 +1523,27 @@ impl RuleForm {
             contains: (!f.title_exact).then(|| title.to_string()),
             equals: f.title_exact.then(|| title.to_string()),
             extra: Map::new(),
+        });
+        let class = f.window_class.trim();
+        when.window_class = (!class.is_empty()).then(|| TitleMatch {
+            contains: (!f.class_exact).then(|| class.to_string()),
+            equals: f.class_exact.then(|| class.to_string()),
+            extra: Map::new(),
+        });
+        when.time = f.time_on.then(|| {
+            let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+            let days: Vec<String> = names
+                .iter()
+                .zip(f.time_days)
+                .filter(|(_, on)| *on)
+                .map(|(n, _)| (*n).to_string())
+                .collect();
+            ddalgak::model::TimeCondition {
+                from: f.time_from.trim().to_string(),
+                to: f.time_to.trim().to_string(),
+                days: (days.len() < 7).then_some(days),
+                extra: Map::new(),
+            }
         });
         rule.when = (when != Condition::default()).then_some(when);
         rule.priority = (f.priority != 0).then_some(f.priority);

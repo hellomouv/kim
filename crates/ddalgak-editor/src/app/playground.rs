@@ -117,6 +117,8 @@ impl EditorApp {
             focus: FOCUS[p.focus.min(3)].0.into(),
             app_exe: (!p.app.trim().is_empty()).then(|| p.app.trim().to_string()),
             window_title: (!p.title.trim().is_empty()).then(|| p.title.trim().to_string()),
+            window_class: None,
+            local_time: None,
             ime_composing: p.ime,
             keys: p.keys.trim().to_string(),
             on: ON[p.on.min(3)].into(),

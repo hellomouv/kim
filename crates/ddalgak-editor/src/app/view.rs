@@ -2568,9 +2568,36 @@ fn details_stage(
                 egui::TextEdit::singleline(&mut fl.window_title).desired_width(220.0),
             );
             ui.checkbox(&mut fl.title_exact, lang.t("form.title_exact"));
+            // #100: the window class and a time window.
+            labeled(
+                ui,
+                lang.t("form.class_cond"),
+                egui::TextEdit::singleline(&mut fl.window_class)
+                    .hint_text("Chrome_WidgetWin_1")
+                    .desired_width(220.0),
+            );
+            ui.checkbox(&mut fl.class_exact, lang.t("form.title_exact"));
+            ui.checkbox(&mut fl.time_on, lang.t("form.time_cond"));
+            if fl.time_on {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut fl.time_from).desired_width(50.0))
+                        .accessible_name(lang.t("form.time_from"));
+                    ui.label("–");
+                    ui.add(egui::TextEdit::singleline(&mut fl.time_to).desired_width(50.0))
+                        .accessible_name(lang.t("form.time_to"));
+                    for (i, d) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                        .iter()
+                        .enumerate()
+                    {
+                        ui.checkbox(&mut fl.time_days[i], *d);
+                    }
+                });
+            }
             if !fl.apps.trim().is_empty()
                 || !fl.except_apps.trim().is_empty()
                 || !fl.window_title.trim().is_empty()
+                || !fl.window_class.trim().is_empty()
+                || fl.time_on
             {
                 ui.label(small(lang.t("form.apps_note"), c.text_muted));
             }

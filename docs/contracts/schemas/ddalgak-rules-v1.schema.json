@@ -293,6 +293,25 @@
             "contains": {"type": "string", "minLength": 1, "maxLength": 200},
             "equals": {"type": "string", "minLength": 1, "maxLength": 200}
           }
+        },
+        "window_class": {
+          "description": "#100: the foreground window's class name (AutoHotkey's ahk_class), case-insensitive; read when the trigger fires, like the title (an elevated or unknown window never matches).",
+          "type": "object",
+          "oneOf": [{"required": ["contains"]}, {"required": ["equals"]}],
+          "properties": {
+            "contains": {"type": "string", "minLength": 1, "maxLength": 200},
+            "equals": {"type": "string", "minLength": 1, "maxLength": 200}
+          }
+        },
+        "time": {
+          "description": "#100: local wall-clock time from `from` up to (not including) `to` (HH:MM; `to` before `from` crosses midnight) on `days` (default every day; for a range crossing midnight, the day it starts). The Windows local clock; no network.",
+          "type": "object",
+          "required": ["from", "to"],
+          "properties": {
+            "from": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+            "to": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+            "days": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]}}
+          }
         }
       }
     },

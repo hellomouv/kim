@@ -49,6 +49,8 @@ fn input_of(ex: &Value) -> Input {
         focus: c["focus"].as_str().unwrap().to_string(),
         app_exe: c["app"]["exe"].as_str().map(String::from),
         window_title: c["app"]["window_title"].as_str().map(String::from),
+        window_class: c["app"]["window_class"].as_str().map(String::from),
+        local_time: c["local_time"].as_str().and_then(parse_local_time),
         ime_composing: c["ime_composing"] == true,
         keys: e["keys"].as_str().unwrap().to_string(),
         on: e["on"].as_str().unwrap().to_string(),

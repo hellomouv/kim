@@ -44,6 +44,9 @@ pub struct Input {
     pub focus: String,
     pub app_exe: Option<String>,
     pub window_title: Option<String>,
+    /// #100: the foreground window's class, and the local time to test (`None`: now).
+    pub window_class: Option<String>,
+    pub local_time: Option<crate::time::LocalTime>,
     pub ime_composing: bool,
     pub keys: String,
     /// `press`, `release`, `hold` or `repeat`.
@@ -66,6 +69,8 @@ impl Default for Input {
             focus: "normal".into(),
             app_exe: None,
             window_title: None,
+            window_class: None,
+            local_time: None,
             ime_composing: false,
             keys: String::new(),
             on: "press".into(),
@@ -125,13 +130,54 @@ fn cond_of(r: &Rule) -> Result<Option<crate::context::Cond>, String> {
         .transpose()
 }
 
+/// The tested foreground: the chosen app, title and class, and the chosen local time or now.
+fn foreground_of(i: &Input) -> crate::context::FixedForeground {
+    crate::context::FixedForeground {
+        app: i.app_exe.clone(),
+        title: i.window_title.clone(),
+        class: i.window_class.clone(),
+        local: Some(i.local_time.unwrap_or_else(now_local)),
+    }
+}
+
+/// #100: `YYYY-MM-DDTHH:MM` (a local time to test `when.time` against).
+pub fn parse_local_time(s: &str) -> Option<crate::time::LocalTime> {
+    let (d, t) = s.split_once('T')?;
+    let mut dp = d.split('-');
+    let (y, mo, da) = (
+        dp.next()?.parse().ok()?,
+        dp.next()?.parse().ok()?,
+        dp.next()?.parse().ok()?,
+    );
+    let (h, mi) = t.split_once(':')?;
+    let (h, mi): (u8, u8) = (h.parse().ok()?, mi.parse().ok()?);
+    ((1..=12).contains(&mo) && (1..=31).contains(&da) && h < 24 && mi < 60 && dp.next().is_none())
+        .then_some(crate::time::LocalTime {
+            year: y,
+            month: mo,
+            day: da,
+            hour: h,
+            minute: mi,
+            second: 0,
+        })
+}
+
+/// The real local time (the simulator tests `when.time` against now unless told otherwise).
+fn now_local() -> crate::time::LocalTime {
+    #[cfg(windows)]
+    {
+        crate::win::typing::local_time()
+    }
+    #[cfg(not(windows))]
+    {
+        crate::time::LocalTime::default()
+    }
+}
+
 /// Whether `when` holds in this context: the engine's matcher against the chosen app (an exe
 /// name or a full path) and title (Step 77).
 fn condition_holds(r: &Rule, i: &Input) -> bool {
-    let fg = crate::context::FixedForeground {
-        app: i.app_exe.clone(),
-        title: i.window_title.clone(),
-    };
+    let fg = foreground_of(i);
     match cond_of(r) {
         Ok(None) => true,
         Ok(Some(c)) => c.holds(&fg, &mut crate::context::Probe::default()),
@@ -409,10 +455,7 @@ fn effect(
                 .ok()
                 .and_then(|c| match (&c.window, &c.var) {
                     (Some(w), None) => {
-                        let fg = crate::context::FixedForeground {
-                            app: i.app_exe.clone(),
-                            title: i.window_title.clone(),
-                        };
+                        let fg = foreground_of(i);
                         Some(w.holds(&fg, &mut crate::context::Probe::default()))
                     }
                     _ => None,
@@ -690,6 +733,7 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
                 // A full path is matched as given but printed as its file name (privacy).
                 let mut a = json!({"exe": crate::launch::program_name(e)});
                 if let Some(t) = &i.window_title { a["window_title"] = json!(t.chars().take(200).collect::<String>()); }
+                if let Some(c) = &i.window_class { a["window_class"] = json!(c.chars().take(200).collect::<String>()); }
                 a
             }),
             "ime_composing": i.ime_composing},
@@ -701,6 +745,12 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
     }
     if let Some(u) = unrolled {
         out["unrolled"] = u;
+    }
+    if let Some(t) = &i.local_time {
+        out["context"]["local_time"] = json!(format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}",
+            t.year, t.month, t.day, t.hour, t.minute
+        ));
     }
     Ok(out)
 }

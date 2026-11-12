@@ -1662,7 +1662,7 @@ mod tests {
             { "id": "future", "title": "f", "enabled": true, "trigger": { "keys": "F14" },
               "steps": [ { "type": "teleport" } ] },
             { "id": "cond", "title": "c", "enabled": true, "trigger": { "keys": "F15" },
-              "when": { "apps": [ { "exe": "Code.exe" } ], "window_class": "Chrome_WidgetWin_1" },
+              "when": { "apps": [ { "exe": "Code.exe" } ], "battery": "charging" },
               "steps": [ { "type": "engine", "op": "pause" } ] },
             { "id": "newer-field", "title": "n", "enabled": true, "trigger": { "keys": "F16", "only_on_tuesdays": true },
               "steps": [ { "type": "engine", "op": "pause" } ] },

@@ -1681,7 +1681,7 @@ mod tests {
     #[test]
     fn own_shortcuts_unknown_fields_conditions_and_warnings() {
         let mut cond = engine("cond", "F20");
-        cond["when"] = json!({"apps": [{"exe": "Code.exe"}], "window_class": "Chrome_WidgetWin_1"});
+        cond["when"] = json!({"apps": [{"exe": "Code.exe"}], "battery": "charging"});
         let mut future = engine("future", "Shift+F20");
         future["steps"] = json!([{"type": "teleport"}]);
         let mut odd = engine("odd", "Alt+F20");

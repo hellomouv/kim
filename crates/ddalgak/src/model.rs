@@ -491,6 +491,22 @@ pub struct Condition {
     pub except_apps: Option<Vec<AppMatcher>>,
     #[serde(default, skip_serializing_if = "none")]
     pub window_title: Option<TitleMatch>,
+    /// #100.
+    #[serde(default, skip_serializing_if = "none")]
+    pub window_class: Option<TitleMatch>,
+    #[serde(default, skip_serializing_if = "none")]
+    pub time: Option<TimeCondition>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// #100: `when.time`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TimeCondition {
+    pub from: String,
+    pub to: String,
+    #[serde(default, skip_serializing_if = "none")]
+    pub days: Option<Vec<String>>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -507,6 +523,16 @@ impl Condition {
                     return Some(format!("when.{name}[].{k}"));
                 }
             }
+        }
+        if let Some(k) = self
+            .window_class
+            .as_ref()
+            .and_then(|t| t.extra.keys().next())
+        {
+            return Some(format!("when.window_class.{k}"));
+        }
+        if let Some(k) = self.time.as_ref().and_then(|t| t.extra.keys().next()) {
+            return Some(format!("when.time.{k}"));
         }
         self.window_title
             .as_ref()

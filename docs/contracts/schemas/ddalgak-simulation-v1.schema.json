@@ -34,12 +34,14 @@
               "required": ["exe"],
               "properties": {
                 "exe": {"type": "string", "pattern": "^[^\\\\/:*?\"<>|\\x00-\\x1f]{1,255}\\.(exe|EXE|Exe)$"},
-                "window_title": {"type": "string", "maxLength": 200}
+                "window_title": {"type": "string", "maxLength": 200},
+                "window_class": {"description": "#100.", "type": "string", "maxLength": 200}
               }
             }
           ]
         },
-        "ime_composing": {"type": "boolean"}
+        "ime_composing": {"type": "boolean"},
+        "local_time": {"description": "#100: the local time `when.time` was tested against, when one was given (otherwise now).", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$"}
       }
     },
     "event": {

@@ -757,6 +757,8 @@ between rules whose conditions differ but both hold at that moment. The playgrou
 | `apps` | The focused window's process: `{ "exe": "Code.exe" }` (file name, case-insensitive) or `{ "path": "C:\\…\\Code.exe" }`; any entry matches. |
 | `except_apps` | Same matchers; the rule does not apply if any matches. |
 | `window_title` | `{ "contains": "…" }` or `{ "equals": "…" }`, case-insensitive. |
+| `window_class` | #100: the foreground window's class name (AutoHotkey's `ahk_class`), `{ "contains" }` or `{ "equals" }`, case-insensitive; read like the title. Ranks like a title (§7.1). |
+| `time` | #100: `{ "from": "HH:MM", "to": "HH:MM", "days": [...] }`: the local Windows clock from `from` up to (not including) `to` on `days` (default every day); `to` before `from` crosses midnight and belongs to the day it starts. No network, no other clock. |
 
 Conditions are read at trigger time only, from the foreground window; titles are never logged
 or stored (`DDALGAK-SEC-011`). Windows of elevated processes and the secure desktop never match.
@@ -768,8 +770,12 @@ after a conditioned rule's trigger matched, once per event, from a cache the foc
 (read again when the foreground changed since); the title only for a matched title condition.
 **Unknown never matches**: a window whose process cannot be read (elevated, protected, the secure
 desktop, Ddalgak's own, none) fails `apps` and `except_apps` alike, so the rule stays quiet and a
-lower rule or the application gets the key. Not in v1: window classes, times, modifier-presence
-conditions and switching profiles per app.
+lower rule or the application gets the key. Since #100 ([ADR 0087](adr/0087-ddalgak-class-time-and-app-profiles.md)) also
+`window_class` and `time`; `ddalgak explain --context` takes `app.window_class` and `local_time`
+(`YYYY-MM-DDTHH:MM`; without it the simulator tests against now). Not provided: modifier- or
+lock-key-presence conditions (ADR 0087: modes and hold layers cover holding a key, and a lock
+key's toggle state cannot be read reliably from the hook thread). Per-app profile switching is a
+setting (§10.2).
 
 ### 7.3 Modes
 

@@ -734,3 +734,36 @@ fn macro_blocks_and_variables_build_and_indent() {
     assert!(back.unsupported.is_none(), "{:?}", back.unsupported);
     assert_eq!(back.fields.macro_steps.len(), 9);
 }
+
+/// #100: the window-class and time conditions save as `when.window_class` and `when.time` and
+/// come back; a bad time is a problem.
+#[test]
+fn class_and_time_conditions_round_trip() {
+    let mut f = with(Effect::Notify, "Ctrl+Alt+Shift+F20");
+    f.fields.notify.title = "Hi".into();
+    f.fields.window_class = "Chrome_WidgetWin_1".into();
+    f.fields.class_exact = true;
+    f.fields.time_on = true;
+    f.fields.time_from = "22:00".into();
+    f.fields.time_to = "06:00".into();
+    f.fields.time_days = [false, false, false, false, true, false, false];
+    assert!(paths(&f).is_empty(), "{:?}", paths(&f));
+    let r = f.build("c1", Some(&profile())).unwrap();
+    assert_eq!(
+        serde_json::to_value(&r.when).unwrap(),
+        serde_json::json!({"window_class": {"equals": "Chrome_WidgetWin_1"},
+            "time": {"from": "22:00", "to": "06:00", "days": ["fri"]}})
+    );
+    let back = RuleForm::edit("default", &r);
+    assert_eq!(
+        (
+            back.fields.window_class.as_str(),
+            back.fields.class_exact,
+            back.fields.time_on
+        ),
+        ("Chrome_WidgetWin_1", true, true)
+    );
+    assert_eq!(back.fields.time_days, f.fields.time_days);
+    f.fields.time_to = "25:00".into();
+    assert!(paths(&f).contains(&"when.time"));
+}

@@ -164,7 +164,7 @@ Where a page did not state something, the row says so instead of filling the gap
 | --- | --- | --- | --- | --- | --- | --- |
 | 5.1 | `#HotIf WinActive("ahk_exe code.exe")` | HI, WT | `when.apps` by file name or path; `except_apps` | supported | 77 | Step 77: `context::tests`, `core::tests::the_same_key_fires_per_app_…`, `…an_unknown_foreground_fails_safe`, `e2e/tests/step77_ddalgak_conditions.rs` |
 | 5.2 | Window title matching (exact, prefix, substring, RegEx via `SetTitleMatchMode`) | WT | `window_title` `contains` or `equals`, case-insensitive; no RegEx in v1 | partial | 77 | Step 77: `context::tests::titles_contain_or_equal_…`, the editor's *Window title contains* |
-| 5.3 | `ahk_class` | WT | A window-class matcher is an additive condition | planned | later | Not in Step 77 (ADR 0078); a rule with `window_class` stays inactive (`condition_unsupported`) |
+| 5.3 | `ahk_class` | WT | `when.window_class` (`contains` / `equals`, case-insensitive), read when the trigger fires; time windows `when.time` (#100) | supported | #100 | `context::tests::window_class_and_time_conditions`, e2e issue100 |
 | 5.4 | `ahk_group` window groups | WT | A list of app matchers in one rule | partial | 77 | Step 77: up to 32 matchers per list |
 | 5.5 | Any Boolean expression as a condition, evaluated on the main thread when the key is pressed | HI | Fixed condition kinds only, evaluated at trigger time from the focus watcher's cache (the title read on demand, never kept) | not intended | — | — |
 | 5.6 | Precedence: the topmost eligible variant wins; the global variant has the lowest precedence | HI | Deterministic precedence: mode-scoped, app, title, priority, order (RULE_MODEL §7.1), shown by `explain` | supported | 77 | — |

@@ -328,7 +328,8 @@ fn test(a: &Args, files: &Files, ctx: &Context) -> Outcome {
     Ok((v, Vec::new()))
 }
 
-/// Reads `{"mode", "engine", "focus", "app": {"exe", "window_title"}, "ime_composing"}` (every
+/// Reads `{"mode", "engine", "focus", "app": {"exe", "window_title", "window_class"},
+/// "ime_composing", "local_time"}` (every
 /// field optional, nothing else).
 fn context_into(i: &mut ddalgak::simulate::Input, text: &str) -> Result<(), CliError> {
     let bad = |m: &str| CliError::usage(format!("--context: {m}"));
@@ -375,9 +376,18 @@ fn context_into(i: &mut ddalgak::simulate::Input, text: &str) -> Result<(), CliE
                     match ak.as_str() {
                         "exe" => i.app_exe = Some(s.into()),
                         "window_title" => i.window_title = Some(s.into()),
+                        "window_class" => i.window_class = Some(s.into()),
                         other => return Err(bad(&format!("unknown field `app.{other}`"))),
                     }
                 }
+            }
+            // #100: the local time to test `when.time` against (default: now).
+            "local_time" => {
+                i.local_time = Some(
+                    x.as_str()
+                        .and_then(ddalgak::simulate::parse_local_time)
+                        .ok_or_else(|| bad("`local_time` is YYYY-MM-DDTHH:MM"))?,
+                );
             }
             other => return Err(bad(&format!("unknown field `{other}`"))),
         }

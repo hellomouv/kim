@@ -4436,7 +4436,7 @@ mod tests {
         t.core
             .set_foreground(Arc::new(crate::context::FixedForeground {
                 app: Some(r"c:\notepad.exe".into()),
-                title: None,
+                ..crate::context::FixedForeground::default()
             }));
         let d = t.type_keys(&["B", "T", "W", "Space"]);
         assert_eq!(T::fired_hotstring(&d).map(|f| f.0), Some(1), "{d:?}");

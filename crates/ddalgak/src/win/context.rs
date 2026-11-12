@@ -94,6 +94,22 @@ impl crate::context::Foreground for WinForeground {
         let n = usize::try_from(n).ok().filter(|n| *n > 0)?;
         Some(String::from_utf16_lossy(&buf[..n]).to_lowercase())
     }
+
+    /// #100: the class name of the foreground window (as for the title: only a known process).
+    fn class(&self) -> Option<String> {
+        // SAFETY: no preconditions.
+        let hwnd = unsafe { GetForegroundWindow() };
+        self.lookup(hwnd)?;
+        let mut buf = [0u16; 256];
+        // SAFETY: `buf` has 256 writable UTF-16 units.
+        let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), 256) };
+        let n = usize::try_from(n).ok().filter(|n| *n > 0)?;
+        Some(String::from_utf16_lossy(&buf[..n]).to_lowercase())
+    }
+
+    fn local_time(&self) -> Option<crate::time::LocalTime> {
+        Some(super::typing::local_time())
+    }
 }
 
 /// The one foreground reader of this process (the hook's core and the watcher share it).

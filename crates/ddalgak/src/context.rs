@@ -20,6 +20,14 @@ pub trait Foreground: Send + Sync + std::fmt::Debug {
     /// The foreground window's title, lowercase, or `None` when it cannot be known. Called only
     /// for a matched rule with a `window_title` condition.
     fn title(&self) -> Option<String>;
+    /// #100: the foreground window's class name, lowercase (`None`: unknown, as for the title).
+    fn class(&self) -> Option<String> {
+        None
+    }
+    /// #100: the local wall-clock time now (`None`: unknown; a time condition then fails).
+    fn local_time(&self) -> Option<crate::time::LocalTime> {
+        None
+    }
 }
 
 /// Nothing is known (platforms without watchers, tests): every condition fails.
@@ -40,6 +48,9 @@ impl Foreground for NoForeground {
 pub struct FixedForeground {
     pub app: Option<String>,
     pub title: Option<String>,
+    /// #100.
+    pub class: Option<String>,
+    pub local: Option<crate::time::LocalTime>,
 }
 
 impl Foreground for FixedForeground {
@@ -48,6 +59,12 @@ impl Foreground for FixedForeground {
     }
     fn title(&self) -> Option<String> {
         self.title.as_ref().map(|t| t.to_lowercase())
+    }
+    fn class(&self) -> Option<String> {
+        self.class.as_ref().map(|c| c.to_lowercase())
+    }
+    fn local_time(&self) -> Option<crate::time::LocalTime> {
+        self.local
     }
 }
 
@@ -76,12 +93,37 @@ pub enum TitleMatch {
     Equals(String),
 }
 
+/// #100: `when.time`: from and to (minutes after midnight; `to` before `from` crosses midnight)
+/// on the chosen weekdays (Monday first; for a range crossing midnight, the day it starts).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimeWindow {
+    pub from: u32,
+    pub to: u32,
+    pub days: [bool; 7],
+}
+
+impl TimeWindow {
+    pub fn holds(&self, t: &crate::time::LocalTime) -> bool {
+        let now = u32::from(t.hour) * 60 + u32::from(t.minute);
+        let today = crate::actions::weekday(t.year, t.month, t.day);
+        let yesterday = (today + 6) % 7;
+        if self.from <= self.to {
+            self.days[today] && now >= self.from && now < self.to
+        } else {
+            (self.days[today] && now >= self.from) || (self.days[yesterday] && now < self.to)
+        }
+    }
+}
+
 /// A compiled `when`.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Cond {
     pub apps: Vec<AppMatch>,
     pub except_apps: Vec<AppMatch>,
     pub title: Option<TitleMatch>,
+    /// #100.
+    pub class: Option<TitleMatch>,
+    pub time: Option<TimeWindow>,
 }
 
 fn file_name(path: &str) -> &str {
@@ -97,6 +139,7 @@ fn norm_path(p: &str) -> String {
 pub struct Probe {
     app: Option<Option<String>>,
     title: Option<Option<String>>,
+    class: Option<Option<String>>,
 }
 
 impl Probe {
@@ -106,6 +149,80 @@ impl Probe {
     fn title(&mut self, fg: &dyn Foreground) -> Option<&str> {
         self.title.get_or_insert_with(|| fg.title()).as_deref()
     }
+    fn class(&mut self, fg: &dyn Foreground) -> Option<&str> {
+        self.class.get_or_insert_with(|| fg.class()).as_deref()
+    }
+}
+
+/// `window_title` / `window_class`: exactly one of `contains`, `equals` (1–200 characters).
+fn text_match(v: &Value, name: &str) -> Result<TitleMatch, String> {
+    let t = v
+        .as_object()
+        .ok_or(format!("`when.{name}` must be an object"))?;
+    if t.len() != 1 {
+        return Err(format!(
+            "`when.{name}` takes exactly one of `contains`, `equals`"
+        ));
+    }
+    let (op, s) = t.iter().next().expect("one entry");
+    let s = s
+        .as_str()
+        .filter(|s| !s.is_empty() && s.chars().count() <= 200)
+        .ok_or(format!("`when.{name}` needs a text of 1–200 characters"))?;
+    match op.as_str() {
+        "contains" => Ok(TitleMatch::Contains(s.to_lowercase())),
+        "equals" => Ok(TitleMatch::Equals(s.to_lowercase())),
+        other => Err(format!("unknown field `when.{name}.{other}`")),
+    }
+}
+
+fn hhmm(v: Option<&Value>, name: &str) -> Result<u32, String> {
+    let s = v
+        .and_then(Value::as_str)
+        .ok_or(format!("`when.time.{name}` is HH:MM"))?;
+    let (h, m) = s
+        .split_once(':')
+        .ok_or(format!("`when.time.{name}` is HH:MM"))?;
+    match (h.parse::<u32>(), m.parse::<u32>()) {
+        (Ok(h), Ok(m)) if h < 24 && m < 60 && h_len_ok(s) => Ok(h * 60 + m),
+        _ => Err(format!("`when.time.{name}` is HH:MM")),
+    }
+}
+
+fn h_len_ok(s: &str) -> bool {
+    s.len() == 5
+}
+
+fn time_window(v: &Value) -> Result<TimeWindow, String> {
+    let o = v.as_object().ok_or("`when.time` must be an object")?;
+    if let Some(k) = o
+        .keys()
+        .find(|k| !["from", "to", "days"].contains(&k.as_str()))
+    {
+        return Err(format!("unknown field `when.time.{k}`"));
+    }
+    let from = hhmm(o.get("from"), "from")?;
+    let to = hhmm(o.get("to"), "to")?;
+    if from == to {
+        return Err("`when.time` needs `from` and `to` to differ".into());
+    }
+    let mut days = [true; 7];
+    if let Some(list) = o.get("days") {
+        let names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+        let list = list
+            .as_array()
+            .filter(|a| !a.is_empty())
+            .ok_or("`when.time.days` lists 1–7 days")?;
+        days = [false; 7];
+        for d in list {
+            let i = d
+                .as_str()
+                .and_then(|d| names.iter().position(|n| *n == d))
+                .ok_or("`when.time.days` are mon, tue, wed, thu, fri, sat, sun")?;
+            days[i] = true;
+        }
+    }
+    Ok(TimeWindow { from, to, days })
 }
 
 impl Cond {
@@ -138,10 +255,17 @@ impl Cond {
                         other => return Err(format!("unknown field `when.window_title.{other}`")),
                     });
                 }
+                "window_class" => c.class = Some(text_match(v, "window_class")?),
+                "time" => c.time = Some(time_window(v)?),
                 other => return Err(format!("unknown condition `when.{other}`")),
             }
         }
-        if c.apps.is_empty() && c.except_apps.is_empty() && c.title.is_none() {
+        if c.apps.is_empty()
+            && c.except_apps.is_empty()
+            && c.title.is_none()
+            && c.class.is_none()
+            && c.time.is_none()
+        {
             return Err("`when` is empty".into());
         }
         Ok(c)
@@ -172,6 +296,23 @@ impl Cond {
                 return false;
             }
         }
+        if let Some(t) = &self.class {
+            let Some(class) = probe.class(fg) else {
+                return false;
+            };
+            let ok = match t {
+                TitleMatch::Contains(s) => class.contains(s.as_str()),
+                TitleMatch::Equals(s) => class == s,
+            };
+            if !ok {
+                return false;
+            }
+        }
+        if let Some(w) = &self.time
+            && !fg.local_time().is_some_and(|t| w.holds(&t))
+        {
+            return false;
+        }
         true
     }
 
@@ -179,7 +320,7 @@ impl Cond {
     pub fn rank(c: Option<&Cond>) -> (bool, bool) {
         (
             !c.is_some_and(|c| !c.apps.is_empty()),
-            !c.is_some_and(|c| c.title.is_some()),
+            !c.is_some_and(|c| c.title.is_some() || c.class.is_some()),
         )
     }
 }
@@ -352,11 +493,71 @@ mod tests {
         let f = FixedForeground {
             app: Some(r"C:\Apps\tool31.exe".into()),
             title: Some("Kim".into()),
+            ..FixedForeground::default()
         };
         let t = std::time::Instant::now();
         for _ in 0..10_000 {
             assert!(c.holds(&f, &mut Probe::default()));
         }
         assert!(t.elapsed().as_millis() < 1000, "{:?}", t.elapsed());
+    }
+
+    /// #100: the window class matches case-insensitively like the title; a time window holds
+    /// from `from` up to `to` on its days, across midnight on the day it starts; an unknown class
+    /// or clock never matches; malformed conditions are errors.
+    #[test]
+    fn window_class_and_time_conditions() {
+        use crate::time::LocalTime;
+        let at = |y, m, d, h, mi| LocalTime {
+            year: y,
+            month: m,
+            day: d,
+            hour: h,
+            minute: mi,
+            second: 0,
+        };
+        // 2026-11-12 is a Thursday.
+        let fg = |class: Option<&str>, local: Option<LocalTime>| FixedForeground {
+            app: Some(r"C:\Apps\code.exe".into()),
+            title: None,
+            class: class.map(str::to_string),
+            local,
+        };
+        let c = Cond::compile(&json!({"window_class": {"equals": "Chrome_WidgetWin_1"}})).unwrap();
+        assert!(c.holds(&fg(Some("chrome_widgetwin_1"), None), &mut Probe::default()));
+        assert!(!c.holds(&fg(Some("Notepad"), None), &mut Probe::default()));
+        assert!(!c.holds(&fg(None, None), &mut Probe::default()));
+        let work = Cond::compile(&json!({"time": {"from": "09:00", "to": "17:30", "days": ["mon", "tue", "wed", "thu", "fri"]}})).unwrap();
+        let holds = |c: &Cond, t| c.holds(&fg(None, Some(t)), &mut Probe::default());
+        assert!(holds(&work, at(2026, 11, 12, 9, 0)));
+        assert!(!holds(&work, at(2026, 11, 12, 17, 30)));
+        assert!(!holds(&work, at(2026, 11, 14, 10, 0)), "Saturday");
+        let night =
+            Cond::compile(&json!({"time": {"from": "22:00", "to": "06:00", "days": ["fri"]}}))
+                .unwrap();
+        assert!(holds(&night, at(2026, 11, 13, 23, 0)), "Friday night");
+        assert!(
+            holds(&night, at(2026, 11, 14, 5, 59)),
+            "into Saturday morning"
+        );
+        assert!(!holds(&night, at(2026, 11, 12, 23, 0)), "Thursday");
+        assert!(
+            !night.holds(&fg(None, None), &mut Probe::default()),
+            "no clock, no match"
+        );
+        for bad in [
+            json!({"time": {"from": "9:00", "to": "17:00"}}),
+            json!({"time": {"from": "09:00", "to": "09:00"}}),
+            json!({"time": {"from": "09:00"}}),
+            json!({"time": {"from": "09:00", "to": "10:00", "days": ["mo"]}}),
+            json!({"window_class": {"starts": "x"}}),
+        ] {
+            assert!(Cond::compile(&bad).is_err(), "{bad}");
+        }
+        assert_eq!(
+            Cond::rank(Some(&c)),
+            (true, false),
+            "a class ranks like a title"
+        );
     }
 }
