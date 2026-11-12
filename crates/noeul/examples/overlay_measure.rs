@@ -114,7 +114,12 @@ mod measure {
         fn text_engine(&mut self) -> &mut dyn noeul::card::TextEngine {
             &mut self.text
         }
-        fn clipboard_write(&mut self, _: &[u8], _: &[u8]) -> noeul::error::Result<()> {
+        fn clipboard_write_with(
+            &mut self,
+            _: &[u8],
+            _: &[u8],
+            _: Option<&std::path::Path>,
+        ) -> noeul::error::Result<()> {
             Err(NoeulError::new(
                 Code::ClipboardUnavailable,
                 "never touches the clipboard",

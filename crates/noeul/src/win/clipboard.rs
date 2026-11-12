@@ -309,11 +309,34 @@ fn write(owner: HWND, blocks: Vec<(u32, &[u8])>) -> Result<(), NoeulError> {
 /// a clipboard held by another program is retried for 500 ms (`clipboard_unavailable`). Not run
 /// by automated tests (they never touch the user's clipboard); the encodings are tested, this
 /// handover is in the manual script.
-pub fn write_image(owner: HWND, png: &[u8], dib: &[u8]) -> Result<(), NoeulError> {
-    write(
-        owner,
-        vec![(u32::from(CF_DIBV5), dib), (registered("PNG"), png)],
-    )
+pub fn write_image(
+    owner: HWND,
+    png: &[u8],
+    dib: &[u8],
+    file: Option<&std::path::Path>,
+) -> Result<(), NoeulError> {
+    let drop = file.map(hdrop);
+    let mut blocks = vec![(u32::from(CF_DIBV5), dib), (registered("PNG"), png)];
+    if let Some(d) = &drop {
+        blocks.push((u32::from(CF_HDROP), d.as_slice()));
+    }
+    write(owner, blocks)
+}
+
+/// #99 (`OUT-06`): a `CF_HDROP` block naming one file: `DROPFILES` (20 bytes: the offset of the
+/// list, a point, `fNC`, `fWide` = 1) and the path as UTF-16, ended by two NULs.
+pub fn hdrop(path: &std::path::Path) -> Vec<u8> {
+    let mut b = Vec::new();
+    b.extend_from_slice(&20u32.to_le_bytes());
+    b.extend_from_slice(&0i32.to_le_bytes());
+    b.extend_from_slice(&0i32.to_le_bytes());
+    b.extend_from_slice(&0i32.to_le_bytes());
+    b.extend_from_slice(&1i32.to_le_bytes());
+    for u in path.as_os_str().to_string_lossy().encode_utf16() {
+        b.extend_from_slice(&u.to_le_bytes());
+    }
+    b.extend_from_slice(&[0, 0, 0, 0]);
+    b
 }
 
 /// `pin.copy-text` (Step 55): `text` as `CF_UNICODETEXT`, owned by `owner`, with

@@ -14,19 +14,19 @@ service, no hot corners).
 
 | Area | Rows | Implemented | Partial | Planned | Not intended |
 | --- | --- | --- | --- | --- | --- |
-| Starting a capture and selecting (`SNIP`) | 22 | 0 | 11 | 3 | 8 |
+| Starting a capture and selecting (`SNIP`) | 22 | 0 | 12 | 2 | 8 |
 | Detection, magnifier, precision (`DET`) | 12 | 0 | 10 | 2 | 0 |
 | Colour picker (`COLOR`) | 7 | 0 | 6 | 1 | 0 |
-| History (`HIST`) | 6 | 4 | 1 | 1 | 0 |
-| Output and clipboard writes (`OUT`) | 12 | 0 | 8 | 3 | 1 |
+| History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
+| Output and clipboard writes (`OUT`) | 12 | 0 | 11 | 0 | 1 |
 | Annotation (`ANN`) | 17 | 0 | 14 | 3 | 0 |
 | Pins (`PIN`) | 30 | 2 | 17 | 9 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
-| Settings and shortcuts (`SET`) | 22 | 3 | 9 | 4 | 6 |
-| Command line (`CLI`) | 9 | 2 | 5 | 1 | 1 |
+| Settings and shortcuts (`SET`) | 22 | 3 | 10 | 3 | 6 |
+| Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **101** | **28** | **24** |
+| **All** | **164** | **11** | **108** | **21** | **24** |
 
 ## 2. The critical workflows
 
@@ -50,19 +50,15 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 
 ## 3. Remaining planned rows (tracked)
 
-Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99); *partial* rows name their gap in the
-matrix.
+Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99) (except `APP-03`); *partial* rows name
+their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
+`SET-11` to *partial*.
 
 - `SNIP-10` Move the area while still dragging by holding `Space`
-- `SNIP-11` Delayed capture and a dialog for position, size and delay
 - `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
 - `DET-03` Step to the parent or child element with the mouse wheel (Pro)
 - `DET-09` Swap the roles of `W A S D` and the arrow keys (setting)
 - `COLOR-05` Edit the value of a color card (Pro)
-- `HIST-06` Automatically save every screenshot to a folder
-- `OUT-06` Copy the image as a file as well (Pro)
-- `OUT-07` Output quality setting
-- `OUT-12` Keep copies out of cloud clipboard sync
 - `ANN-12` Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
 - `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes
@@ -77,7 +73,5 @@ matrix.
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-03` Run when the system starts
 - `SET-06` Customize the tray icon's mouse actions (Pro)
-- `SET-11` Hotkeys may not work while an elevated window has focus
 - `SET-21` Interface translations
-- `CLI-02` Delay before snipping
-- `APP-03` Windows, macOS and Linux editions
+- `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/hellomouv/kim/issues/69), done on the Linux server)

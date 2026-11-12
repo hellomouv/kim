@@ -249,7 +249,7 @@ pub struct CaptureArgs {
     /// --clipboard is planned)
     #[arg(long, requires = "target", conflicts_with = "output")]
     pub pin: bool,
-    /// Write the capture to this PNG file instead (an absolute path on a local drive; no
+    /// Write the capture to this PNG or JPEG (.jpg) file instead (an absolute path on a local drive; no
     /// metadata; never over an existing file without --replace). Step 62
     #[arg(long, value_name = "FILE", requires = "target")]
     pub output: Option<String>,
@@ -269,6 +269,10 @@ pub struct CaptureArgs {
     /// Check the region (or whether an overlay could open) and the desktop; capture nothing
     #[arg(long)]
     pub dry_run: bool,
+    /// Wait this many seconds (0–60) before capturing or opening the overlay, to open a menu or
+    /// a tooltip first (#99, `CLI-02`); a dry run never waits
+    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u8).range(0..=60), conflicts_with = "cancel")]
+    pub delay: Option<u8>,
 }
 
 #[derive(Debug, Args)]
@@ -842,6 +846,19 @@ mod tests {
     #[test]
     fn clap_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    /// #99 (`CLI-02`): `--delay` takes 0–60 seconds and never goes with `--cancel`.
+    #[test]
+    fn capture_delay_is_bounded() {
+        let parse = |args: &[&str]| Cli::try_parse_from(args.iter().copied());
+        let ok = parse(&["noeul", "capture", "--interactive", "--delay", "5"]).unwrap();
+        let Some(Command::Capture(c)) = ok.command else {
+            panic!("a capture");
+        };
+        assert_eq!(c.delay, Some(5));
+        assert!(parse(&["noeul", "capture", "--interactive", "--delay", "61"]).is_err());
+        assert!(parse(&["noeul", "capture", "--cancel", "--delay", "2"]).is_err());
     }
 
     #[test]

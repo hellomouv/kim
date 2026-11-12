@@ -30,6 +30,100 @@ pub fn opaque(frame: &Frame) -> bool {
         .all(|p| p[3] == 255)
 }
 
+/// #99 (`OUT-07`): the file format of saved pictures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Format {
+    /// Lossless (the default).
+    #[default]
+    Png,
+    /// `[output] jpeg_quality`; transparency is flattened onto white.
+    Jpeg,
+}
+
+impl Format {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Format::Png => "png",
+            Format::Jpeg => "jpeg",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Format> {
+        match s {
+            "png" => Some(Format::Png),
+            "jpeg" | "jpg" => Some(Format::Jpeg),
+            _ => None,
+        }
+    }
+
+    /// The file extension (without the dot).
+    pub fn ext(self) -> &'static str {
+        match self {
+            Format::Png => "png",
+            Format::Jpeg => "jpg",
+        }
+    }
+
+    /// The format a file name asks for: `.jpg`/`.jpeg`/`.jpe` is JPEG, anything else PNG.
+    pub fn of_path(path: &Path) -> Format {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("jpg" | "jpeg" | "jpe") => Format::Jpeg,
+            _ => Format::Png,
+        }
+    }
+}
+
+/// `[output]` (#99): the quick-save and auto-save format, the JPEG quality, and whether a copy
+/// also carries the picture as a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Options {
+    pub format: Format,
+    pub jpeg_quality: u8,
+    pub copy_as_file: bool,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            format: Format::Png,
+            jpeg_quality: 90,
+            copy_as_file: false,
+        }
+    }
+}
+
+/// The picture as JPEG at `quality` (1–100): 8-bit RGB, transparency flattened onto white, no
+/// metadata (no EXIF, no comments).
+pub fn jpeg(frame: &Frame, quality: u8) -> Result<Vec<u8>, String> {
+    let (w, h) = (frame.width(), frame.height());
+    let mut rgb = Vec::with_capacity(frame.pixels().len() / 4 * 3);
+    for p in frame.pixels().as_chunks::<4>().0 {
+        let a = u32::from(p[3]);
+        let over = |c: u8| -> u8 {
+            u8::try_from((u32::from(c) * a + 255 * (255 - a) + 127) / 255).unwrap_or(255)
+        };
+        rgb.extend_from_slice(&[over(p[2]), over(p[1]), over(p[0])]);
+    }
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
+        .encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
+        .map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// The picture encoded the way `format` asks (PNG or JPEG at the configured quality).
+pub fn encode(frame: &Frame, format: Format, opts: &Options) -> Result<Vec<u8>, String> {
+    match format {
+        Format::Png => png(frame),
+        Format::Jpeg => jpeg(frame, opts.jpeg_quality),
+    }
+}
+
 /// The picture as PNG: 8-bit RGB when fully opaque, otherwise 8-bit RGBA with straight alpha.
 pub fn png(frame: &Frame) -> Result<Vec<u8>, String> {
     let (w, h) = (frame.width(), frame.height());
@@ -149,13 +243,23 @@ pub fn write_file(path: &Path, bytes: &[u8], replace: bool) -> std::io::Result<(
 /// Saves `bytes` into `folder` (created if needed) under `name`, or `name-2.png`, `name-3.png`,
 /// … when taken: never overwrites (NOEUL-FR-032). Returns the path written.
 pub fn quick_save(folder: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    quick_save_as(folder, name, bytes, "png")
+}
+
+/// [`quick_save`] with another extension (`jpg` for JPEG, #99).
+pub fn quick_save_as(
+    folder: &Path,
+    name: &str,
+    bytes: &[u8],
+    ext: &str,
+) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(folder)?;
     let stem = name.strip_suffix(".png").unwrap_or(name);
     for n in 1..=1000u32 {
         let candidate = if n == 1 {
-            folder.join(format!("{stem}.png"))
+            folder.join(format!("{stem}.{ext}"))
         } else {
-            folder.join(format!("{stem}-{n}.png"))
+            folder.join(format!("{stem}-{n}.{ext}"))
         };
         match write_file(&candidate, bytes, false) {
             Ok(()) => return Ok(candidate),

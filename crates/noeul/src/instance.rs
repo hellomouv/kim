@@ -445,6 +445,10 @@ pub fn capture(ctx: &Ctx, a: &crate::CaptureArgs) -> Result<Outcome> {
     if a.cancel {
         return capture_cancel(ctx, a.dry_run);
     }
+    // #99 (`CLI-02`): the screen is taken (or the overlay opened) only after the delay.
+    if let Some(d) = a.delay.filter(|d| *d > 0 && !a.dry_run) {
+        std::thread::sleep(Duration::from_secs(u64::from(d)));
+    }
     if a.interactive {
         return capture_interactive(ctx, a);
     }

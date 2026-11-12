@@ -217,6 +217,8 @@ pub struct Settings {
     pub pin_backup: bool,
     /// Who may capture and read the clipboard without the keyboard (`[privacy]`; Step 62).
     pub privacy: Privacy,
+    /// `[output]` (#99): file format, JPEG quality, copy as a file too.
+    pub output: crate::output::Options,
 }
 
 /// `[privacy] cli` (Step 62, NOEUL-SEC-010).
@@ -266,6 +268,8 @@ pub struct History {
     pub disk: bool,
     pub keep_days: u64,
     pub keep_cancelled: bool,
+    /// #99 (`HIST-06`): every finished capture is also saved into the quick-save folder.
+    pub auto_save: bool,
 }
 
 impl Default for History {
@@ -276,6 +280,7 @@ impl Default for History {
             disk: false,
             keep_days: 7,
             keep_cancelled: false,
+            auto_save: false,
         }
     }
 }
@@ -297,6 +302,7 @@ impl Default for Settings {
             history: History::default(),
             pin_backup: false,
             privacy: Privacy::default(),
+            output: crate::output::Options::default(),
         }
     }
 }
@@ -357,6 +363,12 @@ impl Loaded {
                 "disk": if s.history.disk { "on" } else { "off" },
                 "keep_days": s.history.keep_days,
                 "keep_cancelled": if s.history.keep_cancelled { "on" } else { "off" },
+                "auto_save": if s.history.auto_save { "on" } else { "off" },
+            },
+            "output": {
+                "format": s.output.format.as_str(),
+                "jpeg_quality": s.output.jpeg_quality,
+                "copy_as_file": if s.output.copy_as_file { "on" } else { "off" },
             },
             "paste": {
                 "paths": if s.paste.paths { "on" } else { "off" },
@@ -529,6 +541,30 @@ const KEYS: &[Key] = &[
         default: "\"off\"",
     },
     Key {
+        section: "history",
+        name: "auto_save",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
+        section: "output",
+        name: "format",
+        takes: "\"png\" or \"jpeg\"",
+        default: "\"png\"",
+    },
+    Key {
+        section: "output",
+        name: "jpeg_quality",
+        takes: "a whole number 1–100",
+        default: "90",
+    },
+    Key {
+        section: "output",
+        name: "copy_as_file",
+        takes: "\"on\" or \"off\"",
+        default: "\"off\"",
+    },
+    Key {
         section: "paste",
         name: "paths",
         takes: "\"on\" or \"off\"",
@@ -569,7 +605,7 @@ pub fn key_names() -> Vec<String> {
 
 /// The sections that hold keys (`noeul config reset <section>`).
 pub const SECTIONS: &[&str] = &[
-    "general", "capture", "gestures", "pins", "paste", "color", "history", "privacy",
+    "general", "capture", "gestures", "pins", "paste", "color", "history", "privacy", "output",
 ];
 
 fn on_off(s: Option<&str>) -> Result<bool, ()> {
@@ -665,6 +701,14 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
         ("history", "keep_days") => settings.history.keep_days = number(v, 1, 365)?,
         ("history", "disk") => settings.history.disk = on_off(s)?,
         ("history", "keep_cancelled") => settings.history.keep_cancelled = on_off(s)?,
+        ("history", "auto_save") => settings.history.auto_save = on_off(s)?,
+        ("output", "format") => {
+            settings.output.format = s.and_then(crate::output::Format::parse).ok_or(())?;
+        }
+        ("output", "jpeg_quality") => {
+            settings.output.jpeg_quality = u8::try_from(number(v, 1, 100)?).map_err(|_| ())?;
+        }
+        ("output", "copy_as_file") => settings.output.copy_as_file = on_off(s)?,
         ("color", "format") => {
             settings.color.format = s.and_then(crate::color::Format::parse).ok_or(())?;
         }

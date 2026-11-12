@@ -126,7 +126,17 @@ pub trait Shell {
     /// Puts a picture on the clipboard (Copy, NOEUL-FR-030): `png` as the registered `PNG`
     /// format and `dib` as `CF_DIBV5`, the clipboard opened for the write only and retried
     /// briefly when another program holds it (`clipboard_unavailable`). Never called for a pin.
-    fn clipboard_write(&mut self, png: &[u8], dib: &[u8]) -> Result<()>;
+    fn clipboard_write(&mut self, png: &[u8], dib: &[u8]) -> Result<()> {
+        self.clipboard_write_with(png, dib, None)
+    }
+    /// [`Shell::clipboard_write`] with the picture as a file too (`CF_HDROP`, `[output]
+    /// copy_as_file`, #99).
+    fn clipboard_write_with(
+        &mut self,
+        png: &[u8],
+        dib: &[u8],
+        file: Option<&std::path::Path>,
+    ) -> Result<()>;
     /// The user's Pictures folder (quick save defaults to its `Noeul` subfolder); `None` under
     /// the debug-build test hook, so a test never writes there.
     fn pictures_dir(&self) -> Option<PathBuf>;
@@ -719,13 +729,13 @@ impl<S: Shell> std::fmt::Debug for App<S> {
     }
 }
 
-/// Step 62: a capture's `output` — an absolute `.png` path on a local drive (`C:\…`; never a
+/// Step 62: a capture's `output` — an absolute `.png` (since #99 also `.jpg`) path on a local drive (`C:\…`; never a
 /// network path).
 fn output_path(v: &Value) -> Result<PathBuf> {
     let bad = || {
         NoeulError::new(
             Code::Usage,
-            "`output` must be an absolute path to a .png file on a local drive",
+            "`output` must be an absolute path to a .png or .jpg file on a local drive",
         )
     };
     let s = v.as_str().ok_or_else(bad)?;
@@ -735,11 +745,13 @@ fn output_path(v: &Value) -> Result<PathBuf> {
         && b[0].is_ascii_alphabetic()
         && b[1] == b':'
         && (b[2] == b'\\' || b[2] == b'/');
-    let png = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("png"));
-    if drive && png && !s.contains("..") {
+    // #99 (`OUT-07`): `.jpg`, `.jpeg` and `.jpe` write JPEG.
+    let image = p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        ["png", "jpg", "jpeg", "jpe"]
+            .iter()
+            .any(|x| e.eq_ignore_ascii_case(x))
+    });
+    if drive && image && !s.contains("..") {
         Ok(p)
     } else {
         Err(bad())
@@ -1328,10 +1340,11 @@ impl<S: Shell> App<S> {
         if let Some((path, replace)) = file {
             // Step 62: to a file the user's agent or script named — a PNG without metadata,
             // never over an existing file unless `replace`; the path is never echoed back.
-            let png = output::png(&frame).map_err(|e| {
-                NoeulError::new(Code::Internal, format!("PNG encoding failed: {e}"))
-            })?;
-            output::write_file(&path, &png, replace).map_err(|e| {
+            // #99 (`OUT-07`): a `.jpg` file is JPEG at `[output] jpeg_quality`, anything else PNG.
+            let o = self.settings.settings.output;
+            let bytes = output::encode(&frame, output::Format::of_path(&path), &o)
+                .map_err(|e| NoeulError::new(Code::Internal, format!("encoding failed: {e}")))?;
+            output::write_file(&path, &bytes, replace).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::AlreadyExists {
                     NoeulError::new(Code::Io, "the file exists; nothing was written")
                         .hint("pass --replace to write over it, or choose another name")
@@ -1351,7 +1364,7 @@ impl<S: Shell> App<S> {
             if let Some(o) = outcome {
                 v["pointer"] = o.to_json();
             }
-            v["file"] = json!({"written": true, "bytes": png.len()});
+            v["file"] = json!({"written": true, "bytes": bytes.len()});
             return Ok(v);
         }
         let sid = self
@@ -1723,8 +1736,34 @@ impl<S: Shell> App<S> {
 
     /// Ends everything the instance holds: the capture session, every pin and the global
     /// hotkeys (NOEUL-FR-002). Idempotent; the runtime calls it again on any exit path.
+    /// #99 (`OUT-06`): with `[output] copy_as_file`, the copied picture as a PNG file in Noeul's
+    /// own `copies` folder (under `%LOCALAPPDATA%`, the user's only), removed when Noeul quits.
+    fn copy_file(&self, png: &[u8]) -> Option<PathBuf> {
+        if !self.settings.settings.output.copy_as_file {
+            return None;
+        }
+        let dir = self.paths.data_dir.join("copies");
+        let name = output::file_name(self.shell.local_time());
+        output::quick_save(&dir, &name, png).ok()
+    }
+
+    /// #99 (`HIST-06`): with `[history] auto_save`, a finished capture (pinned, copied) is also
+    /// written into the quick-save folder, in `[output] format`; never a private capture.
+    fn auto_save(&mut self, frame: &Frame) {
+        let (Some(folder), _) = self.quick_save_folder() else {
+            return;
+        };
+        let o = self.settings.settings.output;
+        let name = output::file_name(self.shell.local_time());
+        let _ = output::encode(frame, o.format, &o)
+            .map_err(std::io::Error::other)
+            .and_then(|b| output::quick_save_as(&folder, &name, &b, o.format.ext()));
+    }
+
     pub fn shutdown(&mut self) {
         self.quit = true;
+        // #99: copies made as files live only while Noeul runs.
+        let _ = std::fs::remove_dir_all(self.paths.data_dir.join("copies"));
         // Step 60: the last state of the pins, before they close.
         if self.settings.settings.pin_backup && !self.pins.is_empty() {
             let _ = self.save_backup();
@@ -2499,6 +2538,18 @@ impl<S: Shell> App<S> {
             return;
         };
         self.captures.set_private(id, private);
+        if self.settings.settings.history.auto_save
+            && !private
+            && matches!(how, SessionOutcome::Pinned | SessionOutcome::Copied)
+            && let Ok(sel) = self.captures.selection(id)
+        {
+            let rect = sel.rect();
+            let flat = annotation::flatten(sel.frame(), &self.overlay_annotations(rect), rect);
+            drop(sel);
+            if let Some(frame) = flat {
+                self.auto_save(&frame);
+            }
+        }
         if !self.captures.keeps(how) {
             return;
         }
@@ -2610,7 +2661,10 @@ impl<S: Shell> App<S> {
         drop(annotated);
         drop(sel);
         let written = match encoded {
-            Ok((png, dib)) => self.shell.clipboard_write(&png, &dib),
+            Ok((png, dib)) => {
+                let file = self.copy_file(&png);
+                self.shell.clipboard_write_with(&png, &dib, file.as_deref())
+            }
             Err(why) => Err(NoeulError::new(
                 Code::Internal,
                 format!("PNG encoding failed: {why}"),
@@ -2707,9 +2761,14 @@ impl<S: Shell> App<S> {
         };
         let annotated =
             annotation::flatten(sel.frame(), &self.overlay_annotations(req.rect), req.rect);
-        let written = output::png(annotated.as_ref().unwrap_or(sel.frame()))
-            .map_err(std::io::Error::other)
-            .and_then(|bytes| output::write_file(&path, &bytes, true));
+        let o = self.settings.settings.output;
+        let written = output::encode(
+            annotated.as_ref().unwrap_or(sel.frame()),
+            output::Format::of_path(&path),
+            &o,
+        )
+        .map_err(std::io::Error::other)
+        .and_then(|bytes| output::write_file(&path, &bytes, true));
         drop(annotated);
         drop(sel);
         match written {
@@ -2745,9 +2804,10 @@ impl<S: Shell> App<S> {
         };
         let name = output::file_name(self.shell.local_time());
         let annotated = annotation::flatten(sel.frame(), &self.overlay_annotations(rect), rect);
-        let written = output::png(annotated.as_ref().unwrap_or(sel.frame()))
+        let o = self.settings.settings.output;
+        let written = output::encode(annotated.as_ref().unwrap_or(sel.frame()), o.format, &o)
             .map_err(std::io::Error::other)
-            .and_then(|bytes| output::quick_save(&folder, &name, &bytes));
+            .and_then(|bytes| output::quick_save_as(&folder, &name, &bytes, o.format.ext()));
         drop(annotated);
         drop(sel);
         match written {
@@ -2778,7 +2838,10 @@ impl<S: Shell> App<S> {
         let encoded = output::png(frame).map(|png| (png, output::dib_v5(frame)));
         drop(rendered);
         let written = match encoded {
-            Ok((png, dib)) => self.shell.clipboard_write(&png, &dib),
+            Ok((png, dib)) => {
+                let file = self.copy_file(&png);
+                self.shell.clipboard_write_with(&png, &dib, file.as_deref())
+            }
             Err(why) => Err(NoeulError::new(Code::Internal, why)),
         };
         match written {
@@ -3964,6 +4027,9 @@ mod keeping_tests;
 mod settings_tests;
 
 #[cfg(test)]
+mod output_tests;
+
+#[cfg(test)]
 mod privacy_tests;
 
 #[cfg(test)]
@@ -4132,6 +4198,8 @@ pub(crate) mod tests {
         pub interactive: Option<bool>,
         /// What Copy put on the (fake) clipboard: `(png, dib)` per write.
         pub copies: Vec<(Vec<u8>, Vec<u8>)>,
+        /// #99: files copied with the picture (`[output] copy_as_file`).
+        pub copied_files: Vec<PathBuf>,
         /// Every clipboard write attempt, also the refused ones.
         pub clipboard_writes: usize,
         /// The fake clipboard is held by another program (or disabled).
@@ -4232,12 +4300,19 @@ pub(crate) mod tests {
         fn text_engine(&mut self) -> &mut dyn crate::card::TextEngine {
             &mut self.text
         }
-        fn clipboard_write(&mut self, png: &[u8], dib: &[u8]) -> Result<()> {
+        fn clipboard_write_with(
+            &mut self,
+            png: &[u8],
+            dib: &[u8],
+            file: Option<&std::path::Path>,
+        ) -> Result<()> {
             self.clipboard_writes += 1;
             if self.clipboard_busy {
                 return Err(NoeulError::new(Code::ClipboardUnavailable, "held (test)"));
             }
             self.copies.push((png.to_vec(), dib.to_vec()));
+            self.copied_files
+                .extend(file.map(std::path::Path::to_path_buf));
             Ok(())
         }
         fn pictures_dir(&self) -> Option<PathBuf> {

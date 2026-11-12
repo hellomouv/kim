@@ -343,7 +343,19 @@
             "memory_mb": { "type": "integer", "minimum": 16, "maximum": 2048 },
             "disk": { "enum": ["on", "off"] },
             "keep_days": { "type": "integer", "minimum": 1, "maximum": 365 },
-            "keep_cancelled": { "enum": ["on", "off"] }
+            "keep_cancelled": { "enum": ["on", "off"] },
+            "auto_save": { "description": "#99 (`HIST-06`): every pinned or copied capture is also saved into the quick-save folder (never a private one); off by default.", "enum": ["on", "off"] }
+          }
+        },
+        "output": {
+          "description": "`[output]` (#99): the format of quick saves and auto-saves (`png` lossless, or `jpeg` at `jpeg_quality`; a save to a `.jpg` file is JPEG too), and whether a copy also puts the picture on the clipboard as a file (a PNG in Noeul's own folder, removed at quit).",
+          "type": "object",
+          "required": ["format", "jpeg_quality", "copy_as_file"],
+          "additionalProperties": false,
+          "properties": {
+            "format": { "enum": ["png", "jpeg"] },
+            "jpeg_quality": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "copy_as_file": { "enum": ["on", "off"] }
           }
         },
         "paste": {

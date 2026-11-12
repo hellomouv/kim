@@ -229,22 +229,31 @@ impl Shell for WinShell {
         self.text.get_or_insert_with(crate::win::card::GdiText::new)
     }
 
-    fn clipboard_write(&mut self, png: &[u8], dib: &[u8]) -> Result<()> {
+    fn clipboard_write_with(
+        &mut self,
+        png: &[u8],
+        dib: &[u8],
+        file: Option<&std::path::Path>,
+    ) -> Result<()> {
+        let listed = file.map(|f| f.display().to_string()).unwrap_or_default();
         match &self.copy {
             CopyTarget::System => {
-                crate::win::clipboard::write_image(CONTROL.get() as HWND, png, dib)
+                crate::win::clipboard::write_image(CONTROL.get() as HWND, png, dib, file)
             }
             CopyTarget::Synthetic { busy: true, .. } => Err(NoeulError::new(
                 Code::ClipboardUnavailable,
                 "another program keeps the clipboard open (test hook)",
             )),
-            CopyTarget::Synthetic { busy: false, dir } => stand_in_write(
-                dir.as_deref(),
-                &[
+            CopyTarget::Synthetic { busy: false, dir } => {
+                let mut formats = vec![
                     (crate::paste::Format::Png, png),
                     (crate::paste::Format::DibV5, dib),
-                ],
-            ),
+                ];
+                if file.is_some() {
+                    formats.push((crate::paste::Format::Files, listed.as_bytes()));
+                }
+                stand_in_write(dir.as_deref(), &formats)
+            }
         }
     }
 

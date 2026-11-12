@@ -30,6 +30,12 @@
 | 13 | Unplug or rearrange a monitor with a pin on it; tray → Bring pins on screen | the pin is kept, then brought onto a visible monitor |
 | 14 | Lock the session (`Win+L`) and run `noeul capture --region 0,0,10,10 --pin` from another session or a scheduled task | refused with `desktop_unavailable`; nothing captured |
 | 15 | `noeul config set pins.backup on`; pin two images; quit; start again; tray → Restore pins | the notice offers the pins; nothing comes back until chosen; both return in place |
+| 16 | #99: `noeul config set output.format jpeg`, `output.jpeg_quality 70`; `F1`, select, `Ctrl+Shift+S` | a `.jpg` in the quick-save folder that opens in Photos |
+| 17 | #99: `noeul config set output.copy_as_file on`; `F1`, select, `Ctrl+C`; paste into an Explorer folder and into Paint | Explorer pastes a PNG file, Paint the picture; after `noeul quit` the copy file is gone |
+| 18 | #99: `noeul config set history.auto_save on`; pin and copy two captures; one with `P` (private) | the two non-private captures are in the quick-save folder, the private one is not |
+| 19 | #99: `noeul capture --interactive --delay 3`, open a menu meanwhile | the overlay opens 3 s later with the menu frozen in it |
+| 20 | #99: Settings → Clipboard → Sync across devices on; `F1`, select, `Ctrl+C` | the picture is not offered on another signed-in device |
+| 21 | #99 (`SET-11`): with an elevated window (UAC yes) focused, press `F1` | note whether the overlay opens (Noeul never elevates; record the result in the matrix) |
 
 ## 2. Resources (compare with `docs/perf/noeul-baseline.json`)
 

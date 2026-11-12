@@ -139,10 +139,10 @@ fn a_capture_to_a_file_is_a_png_at_a_local_absolute_path_never_over_a_file() {
     assert_eq!(std::fs::read(&out).unwrap(), b"keep me");
     a.request("capture", &p(true)).unwrap();
     assert_ne!(std::fs::read(&out).unwrap(), b"keep me");
-    // Only absolute .png paths on a local drive.
+    // Only absolute .png (since #99 also .jpg) paths on a local drive.
     for bad in [
         "shot.png",
-        "C:\\\\x.jpg",
+        "C:\\\\x.gif",
         "\\\\\\\\server\\\\share\\\\x.png",
         "C:\\\\a\\\\..\\\\x.png",
     ] {
