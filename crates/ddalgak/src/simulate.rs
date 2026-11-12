@@ -395,6 +395,21 @@ fn effect(
             let p = json!({"title_characters": n.title.chars().count().max(1), "body_characters": n.body.as_ref().map_or(0, |b| b.chars().count())});
             ("notify".into(), "Shows a notification.".into(), p, 0)
         }
+        // #102: the program's file name, the argument count and the timeout (never the
+        // arguments, which may hold secrets).
+        Action::RunCommand(c) => {
+            let name = crate::launch::program_name(&c.program).to_string();
+            let found = crate::launch::expand(&c.program, &crate::launch::process_var)
+                .is_some_and(|p| p.is_file());
+            let p = json!({"program": name, "found": found, "arguments": c.args.as_ref().map_or(0, Vec::len),
+                "timeout_ms": c.timeout_ms.unwrap_or(60_000)});
+            (
+                "run_command".into(),
+                format!("Runs {name} and waits for it."),
+                p,
+                0,
+            )
+        }
         Action::Tool(t) => {
             let names: Vec<String> = t
                 .args
@@ -543,15 +558,13 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
             })
             .or_else(|| {
                 // A launch grant counts only for exactly the targets it was given for (§6.2).
-                let fp = crate::validate::launch_fingerprint(&r.to_value());
+                let v = r.to_value();
                 r.permissions_needed()
                     .into_iter()
                     .any(|p| match r.grant(p) {
                         None => true,
-                        Some(g) => {
-                            p == crate::model::Permission::LaunchPrograms
-                                && g.fingerprint.as_deref() != Some(fp.as_str())
-                        }
+                        Some(g) => crate::validate::fingerprint_for(p, &v)
+                            .is_some_and(|f| g.fingerprint.as_deref() != Some(f.as_str())),
                     })
                     .then_some("consent_missing")
             });

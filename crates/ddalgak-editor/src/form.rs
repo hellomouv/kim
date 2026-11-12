@@ -47,14 +47,19 @@ pub enum Effect {
     Window,
     Clipboard,
     Notify,
+    /// #102.
+    Command,
+    Tool,
 }
 
 impl Effect {
     /// Step 79: the effects under "More" (with `Block`).
-    pub const MORE: [Effect; 4] = [
+    pub const MORE: [Effect; 6] = [
         Effect::Window,
         Effect::Clipboard,
         Effect::Notify,
+        Effect::Command,
+        Effect::Tool,
         Effect::Block,
     ];
 
@@ -85,6 +90,8 @@ impl Effect {
             Effect::Window => "window",
             Effect::Clipboard => "clipboard",
             Effect::Notify => "notify",
+            Effect::Command => "run_command",
+            Effect::Tool => "tool",
         }
     }
 
@@ -103,6 +110,8 @@ impl Effect {
             Effect::Window => "▣",
             Effect::Clipboard => "⎘",
             Effect::Notify => "✉",
+            Effect::Command => "▶",
+            Effect::Tool => "⚙",
         }
     }
 
@@ -121,7 +130,9 @@ impl Effect {
             Action::Window(_) => Effect::Window,
             Action::Clipboard(_) => Effect::Clipboard,
             Action::Notify(_) => Effect::Notify,
-            Action::Delay(_) | Action::Tool(_) | Action::Future { .. } => return None,
+            Action::RunCommand(_) => Effect::Command,
+            Action::Tool(_) => Effect::Tool,
+            Action::Delay(_) | Action::Future { .. } => return None,
         })
     }
 
@@ -301,6 +312,35 @@ pub struct NotifyFields {
     pub body: String,
 }
 
+/// #102: "Run a command".
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CommandFields {
+    pub program: String,
+    /// One argument per line.
+    pub args: String,
+    pub working_dir: String,
+    pub timeout_ms: u32,
+}
+
+impl Default for CommandFields {
+    fn default() -> CommandFields {
+        CommandFields {
+            program: String::new(),
+            args: String::new(),
+            working_dir: String::new(),
+            timeout_ms: 60_000,
+        }
+    }
+}
+
+/// #102: "Another Kim tool".
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct ToolFields {
+    pub capability: String,
+    /// The arguments as a JSON object (empty: none).
+    pub args: String,
+}
+
 /// "Switch mode".
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ModeFields {
@@ -341,6 +381,8 @@ pub struct Fields {
     pub window: WindowFields,
     pub clip: ClipFields,
     pub notify: NotifyFields,
+    pub command: CommandFields,
+    pub tool: ToolFields,
     /// Only in these modes (empty: every mode).
     pub modes: Vec<String>,
     /// Only in these apps (file names or full paths, one per line; Step 77).
@@ -386,6 +428,8 @@ impl Default for Fields {
             window: WindowFields::default(),
             clip: ClipFields::default(),
             notify: NotifyFields::default(),
+            command: CommandFields::default(),
+            tool: ToolFields::default(),
             modes: Vec::new(),
             apps: String::new(),
             except_apps: String::new(),
@@ -822,7 +866,21 @@ impl RuleForm {
                             body: n.body.clone().unwrap_or_default(),
                         };
                     }
-                    Action::Delay(_) | Action::Tool(_) | Action::Future { .. } => {
+                    Action::RunCommand(c) => {
+                        f.command = CommandFields {
+                            program: c.program.clone(),
+                            args: c.args.clone().unwrap_or_default().join("\n"),
+                            working_dir: c.working_dir.clone().unwrap_or_default(),
+                            timeout_ms: c.timeout_ms.unwrap_or(60_000),
+                        };
+                    }
+                    Action::Tool(t) => {
+                        f.tool = ToolFields {
+                            capability: t.capability.clone(),
+                            args: t.args.as_ref().map(Value::to_string).unwrap_or_default(),
+                        };
+                    }
+                    Action::Delay(_) | Action::Future { .. } => {
                         unsupported = Some(format!("its step `{}` has no form yet", step.kind()));
                     }
                 }
@@ -1098,6 +1156,59 @@ impl RuleForm {
                     }
                     C::Transform => s["to"] = json!(c.to.as_str()),
                     C::Clear => {}
+                }
+                s
+            }
+            Effect::Command => {
+                let c = &f.command;
+                let program = c.program.trim();
+                let expanded = ddalgak::launch::expand(program, &ddalgak::launch::process_var);
+                if program.is_empty() || !expanded.as_ref().is_some_and(|p| p.is_absolute()) {
+                    out.push(problem(
+                        "steps[0].program",
+                        "the full path of a program, like C:\\Tools\\backup.exe",
+                    ));
+                }
+                let args: Vec<&str> = c.args.lines().filter(|l| !l.is_empty()).collect();
+                if args.len() > 32 {
+                    out.push(problem("steps[0].args", "at most 32 arguments"));
+                }
+                if !(100..=600_000).contains(&c.timeout_ms) {
+                    out.push(problem("steps[0].timeout_ms", "100–600000 ms"));
+                }
+                let mut s = json!({ "type": "run_command", "program": program });
+                if !args.is_empty() {
+                    s["args"] = json!(args);
+                }
+                if !c.working_dir.trim().is_empty() {
+                    s["working_dir"] = json!(c.working_dir.trim());
+                }
+                if c.timeout_ms != 60_000 {
+                    s["timeout_ms"] = json!(c.timeout_ms);
+                }
+                s
+            }
+            Effect::Tool => {
+                let t = &f.tool;
+                let cap = t.capability.trim();
+                let ok = cap.split('.').count() >= 2
+                    && cap.split('.').all(|p| {
+                        p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                            && p.chars()
+                                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    });
+                if !ok {
+                    out.push(problem("steps[0].capability", "a capability like pin.list"));
+                }
+                let mut s = json!({ "type": "tool", "capability": cap });
+                if !t.args.trim().is_empty() {
+                    match serde_json::from_str::<Value>(t.args.trim()) {
+                        Ok(v) if v.is_object() => s["args"] = v,
+                        _ => out.push(problem(
+                            "steps[0].args",
+                            "a JSON object, like {\"path\": \"C:/x.png\"}",
+                        )),
+                    }
                 }
                 s
             }
@@ -1410,6 +1521,11 @@ impl RuleForm {
                 _ => format!("Changes the clipboard text ({})", f.clip.to.as_str()),
             },
             Some(Effect::Notify) => "Shows a notification".into(),
+            Some(Effect::Command) => format!(
+                "Runs {} and waits for it",
+                ddalgak::launch::program_name(f.command.program.trim())
+            ),
+            Some(Effect::Tool) => format!("Asks another Kim tool for {}", f.tool.capability.trim()),
         }
     }
 
@@ -1646,7 +1762,13 @@ impl RuleForm {
             Some(Effect::Engine) => sim
                 .lines
                 .push("Simulation: the engine's state is unchanged".into()),
-            Some(Effect::Window | Effect::Clipboard | Effect::Notify) => sim
+            Some(
+                Effect::Window
+                | Effect::Clipboard
+                | Effect::Notify
+                | Effect::Command
+                | Effect::Tool,
+            ) => sim
                 .lines
                 .push("Simulation: no window, clipboard or notification was touched".into()),
             Some(Effect::SendKeys) => sim.lines.push(format!(
@@ -1685,8 +1807,7 @@ pub fn grant_gui(rule: &mut Rule, perms: &[Permission]) {
     let needed = rule.permissions_needed();
     for p in perms {
         if needed.contains(p) {
-            let fingerprint = (*p == Permission::LaunchPrograms)
-                .then(|| validate::launch_fingerprint(&rule.to_value()));
+            let fingerprint = validate::fingerprint_for(*p, &rule.to_value());
             rule.set_grant(
                 *p,
                 Some(Grant {

@@ -57,6 +57,47 @@ pub struct ToolSpec {
     pub args: Value,
 }
 
+/// #102: a compiled `run_command` step (the path is expanded and absolute).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommandSpec {
+    pub program: std::path::PathBuf,
+    pub args: Vec<String>,
+    pub working_dir: Option<std::path::PathBuf>,
+    pub timeout_ms: u32,
+}
+
+/// Runs local commands (#102).
+pub trait Commands: Send + Sync + std::fmt::Debug {
+    /// Runs the program hidden and waits (at most its timeout); the outcome code: `ok` for exit
+    /// code 0, `command_failed` otherwise, `program_not_found`, `timeout` (the process is ended).
+    fn run(&self, c: &CommandSpec) -> &'static str;
+}
+
+/// Runs nothing (tests, platforms without commands).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoCommands;
+
+impl Commands for NoCommands {
+    fn run(&self, _: &CommandSpec) -> &'static str {
+        "unsupported_platform"
+    }
+}
+
+/// Records every command and answers `ok` (tests).
+#[derive(Debug, Default)]
+pub struct FakeCommands {
+    pub runs: std::sync::Mutex<Vec<CommandSpec>>,
+}
+
+impl Commands for FakeCommands {
+    fn run(&self, c: &CommandSpec) -> &'static str {
+        if let Ok(mut v) = self.runs.lock() {
+            v.push(c.clone());
+        }
+        "ok"
+    }
+}
+
 /// Windows and notifications.
 pub trait Desktop: Send + Sync + std::fmt::Debug {
     /// Carries out a window step; the outcome code.

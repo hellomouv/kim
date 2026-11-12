@@ -318,6 +318,8 @@ pub struct Env {
     /// Step 79: windows and notifications, and other Kim tools.
     pub desktop: std::sync::Arc<dyn crate::actions::Desktop>,
     pub tools: std::sync::Arc<dyn crate::actions::Tools>,
+    /// #102: local commands.
+    pub commands: std::sync::Arc<dyn crate::actions::Commands>,
 }
 
 impl std::fmt::Debug for Env {
@@ -340,6 +342,7 @@ impl Env {
             screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
             desktop: std::sync::Arc::new(crate::actions::NoDesktop),
             tools: std::sync::Arc::new(crate::actions::NoTools),
+            commands: std::sync::Arc::new(crate::actions::NoCommands),
         }
     }
 }
@@ -859,6 +862,7 @@ mod tests {
                     screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
                     desktop: std::sync::Arc::new(crate::actions::NoDesktop),
                     tools: std::sync::Arc::new(crate::actions::NoTools),
+                    commands: std::sync::Arc::new(crate::actions::NoCommands),
                 },
                 probe,
                 clip,

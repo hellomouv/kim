@@ -605,3 +605,43 @@ fn step79_forms_build_engine_rules_and_keep_schedules() {
     );
     assert_eq!(c.permissions(None), [Permission::Clipboard]);
 }
+
+/// #102: the command and tool forms build the steps the engine accepts, need their permission
+/// (none for a tool), round-trip through the stored rule and report bad fields.
+#[test]
+fn command_and_tool_forms_build_and_round_trip() {
+    let mut c = with(Effect::Command, "Ctrl+Alt+Shift+F15");
+    assert!(paths(&c).contains(&"steps[0].program"));
+    c.fields.command.program = r"C:\Tools\backup.exe".into();
+    c.fields.command.args = "--all\n--quiet".into();
+    c.fields.command.timeout_ms = 5_000;
+    assert!(paths(&c).is_empty(), "{:?}", paths(&c));
+    assert_eq!(
+        c.step(None).unwrap(),
+        serde_json::json!({"type": "run_command", "program": r"C:\Tools\backup.exe",
+            "args": ["--all", "--quiet"], "timeout_ms": 5000})
+    );
+    assert_eq!(c.permissions(None), [Permission::RunCommands]);
+    let r = c.build("c1", Some(&profile())).unwrap();
+    let back = RuleForm::edit("default", &r);
+    assert_eq!(back.fields.effect, Some(Effect::Command));
+    assert_eq!(back.fields.command, c.fields.command);
+    c.fields.command.timeout_ms = 50;
+    assert!(paths(&c).contains(&"steps[0].timeout_ms"));
+
+    let mut t = with(Effect::Tool, "Ctrl+Alt+Shift+F16");
+    t.fields.tool.capability = "Pin".into();
+    assert!(paths(&t).contains(&"steps[0].capability"));
+    t.fields.tool.capability = "pin.list".into();
+    t.fields.tool.args = "[1]".into();
+    assert!(paths(&t).contains(&"steps[0].args"));
+    t.fields.tool.args = r#"{"limit": 3}"#.into();
+    assert_eq!(
+        t.step(None).unwrap(),
+        serde_json::json!({"type": "tool", "capability": "pin.list", "args": {"limit": 3}})
+    );
+    assert!(t.permissions(None).is_empty());
+    let back = RuleForm::edit("default", &t.build("t1", Some(&profile())).unwrap());
+    assert_eq!(back.fields.effect, Some(Effect::Tool));
+    assert_eq!(back.fields.tool.capability, "pin.list");
+}

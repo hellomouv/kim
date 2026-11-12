@@ -1,7 +1,7 @@
 {
   "schema": "kim.catalog",
   "schema_version": 1,
-  "catalog_version": 8,
+  "catalog_version": 9,
   "generated_at": "2026-11-04T00:00:00Z",
   "expires_at": "2027-05-04T00:00:00Z",
   "publisher": "mouv",
@@ -303,6 +303,11 @@
         {
           "id": "window-control",
           "detail": "Moves, activates or closes windows only when one of your rules says so",
+          "opt_in": true
+        },
+        {
+          "id": "run-commands",
+          "detail": "Runs a local command without a window only when one of your rules says so and you approved that exact command",
           "opt_in": true
         },
         {

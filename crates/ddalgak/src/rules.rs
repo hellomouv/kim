@@ -115,7 +115,7 @@ impl Loaded {
 /// `block` steps is an engine-control rule; a `remap`, a `block` among other steps, a held button,
 /// a mode hold and a move while held are always the rule's only step (schema `holds_trigger`);
 /// any other mix, a delay or `times` above 1 is a macro (Step 78, ADR 0079).
-pub const RUNNABLE_STEPS: [&str; 16] = [
+pub const RUNNABLE_STEPS: [&str; 17] = [
     "engine",
     "remap",
     "block",
@@ -132,6 +132,7 @@ pub const RUNNABLE_STEPS: [&str; 16] = [
     "clipboard",
     "notify",
     "tool",
+    "run_command",
 ];
 
 const HOTSTRING_STEPS: &str =
@@ -387,6 +388,8 @@ fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'sta
                     body: body.to_string(),
                 }))
             }
+            // #102: a local command, waited for; hidden; its output is never read.
+            "run_command" => Stage::Command(Arc::new(compile_command(s).map_err(bad)?)),
             "tool" => {
                 let cap = s.get("capability").and_then(Value::as_str).unwrap_or("");
                 let ok = cap.len() <= 64
@@ -460,6 +463,51 @@ fn compile_window(s: &Value) -> Result<crate::actions::WindowSpec, String> {
         pos,
         size,
         on: s.get("on").and_then(Value::as_bool) != Some(false),
+    })
+}
+
+/// #102: a `run_command` step: an absolute program path (known-folder tokens expanded), up to 32
+/// arguments, an optional absolute working folder, a timeout of 100 ms–10 min (default 60 s).
+pub(crate) fn compile_command(s: &Value) -> Result<crate::actions::CommandSpec, String> {
+    let raw = s.get("program").and_then(Value::as_str).unwrap_or("");
+    let program = crate::launch::expand(raw, &crate::launch::process_var)
+        .filter(|p| p.is_absolute())
+        .ok_or("`program` is a full path to a program (or starts with a known folder)")?;
+    let args: Vec<String> = match s.get("args") {
+        None => Vec::new(),
+        Some(a) => a
+            .as_array()
+            .filter(|a| a.len() <= 32)
+            .ok_or("`args` lists at most 32 texts")?
+            .iter()
+            .map(|x| {
+                x.as_str()
+                    .map(str::to_string)
+                    .filter(|t| t.len() <= 4096 && !t.contains('\0'))
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or("every argument is a text of at most 4096 characters")?,
+    };
+    let working_dir = match s.get("working_dir").and_then(Value::as_str) {
+        None => None,
+        Some(d) => Some(
+            crate::launch::expand(d, &crate::launch::process_var)
+                .filter(|p| p.is_absolute())
+                .ok_or("`working_dir` is a full path")?,
+        ),
+    };
+    let timeout_ms = s
+        .get("timeout_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(60_000);
+    if !(100..=600_000).contains(&timeout_ms) {
+        return Err("`timeout_ms` is 100–600000".into());
+    }
+    Ok(crate::actions::CommandSpec {
+        program,
+        args,
+        working_dir,
+        timeout_ms: u32::try_from(timeout_ms).unwrap_or(60_000),
     })
 }
 
@@ -764,9 +812,12 @@ fn compile(
     // macro stages on the worker.
     let macro_run = times > 1
         || schedule.is_some()
-        || kinds
-            .iter()
-            .any(|k| matches!(*k, "delay" | "window" | "clipboard" | "notify" | "tool"))
+        || kinds.iter().any(|k| {
+            matches!(
+                *k,
+                "delay" | "window" | "clipboard" | "notify" | "tool" | "run_command"
+            )
+        })
         || (kinds.len() > 1
             && !same(is_launch)
             && !same(is_mouse)
@@ -1993,5 +2044,62 @@ mod tests {
         // DDALGAK-NFR-004 (< 100 ms with the hook) is measured on release builds; a debug build
         // is several times slower.
         assert!(took < std::time::Duration::from_secs(20), "{took:?}");
+    }
+
+    /// #102: a `run_command` step loads with `run-commands` consent bound to its exact commands;
+    /// without it, or after the command changed, the rule stays inactive; relative programs,
+    /// too many arguments and bad timeouts are invalid.
+    #[test]
+    fn run_command_needs_consent_for_the_exact_command() {
+        let mut cmd = engine_rule("cmd", "F13", "pause");
+        cmd["steps"] = json!([{"type": "run_command", "program": "C:\\Tools\\backup.exe",
+            "args": ["--all"], "timeout_ms": 5000}]);
+        let fp =
+            crate::validate::fingerprint_for(crate::model::Permission::RunCommands, &cmd).unwrap();
+        let mut ok = cmd.clone();
+        ok["consent"] = json!({"run-commands": {"granted_at": "2026-11-12T09:00:00Z", "via": "cli",
+            "fingerprint": fp}});
+        let mut stale = ok.clone();
+        stale["id"] = json!("stale");
+        stale["trigger"] = json!({"keys": "F14"});
+        stale["steps"][0]["args"] = json!(["--everything"]);
+        let mut none = cmd.clone();
+        none["id"] = json!("none");
+        none["trigger"] = json!({"keys": "F15"});
+        let mut rel = ok.clone();
+        rel["id"] = json!("rel");
+        rel["trigger"] = json!({"keys": "F16"});
+        rel["steps"][0]["program"] = json!("backup.exe");
+        let mut slow = ok.clone();
+        slow["id"] = json!("slow");
+        slow["trigger"] = json!({"keys": "F17"});
+        slow["steps"][0]["timeout_ms"] = json!(50);
+        let l = parse(&doc(json!([ok, stale, none, rel, slow])));
+        let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
+        assert_eq!(active, ["cmd"]);
+        assert!(!l.bindings[0].injects);
+        let codes: Vec<(&str, &str)> = l
+            .inactive
+            .iter()
+            .map(|i| (i.rule.as_str(), i.code))
+            .collect();
+        assert!(
+            codes.contains(&("stale", "consent_stale"))
+                || codes.contains(&("stale", "consent_missing")),
+            "{codes:?}"
+        );
+        assert!(codes.contains(&("none", "consent_missing")), "{codes:?}");
+        assert!(codes.iter().any(|c| c.0 == "rel"), "{codes:?}");
+        for bad in [
+            json!({"program": "backup.exe"}),
+            json!({"program": r"C:\x.exe", "args": vec!["a"; 33]}),
+            json!({"program": r"C:\x.exe", "working_dir": "rel"}),
+            json!({"program": r"C:\x.exe", "timeout_ms": 700_000}),
+        ] {
+            assert!(compile_command(&bad).is_err(), "{bad}");
+        }
+        let c = compile_command(&json!({"program": r"C:\x.exe"})).unwrap();
+        assert_eq!((c.args.len(), c.timeout_ms), (0, 60_000));
+        assert!(codes.contains(&("slow", "step_invalid")), "{codes:?}");
     }
 }

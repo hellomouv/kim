@@ -302,6 +302,7 @@ impl Rule {
             Permission::LaunchPrograms => c.launch_programs.as_ref(),
             Permission::Clipboard => c.clipboard.as_ref(),
             Permission::WindowControl => c.window_control.as_ref(),
+            Permission::RunCommands => c.run_commands.as_ref(),
         }
     }
 
@@ -313,11 +314,13 @@ impl Rule {
             Permission::LaunchPrograms => c.launch_programs = g,
             Permission::Clipboard => c.clipboard = g,
             Permission::WindowControl => c.window_control = g,
+            Permission::RunCommands => c.run_commands = g,
         }
         if c.input_injection.is_none()
             && c.launch_programs.is_none()
             && c.clipboard.is_none()
             && c.window_control.is_none()
+            && c.run_commands.is_none()
             && c.extra.is_empty()
         {
             self.consent = None;
@@ -540,14 +543,17 @@ pub enum Permission {
     Clipboard,
     /// Step 79: `window` steps.
     WindowControl,
+    /// #102: `run_command` steps (bound to a fingerprint of the exact commands).
+    RunCommands,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 4] = [
+    pub const ALL: [Permission; 5] = [
         Permission::InputInjection,
         Permission::LaunchPrograms,
         Permission::Clipboard,
         Permission::WindowControl,
+        Permission::RunCommands,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -556,6 +562,7 @@ impl Permission {
             Permission::LaunchPrograms => "launch-programs",
             Permission::Clipboard => "clipboard",
             Permission::WindowControl => "window-control",
+            Permission::RunCommands => "run-commands",
         }
     }
 
@@ -575,6 +582,8 @@ pub struct Consent {
     pub clipboard: Option<Grant>,
     #[serde(rename = "window-control", default, skip_serializing_if = "none")]
     pub window_control: Option<Grant>,
+    #[serde(rename = "run-commands", default, skip_serializing_if = "none")]
+    pub run_commands: Option<Grant>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -810,6 +819,19 @@ step_struct!(
     }
 );
 step_struct!(
+    /// `run_command` (#102): a local program with an explicit argument list, run hidden, waited
+    /// for (at most `timeout_ms`); its exit code is the outcome, its output is never read.
+    RunCommand {
+        program: String,
+        #[serde(default, skip_serializing_if = "none")]
+        args: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "none")]
+        working_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "none")]
+        timeout_ms: Option<u32>,
+    }
+);
+step_struct!(
     /// `trigger.schedule` (Step 79).
     Schedule {
         #[serde(default, skip_serializing_if = "none")]
@@ -908,6 +930,8 @@ pub enum Action {
     Clipboard(ClipboardStep),
     Notify(NotifyStep),
     Tool(ToolStep),
+    /// #102.
+    RunCommand(RunCommand),
     /// A step type of a later version: kept as written; the rule is inactive
     /// (`step_unsupported`, §5.13).
     Future {
@@ -917,7 +941,7 @@ pub enum Action {
 }
 
 /// The step types of rules document v1 (schema `known_step_types`).
-pub const STEP_TYPES: [&str; 16] = [
+pub const STEP_TYPES: [&str; 17] = [
     "remap",
     "block",
     "send_keys",
@@ -934,6 +958,7 @@ pub const STEP_TYPES: [&str; 16] = [
     "clipboard",
     "notify",
     "tool",
+    "run_command",
 ];
 
 impl Action {
@@ -955,6 +980,7 @@ impl Action {
             Action::Clipboard(_) => "clipboard",
             Action::Notify(_) => "notify",
             Action::Tool(_) => "tool",
+            Action::RunCommand(_) => "run_command",
             Action::Future { kind, .. } => kind,
         }
     }
@@ -990,6 +1016,7 @@ impl Action {
             Action::Clipboard(s) => first(&s.extra, ""),
             Action::Notify(s) => first(&s.extra, ""),
             Action::Tool(s) => first(&s.extra, ""),
+            Action::RunCommand(s) => first(&s.extra, ""),
             Action::Future { .. } => None,
         }
     }
@@ -1017,6 +1044,7 @@ impl Action {
                 }) | Action::Clipboard(_)
             ),
             Permission::WindowControl => matches!(self, Action::Window(_)),
+            Permission::RunCommands => matches!(self, Action::RunCommand(_)),
         }
     }
 
@@ -1055,6 +1083,7 @@ impl Serialize for Action {
             Action::Clipboard(x) => serde_json::to_value(x),
             Action::Notify(x) => serde_json::to_value(x),
             Action::Tool(x) => serde_json::to_value(x),
+            Action::RunCommand(x) => serde_json::to_value(x),
             Action::Future { fields, .. } => Ok(Value::Object(fields.clone())),
         }
         .map_err(serde::ser::Error::custom)?;
@@ -1099,6 +1128,7 @@ impl<'de> Deserialize<'de> for Action {
             "clipboard" => Action::Clipboard(de(rest)?),
             "notify" => Action::Notify(de(rest)?),
             "tool" => Action::Tool(de(rest)?),
+            "run_command" => Action::RunCommand(de(rest)?),
             _ => Action::Future { kind, fields: m },
         })
     }

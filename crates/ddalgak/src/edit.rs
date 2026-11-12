@@ -592,8 +592,7 @@ fn grant(rule: &mut Rule, allow: &[Permission]) {
     let needed = rule.permissions_needed();
     for p in allow {
         if needed.contains(p) {
-            let fp = (*p == Permission::LaunchPrograms)
-                .then(|| validate::launch_fingerprint(&rule.to_value()));
+            let fp = validate::fingerprint_for(*p, &rule.to_value());
             rule.set_grant(*p, Some(Grant::cli_now(fp)));
         }
     }

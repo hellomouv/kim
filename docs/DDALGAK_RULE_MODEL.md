@@ -588,9 +588,19 @@ per rule, like AutoHotkey's default of one thread per hotkey).
 | `clipboard` | `op` `set` (`text`, 1–20000 characters), `clear`, or `transform` (`to`: `plain`, `trim`, `upper`, `lower`) | `clipboard_busy`, `clipboard_no_text` |
 | `notify` | `title` (1–63), `body` (0–255): a balloon of Ddalgak's tray icon | `unsupported_platform` (no tray icon), `notify_failed` |
 | `tool` | `capability` (`pin.list`), `args` (an object): `kim tools invoke` of the installed Kim, hidden, at most 30 s, without consent flags | `tool_missing` (no Kim or provider; nothing is installed), `consent_missing`, `tool_incompatible`, `timeout`, `tool_failed` |
+| `run_command` (#102) | `program` (a full path, or one starting with a known-folder token), `args` (at most 32 texts, each passed as one argument with Windows quoting; never a shell string), `working_dir` (a full path), `timeout_ms` (100–600000, default 60000) | `command_failed` (a non-zero exit code), `program_not_found`, `launch_failed`, `timeout` (the process is ended) |
 
 Window steps never touch an elevated or locked-session window and never read titles; clipboard
 content is never logged, recorded or previewed (counts only).
+
+`run_command` ([ADR 0083](adr/0083-ddalgak-run-command.md)) runs the program hidden
+(`CREATE_NO_WINDOW`, no console, standard streams closed), waits for it on its own thread and
+records only the outcome: never its arguments or its output. It needs `run-commands` consent
+bound to a fingerprint of the rule's exact `run_command` steps (§6.2). A shell (`cmd.exe`,
+PowerShell, script hosts) is a program like any other here and is shown as such in the consent
+dialog: the user approves the exact argument list, never an interpolated string. The playground
+and `ddalgak test` show the program's file name, whether it exists, the argument count and the
+timeout; nothing runs.
 
 ### 3.5 Schedules (Step 79)
 
@@ -646,6 +656,7 @@ discloses before installing Ddalgak.
 | `launch-programs` | `open_program`, `open_url` | Per rule, with a fingerprint of the exact targets |
 | `clipboard` | `type_text` with `method: paste` | Per rule |
 | `window-control` | `window` steps (Step 79) | Per rule |
+| `run-commands` | `run_command` steps (#102) | Per rule, with a fingerprint of the exact commands |
 
 The schema rejects an **enabled** rule that lacks a consent it needs. A disabled rule may lack
 consent: that is the state of every imported rule until the user reviews it.
@@ -657,6 +668,8 @@ of the rule's `open_program` and `open_url` steps, in order, as a JSON array in 
 canonical form (keys sorted, no whitespace). Changing a path, an argument, a working folder or
 a URL changes the fingerprint; the rule becomes inactive (`consent_stale`) until the user
 approves the new target. `cargo xtask schema-check` recomputes every fingerprint in the examples.
+`run-commands` consent (#102) carries the same kind of fingerprint over the rule's `run_command`
+steps (program, arguments, working folder and timeout).
 
 ### 6.3 Granting and withdrawing
 
@@ -962,7 +975,8 @@ Every trigger event that reaches a candidate produces one outcome:
 | `program_not_found`, `program_requires_elevation`, `launch_failed`, `browser_unavailable`, `clipboard_busy` | §5. |
 | `clipboard_not_restorable`, `clipboard_restore_failed` | Paste (Step 69, §5.4): the clipboard held content that cannot be copied faithfully, so nothing was pasted and it was left alone; or the previous content could not be put back after the paste. |
 | `cancelled` | Pause, turn-off, emergency or a profile switch ended the run (since Step 71 also a move while held stopped by a session lock, a desktop switch, an elevated window taking focus or a reload). |
-| `timeout` | A step did not finish in its time limit (a move while held: 60 s). |
+| `timeout` | A step did not finish in its time limit (a move while held: 60 s; a `run_command`, its `timeout_ms`, after which the process is ended). |
+| `command_failed` | A `run_command` program exited with a non-zero code (#102). |
 
 **Activity (audit).** The app keeps the last `max_entries` (default 200, in memory) outcomes:
 `{ "at", "rule", "profile", "mode", "outcome", "step", "duration_ms" }`. Entries never contain

@@ -312,11 +312,12 @@
         "input-injection": {"$ref": "#/$defs/consent_record"},
         "launch-programs": {"allOf": [{"$ref": "#/$defs/consent_record"}, {"required": ["fingerprint"]}]},
         "clipboard": {"$ref": "#/$defs/consent_record"},
-        "window-control": {"$ref": "#/$defs/consent_record"}
+        "window-control": {"$ref": "#/$defs/consent_record"},
+        "run-commands": {"allOf": [{"$ref": "#/$defs/consent_record"}, {"required": ["fingerprint"]}]}
       }
     },
     "known_step_types": {
-      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool"]
+      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command"]
     },
     "injecting_step": {
       "description": "Steps that synthesize keyboard or mouse input.",
@@ -332,6 +333,10 @@
         {"required": ["type", "method"], "properties": {"type": {"const": "type_text"}, "method": {"const": "paste"}}},
         {"required": ["type"], "properties": {"type": {"const": "clipboard"}}}
       ]
+    },
+    "command_step": {
+      "required": ["type"],
+      "properties": {"type": {"const": "run_command"}}
     },
     "window_step": {
       "required": ["type"],
@@ -638,6 +643,18 @@
         "args": {"type": "object"}
       }
     },
+    "step_run_command": {
+      "description": "#102: runs a local program hidden, never through a shell, with exactly these arguments; waited for at most `timeout_ms` (default 60000) and ended after it. Only the outcome is recorded (`ok`, `command_failed`, `program_not_found`, `timeout`); output is never read. Needs `run-commands` consent bound to a fingerprint of the rule's exact commands.",
+      "type": "object",
+      "required": ["type", "program"],
+      "properties": {
+        "type": {"const": "run_command"},
+        "program": {"type": "string", "minLength": 3, "maxLength": 1024},
+        "args": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 4096}},
+        "working_dir": {"type": "string", "minLength": 3, "maxLength": 1024},
+        "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 600000}
+      }
+    },
     "step_future": {
       "description": "A step type added by a later version (additive). Valid in the document; the rule is inactive with `step_unsupported` in a version that does not know it.",
       "type": "object",
@@ -662,6 +679,7 @@
         {"$ref": "#/$defs/step_clipboard"},
         {"$ref": "#/$defs/step_notify"},
         {"$ref": "#/$defs/step_tool"},
+        {"$ref": "#/$defs/step_run_command"},
         {"$ref": "#/$defs/step_future"}
       ]
     },
@@ -759,6 +777,14 @@
             {"properties": {"enabled": {"const": false}}},
             {"properties": {"steps": {"items": {"not": {"$ref": "#/$defs/window_step"}}}}},
             {"required": ["consent"], "properties": {"consent": {"required": ["window-control"]}}}
+          ]
+        },
+        {
+          "description": "#102: an enabled rule that runs commands needs explicit `run-commands` consent.",
+          "anyOf": [
+            {"properties": {"enabled": {"const": false}}},
+            {"properties": {"steps": {"items": {"not": {"$ref": "#/$defs/command_step"}}}}},
+            {"required": ["consent"], "properties": {"consent": {"required": ["run-commands"]}}}
           ]
         },
         {

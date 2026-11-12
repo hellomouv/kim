@@ -230,6 +230,76 @@ impl Desktop for RecordingDesktop {
     }
 }
 
+/// #102: local commands, run hidden (`CREATE_NO_WINDOW`), never through a shell, with the exact
+/// argument list; waited for at most the step's timeout, then ended. Output is discarded.
+#[derive(Debug, Default)]
+pub struct WinCommands;
+
+impl crate::actions::Commands for WinCommands {
+    fn run(&self, c: &crate::actions::CommandSpec) -> &'static str {
+        if !c.program.is_file() {
+            return "program_not_found";
+        }
+        let mut cmd = std::process::Command::new(&c.program);
+        cmd.args(&c.args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW);
+        if let Some(d) = &c.working_dir {
+            cmd.current_dir(d);
+        }
+        let Ok(mut child) = cmd.spawn() else {
+            return "launch_failed";
+        };
+        let until = Instant::now() + Duration::from_millis(u64::from(c.timeout_ms));
+        loop {
+            match child.try_wait() {
+                Ok(Some(s)) => return if s.success() { "ok" } else { "command_failed" },
+                Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(20)),
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return "timeout";
+                }
+            }
+        }
+    }
+}
+
+/// The debug test host: commands are recorded in `<root>\commands.jsonl` (the program's file
+/// name and the argument count) and never run.
+#[derive(Debug)]
+pub struct RecordingCommands {
+    pub file: Option<PathBuf>,
+}
+
+impl crate::actions::Commands for RecordingCommands {
+    fn run(&self, c: &crate::actions::CommandSpec) -> &'static str {
+        let Some(f) = &self.file else {
+            return "unsupported_platform";
+        };
+        use std::io::Write;
+        let name = c
+            .program
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let line = serde_json::json!({ "program": name, "arguments": c.args.len(), "timeout_ms": c.timeout_ms });
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(f)
+        {
+            Ok(mut h) => {
+                let _ = writeln!(h, "{line}");
+                "ok"
+            }
+            Err(_) => "launch_failed",
+        }
+    }
+}
+
 /// `kim tools invoke` of the installed Kim.
 #[derive(Debug, Default)]
 pub struct KimTools;
@@ -348,5 +418,41 @@ mod tests {
         assert_eq!(KimTools.invoke(&t), "tool_missing");
         // SAFETY: as above.
         unsafe { std::env::remove_var("KIM_EXE") };
+    }
+
+    /// #102: the real runner, hidden: exit code 0 is `ok`, another is `command_failed`, a missing
+    /// program is `program_not_found`, an overrun is ended (`timeout`). Uses `where.exe` and
+    /// `ping.exe` from System32: no window, no network beyond the loopback.
+    #[test]
+    fn win_commands_report_outcomes_and_end_overruns() {
+        use crate::actions::{CommandSpec, Commands};
+        let sys = PathBuf::from(std::env::var("SystemRoot").unwrap_or("C:\\Windows".into()))
+            .join("System32");
+        let spec = |exe: &str, args: &[&str], timeout_ms| CommandSpec {
+            program: sys.join(exe),
+            args: args.iter().map(|a| (*a).to_string()).collect(),
+            working_dir: None,
+            timeout_ms,
+        };
+        let c = WinCommands;
+        assert_eq!(c.run(&spec("where.exe", &["/q", "cmd.exe"], 10_000)), "ok");
+        assert_eq!(
+            c.run(&spec(
+                "where.exe",
+                &["/q", "no-such-program-kim.exe"],
+                10_000
+            )),
+            "command_failed"
+        );
+        assert_eq!(
+            c.run(&spec("no-such-program-kim.exe", &[], 1_000)),
+            "program_not_found"
+        );
+        let t = Instant::now();
+        assert_eq!(
+            c.run(&spec("ping.exe", &["-n", "30", "127.0.0.1"], 300)),
+            "timeout"
+        );
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     }
 }

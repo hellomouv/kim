@@ -1349,6 +1349,12 @@ pub fn run(opts: Options) -> Result<(), RunError> {
                         .map(|r| r.join("desktop.jsonl")),
                 }),
                 tools: Arc::new(super::desktop::KimTools),
+                commands: Arc::new(super::desktop::RecordingCommands {
+                    file: opts
+                        .test_launch_root
+                        .as_ref()
+                        .map(|r| r.join("commands.jsonl")),
+                }),
                 ..crate::run::Env::inert()
             }
         } else {
@@ -1362,6 +1368,7 @@ pub fn run(opts: Options) -> Result<(), RunError> {
                 // Step 79: windows and the tray's balloons; other Kim tools.
                 desktop: Arc::clone(&desktop) as Arc<dyn crate::actions::Desktop>,
                 tools: Arc::new(super::desktop::KimTools),
+                commands: Arc::new(super::desktop::WinCommands),
             }
         },
     );

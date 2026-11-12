@@ -165,6 +165,7 @@ pub const KNOWN_PERMISSIONS: &[(&str, &str)] = &[
         "window-control",
         "Moves, activates and closes other windows",
     ),
+    ("run-commands", "Runs local commands without a window"),
     ("autostart", "Can start when you sign in"),
     ("network", "Uses the network"),
 ];

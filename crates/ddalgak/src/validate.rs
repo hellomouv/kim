@@ -336,10 +336,12 @@ pub fn semantic_errors(doc: &Value, skip: &dyn Fn(usize, usize) -> bool) -> Vec<
             if delay_ms > MAX_RUN_DELAY_MS {
                 push("run_too_long", format!("{at}.steps"));
             }
-            if let Some(granted) = r["consent"]["launch-programs"]["fingerprint"].as_str()
-                && granted != launch_fingerprint(r)
-            {
-                push("consent_stale", format!("{at}.consent.launch-programs"));
+            for p in [Permission::LaunchPrograms, Permission::RunCommands] {
+                if let Some(granted) = r["consent"][p.as_str()]["fingerprint"].as_str()
+                    && Some(granted.to_string()) != fingerprint_for(p, r)
+                {
+                    push("consent_stale", format!("{at}.consent.{}", p.as_str()));
+                }
             }
             if r["enabled"] == true && !skip(pi, ri) {
                 let key = trigger_key(r);
@@ -379,6 +381,28 @@ fn trigger_key(rule: &Value) -> String {
 
 /// `sha256:` + hex SHA-256 of the canonical JSON array of the rule's `open_program` and
 /// `open_url` steps, in order (§6.2).
+/// The fingerprint a grant for `p` must carry (`None`: the permission has none).
+pub fn fingerprint_for(p: Permission, rule: &Value) -> Option<String> {
+    match p {
+        Permission::LaunchPrograms => Some(launch_fingerprint(rule)),
+        Permission::RunCommands => Some(steps_fingerprint(rule, &["run_command"])),
+        _ => None,
+    }
+}
+
+/// `sha256:` + hex SHA-256 of the canonical JSON array of the rule's steps of these types.
+fn steps_fingerprint(rule: &Value, kinds: &[&str]) -> String {
+    let targets: Vec<Value> = list(&rule["steps"])
+        .filter(|s| s["type"].as_str().is_some_and(|t| kinds.contains(&t)))
+        .cloned()
+        .collect();
+    let mut text = String::new();
+    canonical_json(&Value::Array(targets), &mut text);
+    let digest = Sha256::digest(text.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    format!("sha256:{hex}")
+}
+
 pub fn launch_fingerprint(rule: &Value) -> String {
     let targets: Vec<Value> = list(&rule["steps"])
         .filter(|s| s["type"] == "open_program" || s["type"] == "open_url")
@@ -582,7 +606,12 @@ pub fn check(doc: &Value, ctx: &Context) -> Report {
         }
         let mut offers = Vec::new();
         if f.code == "consent_stale" {
-            offers.push(Offer::Allow(Permission::LaunchPrograms.as_str()));
+            let p = if f.at.ends_with(Permission::RunCommands.as_str()) {
+                Permission::RunCommands
+            } else {
+                Permission::LaunchPrograms
+            };
+            offers.push(Offer::Allow(p.as_str()));
         }
         if pos.is_some() {
             offers.push(Offer::Disable);
@@ -911,11 +940,17 @@ fn extend(
             // name given twice in `env`, a command line longer than Windows takes, a URL with
             // characters a browser's command line could misread. Without this the rule would load
             // inactive with no problem listed. Messages never quote the target.
+            // #102: `run_command` steps are checked the way the engine compiles them.
             for (i, s) in rule.steps.iter().enumerate() {
-                if matches!(s, Action::OpenProgram(_) | Action::OpenUrl(_))
-                    && let Err(e) =
-                        crate::launch::compile_step(&serde_json::to_value(s).unwrap_or_default())
-                {
+                let v = serde_json::to_value(s).unwrap_or_default();
+                let check = match s {
+                    Action::OpenProgram(_) | Action::OpenUrl(_) => {
+                        crate::launch::compile_step(&v).map(|_| ())
+                    }
+                    Action::RunCommand(_) => crate::rules::compile_command(&v).map(|_| ()),
+                    _ => Ok(()),
+                };
+                if let Err(e) = check {
                     push(
                         item,
                         "step_invalid",
@@ -1312,10 +1347,8 @@ pub fn missing_consent(rule: &Rule) -> Vec<Permission> {
         .into_iter()
         .filter(|p| match rule.grant(*p) {
             None => true,
-            Some(g) => {
-                *p == Permission::LaunchPrograms
-                    && g.fingerprint.as_deref() != Some(launch_fingerprint(&v).as_str())
-            }
+            Some(g) => fingerprint_for(*p, &v)
+                .is_some_and(|f| g.fingerprint.as_deref() != Some(f.as_str())),
         })
         .collect()
 }

@@ -129,6 +129,8 @@ pub enum Stage {
     Clip(Arc<crate::actions::ClipSpec>),
     Notify(Arc<crate::actions::NotifySpec>),
     Tool(Arc<crate::actions::ToolSpec>),
+    /// #102.
+    Command(Arc<crate::actions::CommandSpec>),
 }
 
 impl Stage {

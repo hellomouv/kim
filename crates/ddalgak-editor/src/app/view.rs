@@ -2268,6 +2268,57 @@ fn details_stage(
             ui.label(small(lang.t("field.clip.note"), c.text_muted));
             problems_for(ui, problems, &["steps[0]"]);
         }
+        // #102.
+        Effect::Command => {
+            labeled(
+                ui,
+                lang.t("field.cmd.program"),
+                egui::TextEdit::singleline(&mut fl.command.program)
+                    .hint_text("C:\\Tools\\backup.exe")
+                    .desired_width(360.0),
+            );
+            labeled(
+                ui,
+                lang.t("field.cmd.args"),
+                egui::TextEdit::multiline(&mut fl.command.args)
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            );
+            labeled(
+                ui,
+                lang.t("field.cmd.folder"),
+                egui::TextEdit::singleline(&mut fl.command.working_dir).desired_width(360.0),
+            );
+            ui.horizontal(|ui| {
+                ui.label(lang.t("field.cmd.timeout"));
+                ui.add(
+                    egui::DragValue::new(&mut fl.command.timeout_ms)
+                        .range(100..=600_000)
+                        .suffix(" ms"),
+                )
+                .accessible_name(lang.t("field.cmd.timeout"));
+            });
+            ui.label(small(lang.t("field.cmd.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
+        }
+        Effect::Tool => {
+            labeled(
+                ui,
+                lang.t("field.tool.capability"),
+                egui::TextEdit::singleline(&mut fl.tool.capability)
+                    .hint_text("pin.list")
+                    .desired_width(240.0),
+            );
+            labeled(
+                ui,
+                lang.t("field.tool.args"),
+                egui::TextEdit::multiline(&mut fl.tool.args)
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            );
+            ui.label(small(lang.t("field.tool.note"), c.text_muted));
+            problems_for(ui, problems, &["steps[0]"]);
+        }
         Effect::Notify => {
             labeled(
                 ui,

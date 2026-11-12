@@ -833,6 +833,24 @@ impl Ctx<'_> {
                         self.stage_done("tool_failed");
                     }
                 }
+                Stage::Command(c) => {
+                    let slot = Arc::new(Mutex::new(None));
+                    m.launch = Some(Arc::clone(&slot));
+                    m.due = now;
+                    let commands = Arc::clone(&self.env.commands);
+                    let spawned = std::thread::Builder::new()
+                        .name("ddalgak-command".into())
+                        .spawn(move || {
+                            let code = commands.run(&c);
+                            if let Ok(mut g) = slot.lock() {
+                                *g = Some(code);
+                            }
+                        });
+                    if spawned.is_err() {
+                        m.launch = None;
+                        self.stage_done("command_failed");
+                    }
+                }
             }
         }
     }
@@ -2949,5 +2967,41 @@ mod tests {
         assert_eq!(st.formats[0].1, run::ClipData::Bytes(b"draft".to_vec()));
         let j = w.activity.lock().unwrap().to_json(10).to_string();
         assert!(!j.contains("draft") && !j.contains("Done"), "{j}");
+    }
+
+    // ---- #102: `run_command` stages, through the `Commands` interface (a fake).
+
+    #[test]
+    fn run_command_stages_run_through_their_interface_and_keep_no_arguments() {
+        let cmds = Arc::new(crate::actions::FakeCommands::default());
+        let w = Worker::start(
+            Arc::new(Stats::default()),
+            Box::new(|_| {}),
+            Arc::new(Mutex::new(Activity::default())),
+            Box::new(Recorder::default()),
+            Env {
+                commands: Arc::clone(&cmds) as Arc<dyn crate::actions::Commands>,
+                ..Env::inert()
+            },
+        );
+        let q = w.queue();
+        let spec = crate::actions::CommandSpec {
+            program: "C:\\Tools\\backup.exe".into(),
+            args: vec!["--secret-token-xyz".into()],
+            working_dir: None,
+            timeout_ms: 5_000,
+        };
+        q.send(Msg::Rules(macro_rules(
+            vec![Stage::Command(Arc::new(spec.clone()))],
+            true,
+        )));
+        q.signal(1, fire(0));
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "ok".to_string())]
+        );
+        assert_eq!(*cmds.runs.lock().unwrap(), [spec]);
+        let j = w.activity.lock().unwrap().to_json(10).to_string();
+        assert!(!j.contains("secret-token") && !j.contains("backup"), "{j}");
     }
 }
