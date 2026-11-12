@@ -177,6 +177,7 @@
         "filter": { "description": "pin.set (#99): how the pins show their colours (the view only).", "enum": ["none", "grayscale", "invert"] },
         "sharp": { "description": "pin.set (#99): sharp pixels when zoomed out.", "type": "boolean" },
         "topmost": { "description": "pin.set (#99): above other windows or in the normal z-order.", "type": "boolean" },
+        "color": { "description": "pin.set (#99, `COLOR-05`): a colour card's new colour (HEX, rgb() or hsl()); other pins are left alone.", "type": "string", "minLength": 1, "maxLength": 64 },
         "move_to_group": { "description": "pin.set: move the pins to this group.", "$ref": "#/$defs/group_name" }
       }
     },

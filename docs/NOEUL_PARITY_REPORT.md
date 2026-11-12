@@ -16,17 +16,17 @@ service, no hot corners).
 | --- | --- | --- | --- | --- | --- |
 | Starting a capture and selecting (`SNIP`) | 22 | 0 | 13 | 1 | 8 |
 | Detection, magnifier, precision (`DET`) | 12 | 0 | 11 | 1 | 0 |
-| Colour picker (`COLOR`) | 7 | 0 | 6 | 1 | 0 |
+| Colour picker (`COLOR`) | 7 | 0 | 7 | 0 | 0 |
 | History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
 | Output and clipboard writes (`OUT`) | 12 | 0 | 11 | 0 | 1 |
 | Annotation (`ANN`) | 17 | 0 | 14 | 3 | 0 |
-| Pins (`PIN`) | 30 | 2 | 22 | 4 | 2 |
+| Pins (`PIN`) | 30 | 2 | 23 | 3 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
 | Settings and shortcuts (`SET`) | 22 | 3 | 11 | 2 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **116** | **13** | **24** |
+| **All** | **164** | **11** | **118** | **11** | **24** |
 
 ## 2. The critical workflows
 
@@ -56,13 +56,11 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 
 - `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
 - `DET-03` Step to the parent or child element with the mouse wheel (Pro)
-- `COLOR-05` Edit the value of a color card (Pro)
 - `ANN-12` Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
 - `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes
 - `PIN-08` Free-size thumbnail by right-dragging (Pro)
 - `PIN-15` Group manager window (Pro)
-- `PIN-24` Magnifier and color picking on image windows
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-03` Run when the system starts
 - `SET-21` Interface translations

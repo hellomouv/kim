@@ -415,3 +415,75 @@ fn the_accessible_name_follows_the_magnifier() {
         assert!(!n.contains("NOEUL"), "only what the overlay shows");
     }
 }
+
+/// #99 (`COLOR-05`): `pin.set` with `color` draws a colour card again in the new colour and
+/// keeps it a colour card; a picture pin is left alone.
+#[test]
+fn a_colour_card_takes_a_new_value() {
+    let (mut a, _syn, _dir) = overlay_app("color-edit");
+    let id = paste_back(&mut a, "#112233");
+    let v = a
+        .request(
+            "pin.set",
+            &json!({"id": id.to_string(), "color": "rgb(200, 100, 50)"}),
+        )
+        .unwrap();
+    assert_eq!(v["changed"], json!([id.to_string()]));
+    let content = a.pins.content(id).unwrap();
+    assert_eq!(
+        (content.kind, content.text.as_deref()),
+        (ContentKind::Color, Some("#C86432"))
+    );
+    assert!(shows(
+        &a,
+        id,
+        Rgba {
+            r: 200,
+            g: 100,
+            b: 50,
+            a: 255
+        }
+    ));
+    assert!(
+        a.request(
+            "pin.set",
+            &json!({"id": id.to_string(), "color": "teal-ish"})
+        )
+        .is_err()
+    );
+    a.shell.paste = None;
+    a.shell.clipboard = Some((40, 30));
+    a.action("paste.float", None);
+    let pic = *a.pins.ids().iter().find(|p| **p != id).unwrap();
+    assert_eq!(a.pins.content(pic).unwrap().kind, ContentKind::Image);
+    let v = a
+        .request(
+            "pin.set",
+            &json!({"id": pic.to_string(), "color": "#000000"}),
+        )
+        .unwrap();
+    assert_eq!(
+        v["changed"],
+        json!([]),
+        "a picture pin is not a colour card"
+    );
+}
+
+/// #99 (`PIN-24`): `C` on a pin copies the colour under the pointer from what the pin shows,
+/// at its zoom; outside the pin nothing is copied.
+#[test]
+fn c_on_a_pin_copies_the_colour_under_the_pointer() {
+    let (mut a, _syn, _dir) = overlay_app("pin-color");
+    let id = paste_back(&mut a, "#C86432");
+    let r = a.pins.rect(id).unwrap();
+    // The swatch's square of the colour sits under the padding at the card's top-left.
+    a.shell.pointer_at = Some((r.x + 30, r.y + 30));
+    let before = a.shell.clipboard_writes;
+    a.action("pin.color-copy", Some(id));
+    assert_eq!(a.status()["last_action"]["result"], "copied");
+    assert_eq!(copied(&a).as_deref(), Some("#C86432"));
+    assert_eq!(a.shell.clipboard_writes, before + 1);
+    a.shell.pointer_at = Some((r.x - 5, r.y - 5));
+    a.action("pin.color-copy", Some(id));
+    assert_eq!(a.status()["last_action"]["result"], "outside");
+}

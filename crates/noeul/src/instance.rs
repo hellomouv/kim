@@ -925,11 +925,12 @@ pub fn pin_set(ctx: &Ctx, a: &crate::PinSetArgs) -> Result<Outcome> {
     put("filter", a.filter.as_ref().map(|f| json!(f)));
     put("sharp", on(&a.sharp).map(|b| json!(b)));
     put("topmost", on(&a.topmost).map(|b| json!(b)));
+    put("color", a.color.as_ref().map(|c| json!(c)));
     put("move_to_group", a.move_to_group.as_ref().map(|g| json!(g)));
     let given = params.as_object().map_or(0, |o| o.len());
     if given <= 2 {
         return Err(NoeulError::new(Code::Usage, "nothing to change").hint(
-            "give --at, --zoom, --opacity, --rotate, --rotation, --flip, --mirrored, --thumbnail, --click-through, --filter, --sharp, --topmost or --move-to-group",
+            "give --at, --zoom, --opacity, --rotate, --rotation, --flip, --mirrored, --thumbnail, --click-through, --filter, --sharp, --topmost, --color or --move-to-group",
         ));
     }
     #[cfg(windows)]

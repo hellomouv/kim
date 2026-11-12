@@ -647,6 +647,7 @@ const MENU: &[Option<(&str, &str)>] = &[
     Some(("pin.sharp", "Sharp pixels")),
     Some(("pin.topmost", "Always on top")),
     Some(("pin.paste-replace", "Replace with clipboard image")),
+    Some(("pin.color-copy", "Copy colour under the pointer")),
     Some(("pin.click-through", "Click-through")),
     Some(("pin.group-new", "Move to a new group")),
     None,
@@ -1115,6 +1116,59 @@ impl<S: Shell> App<S> {
         }))
     }
 
+    /// #99 (`PIN-24`): `pin.color-copy` (`C` on a pin): the colour of the pixel under the pointer
+    /// in what the pin shows (its zoom, rotation and annotations), as `[color]` writes it.
+    fn copy_pin_color(&mut self, id: PinId) -> &'static str {
+        let Some(rect) = self.pins.rect(id) else {
+            return "not_found";
+        };
+        let (px, py) = self.shell.pointer();
+        if !(i64::from(px) >= i64::from(rect.x)
+            && i64::from(px) < rect.right()
+            && i64::from(py) >= i64::from(rect.y)
+            && i64::from(py) < rect.bottom())
+        {
+            return "outside";
+        }
+        let rendered = self.pins.rendered(id);
+        let Some(frame) = rendered.as_ref().or(self.pins.picture(id)) else {
+            return "not_found";
+        };
+        let fx = (i64::from(px) - i64::from(rect.x)) * i64::from(frame.width())
+            / i64::from(rect.width.max(1));
+        let fy = (i64::from(py) - i64::from(rect.y)) * i64::from(frame.height())
+            / i64::from(rect.height.max(1));
+        let at = (
+            i32::try_from(i64::from(frame.rect().x) + fx).unwrap_or(0),
+            i32::try_from(i64::from(frame.rect().y) + fy).unwrap_or(0),
+        );
+        let Some(c) = overlay::pixel_color(frame, at) else {
+            return "outside";
+        };
+        drop(rendered);
+        let text = self.color_style().text(c);
+        match self.shell.clipboard_write_text(&text) {
+            Ok(()) => "copied",
+            Err(_) => "clipboard_unavailable",
+        }
+    }
+
+    /// #99 (`COLOR-05`): a colour card drawn again in `col` (other pins are left alone).
+    fn recolor(&mut self, id: PinId, col: crate::paste::Rgba) -> bool {
+        if self.pins.content(id).map(|c| c.kind) != Some(crate::pins::ContentKind::Color) {
+            return false;
+        }
+        let dpi = self
+            .pins
+            .view(id)
+            .map_or(crate::capture::BASE_DPI, |v| v.dpi);
+        let Ok(frame) = crate::card::swatch(&self.ledger, col, dpi, self.shell.text_engine())
+        else {
+            return false;
+        };
+        self.pins.recolor_card(id, frame, col.hex()) == Ok(true)
+    }
+
     /// Applies one `pin.set` to a pin; whether anything changed.
     fn apply_set(&mut self, id: PinId, c: &SetChange) -> bool {
         let Some(info) = self.pins.info(id) else {
@@ -1174,6 +1228,9 @@ impl<S: Shell> App<S> {
         }
         if let Some(on) = c.topmost {
             any |= ok(self.pins.set_topmost(id, on));
+        }
+        if let Some(col) = c.color {
+            any |= self.recolor(id, col);
         }
         if c.thumbnail == Some(true) {
             any |= ok(self.pins.set_thumbnail(id, true));
@@ -1956,6 +2013,7 @@ impl<S: Shell> App<S> {
                 }
             }
             ("pin.paste-replace", Some(id)) => self.replace_from_clipboard(id),
+            ("pin.color-copy", Some(id)) => self.copy_pin_color(id),
             ("pin.click-through", Some(id)) => self.toggle_click_through(id),
             ("pin.group-new", Some(id)) => self.new_group(id),
             (PINS_CLICKABLE, _) => {
@@ -4056,6 +4114,8 @@ struct SetChange {
     filter: Option<transform::Filter>,
     sharp: Option<bool>,
     topmost: Option<bool>,
+    /// #99 (`COLOR-05`): a colour card's new colour.
+    color: Option<crate::paste::Rgba>,
 }
 
 impl SetChange {
@@ -4132,6 +4192,12 @@ impl SetChange {
             },
             sharp: flag("sharp")?,
             topmost: flag("topmost")?,
+            color: match p.get("color") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_str().and_then(crate::paste::parse_color).ok_or_else(
+                    || bad("`color` must be a colour like #ff8800, rgb(…) or hsl(…)"),
+                )?),
+            },
         };
         if c == SetChange::default() {
             return Err(bad(
@@ -5542,6 +5608,7 @@ pub(crate) mod tests {
                 ("Sharp pixels", true),
                 ("Always on top", true),
                 ("Replace with clipboard image\tCtrl+V", true),
+                ("Copy colour under the pointer\tC", true),
                 // No tray and no `pins.clickable` key: no way back, so it cannot be turned on.
                 ("Click-through\tCtrl+Shift+T", false),
                 ("Move to a new group (now in default)", true),

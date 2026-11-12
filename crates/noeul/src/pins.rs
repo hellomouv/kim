@@ -1048,6 +1048,31 @@ impl Pins {
         Ok(true)
     }
 
+    /// #99 (`COLOR-05`): a colour card shows another colour (its picture and its text change;
+    /// it stays a colour card).
+    pub fn recolor_card(
+        &mut self,
+        id: PinId,
+        frame: Frame,
+        text: String,
+    ) -> Result<bool, PinError> {
+        let kind = self
+            .open
+            .get(&id)
+            .ok_or(PinError::NotFound(id))?
+            .content
+            .kind;
+        if kind != ContentKind::Color {
+            return Ok(false);
+        }
+        self.replace_picture(id, frame)?;
+        if let Some(p) = self.open.get_mut(&id) {
+            p.content.kind = ContentKind::Color;
+            p.content.text = Some(text);
+        }
+        Ok(true)
+    }
+
     /// #99 (`PIN-22`): the pin shows `frame` instead of its picture, at the same top-left corner
     /// and zoom; its annotations go (they were drawn on the old picture), a thumbnail ends.
     pub fn replace_picture(&mut self, id: PinId, mut frame: Frame) -> Result<bool, PinError> {

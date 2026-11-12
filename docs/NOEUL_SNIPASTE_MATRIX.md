@@ -114,7 +114,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `COLOR-02` | `Shift` switches the color format | G, K | `color.format-next` (`Shift+C`): HEX, RGB, HSL ◆ (no bare-modifier keys). Step 59: HEX → RGB → HSL, the chosen line marked in the readout, kept for the next captures until Noeul quits; `[color] format` sets the first one; RGB is CSS `rgb(…)` ◆ (Snipaste: bare numbers; `F3` reads both); both keys rebindable; missing: the manual check (UX spec §4.14) | partial | NOEUL-FR-044 | N3 | T | T: `crates/noeul/src/color.rs` every_format_is_written_exactly; T: `crates/noeul/src/app/color_tests.rs` the_format_follows_shift_c_and_the_settings_and_is_remembered, the_picker_keys_are_rebindable_and_named_in_the_help |
 | `COLOR-03` | `F3` turns the copied color into a color card | G, H | `paste.float` pins color text as a swatch. Step 55 (ADR 0047): `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, `rgb()`/`rgba()`, three integers or three numbers 0–1 become a swatch card (a checkerboard under a translucent colour) with its HEX and RGB values; `Ctrl+Shift+C` copies the HEX value. Step 59: `hsl()`/`hsla()` too, so every text `C` copies pins back as a swatch (tested from the picker through the stand-in clipboard); missing: the manual check with real applications and the real clipboard (UX spec §4.12, §4.14) | partial | NOEUL-FR-071 | N2 | T | T: `crates/noeul/src/paste/tests.rs` colors_parse_in_every_documented_notation_and_nothing_else; T: `crates/noeul/src/card/tests.rs` a_colour_card_shows_the_colour_exactly_and_its_values; T: `crates/noeul/tests/paste.rs` every_kind_pins_from_the_stand_in_clipboard; T: `crates/noeul/src/color.rs` every_copied_text_pastes_back_as_the_same_colour; T: `crates/noeul/tests/color_picker.rs` the_picker_copies_known_pixels_and_they_pin_back_as_swatches |
 | `COLOR-04` | More color models in the picker and on color cards (HSV and others; Pro) | P, L | HEX, RGB, HSL; more as a refinement. Step 59: HEX, RGB and HSL in the picker (HSL in whole degrees and percent, within 3 units of the pixel), with or without alpha; missing: HSV and other models, HSL on colour cards | partial | NOEUL-FR-044 | N3 | T | T: `crates/noeul/src/color.rs` hsl_conversions_agree_with_known_values, alpha_text_gives_every_alpha_back |
-| `COLOR-05` | Edit the value of a color card (Pro) | P | Not planned yet; tracked with the card extras | planned | NOEUL-FR-069 | N4 | T | — |
+| `COLOR-05` | Edit the value of a color card (Pro) | P | `noeul pin set <id> --color <HEX | rgb() | hsl()>` (IPC `pin.set` `color`) draws a colour card again in the new colour; its copied text follows (#99). Missing: editing the value on the card itself | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/app/color_tests.rs` a_colour_card_takes_a_new_value |
 | `COLOR-06` | Upper-case HEX (setting) | A | Setting. Step 59: `[color] hex_case = "upper"` (default) or `"lower"`, and `[color] alpha` for `#RRGGBBAA`, `rgba()` and `hsla()`; missing: a settings window (N5) | partial | NOEUL-FR-044 | N3 | T | T: `crates/noeul/src/app/color_tests.rs` the_format_follows_shift_c_and_the_settings_and_is_remembered; T: `crates/noeul/tests/color_picker.rs` the_picker_copies_known_pixels_and_they_pin_back_as_swatches |
 | `COLOR-07` | Color space of the picker; HDR color correction | L | Values of the captured sRGB picture; HDR converted to SDR with a stated limit. Step 58 (ADR 0050): captures are treated as sRGB values and saved without a colour profile; each monitor's advanced-colour (HDR) state is read from the display configuration and a capture of an HDR monitor warns that Windows converted it to SDR and that colours can differ; no HDR correction of Noeul's own ◆. Step 59 (ADR 0053 §7): the picker reports the captured picture's values and, on a monitor with HDR on, adds "HDR shown as SDR" to its readout and accessible name; missing: the manual check on an HDR display and with a calibrated profile (UX spec §4.14) | partial | NOEUL-FR-092 | N4 | T, M, D | T: `crates/noeul/src/displays/tests.rs` warnings_are_honest_about_scales_hdr_protection_clipping_and_the_pointer; T: `crates/noeul/src/app/display_tests.rs` pins_keep_their_pixels_and_follow_the_scale_of_their_monitor; T: `crates/noeul/src/overlay.rs` the_picker_reads_exact_pixels_across_monitors_scales_hdr_and_pointer_keys; D: `docs/adr/0050-noeul-displays-and-capture-backends.md` §5; D: `docs/adr/0053-noeul-color-picker.md` §7 |
 
@@ -195,7 +195,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `PIN-21` | Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro) | P | Per pin: grayscale and inverted views (`pin.grayscale`, `pin.invert`, `pin set --filter`; copy and save keep the colours) and the topmost toggle (`pin.topmost`, `--topmost`) (#99). Missing: solo mode and the background modes for transparency | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/pins/tests.rs` filters_sharp_topmost_and_replace_change_what_they_should, filtered_frames_have_the_expected_pixels; T: `e2e/tests/issue99_noeul_output.rs` |
 | `PIN-22` | Replace an image with the clipboard content (`Ctrl+V`) | K | `pin.paste-replace` (`Ctrl+V` on a pin): the clipboard picture replaces the pin's at the same corner and zoom; other clipboard content leaves it (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/app/output_tests.rs` a_pin_takes_the_clipboard_picture_in_place |
 | `PIN-23` | Copy the original text of a text image (`Ctrl+Shift+C`) | K | `pin.copy-text` (`Ctrl+Shift+C`) Step 55: `pin.copy-text` (`Ctrl+Shift+C`) copies a card's text | implemented | NOEUL-FR-071 | N2 | T | T: `crates/noeul/src/app/paste_tests.rs` copy_text_returns_the_cards_text |
-| `PIN-24` | Magnifier and color picking on image windows | G | `color.copy` on pins. Step 59 shipped the picker in the overlay only: pins need a magnifier and a `pin` binding (a manifest change, ADR 0053) | planned | NOEUL-FR-044 | N3 | T | — |
+| `PIN-24` | Magnifier and color picking on image windows | G | `pin.color-copy` (`C` on a pin, the pin menu) copies the colour of the pixel under the pointer in what the pin shows, as `[color]` writes it (#99). Missing: the magnifier on pins | partial | NOEUL-FR-044 | N3 | T | T: `crates/noeul/src/app/color_tests.rs` c_on_a_pin_copies_the_colour_under_the_pointer |
 | `PIN-25` | Confirm before closing several images at once | L | Same. Step 54: closing every pin or a group at once from the CLI needs `--yes` (exit 7 `confirmation_required` otherwise); missing: a GUI command that closes several pins (the settings window, N5) | partial | NOEUL-FR-064 | N2 | T | T: `crates/noeul/tests/pin_transform.rs` groups_switch_and_act_together; T: `crates/noeul/tests/pins.rs` many_pins_are_independent_windows_driven_by_cli_ipc_and_their_own_messages |
 | `PIN-26` | Move images beyond the screen edge | L, F | Allowed; recovery through "Bring pins on screen". Step 53: pins may lie partly or wholly off-screen; Bring pins on screen recovers them; missing: the manual check | partial | NOEUL-FR-061, NOEUL-FR-067 | N4 | M | T: `crates/noeul/src/pins.rs` on_screen_needs_a_grabbable_part, a_monitor_disconnect_keeps_pins_in_place_until_they_are_brought_back |
 | `PIN-27` | Disable smooth scaling for sharp text | F | Zooming in always repeats pixels (sharp, ADR 0029); `pin.sharp` / `pin set --sharp on` also takes the nearest pixel when zoomed out (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/zoom.rs` tests::sharp_downscaling_takes_pixels_instead_of_averaging |
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 113 |
-| `planned` | 34 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 115 |
+| `planned` | 32 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -331,11 +331,11 @@ picture.
 | --- | --- | --- | --- | --- |
 | 1. Starting and selecting (`SNIP`) | 13 | 1 | 8 | 22 |
 | 2. Detection and precision (`DET`) | 11 | 1 | 0 | 12 |
-| 3. Color picker (`COLOR`) | 6 | 1 | 0 | 7 |
+| 3. Color picker (`COLOR`) | 7 | 0 | 0 | 7 |
 | 4. History (`HIST`) | 3 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 10 | 1 | 1 | 12 |
 | 6. Annotation (`ANN`) | 14 | 3 | 0 | 17 |
-| 7. Floating pins (`PIN`) | 22 | 6 | 2 | 30 |
+| 7. Floating pins (`PIN`) | 23 | 5 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 5 | 0 | 1 | 6 |
 | 10. Settings (`SET`) | 9 | 7 | 6 | 22 |
@@ -369,3 +369,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |

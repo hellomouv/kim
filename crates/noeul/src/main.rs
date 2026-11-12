@@ -409,6 +409,10 @@ pub struct PinSetArgs {
     /// Above other windows (the default) or in the normal z-order: on or off (#99)
     #[arg(long, value_parser = ["on", "off"])]
     pub topmost: Option<String>,
+    /// A colour card's new colour: #rrggbb, #rrggbbaa, rgb(…) or hsl(…) (#99); other pins are
+    /// left alone
+    #[arg(long, value_name = "COLOUR")]
+    pub color: Option<String>,
     /// Move the pins to this group
     #[arg(long, value_name = "NAME")]
     pub move_to_group: Option<String>,
