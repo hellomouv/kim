@@ -629,3 +629,20 @@ result (pass, fail, remark) in the Step 74 issue.
     the text appears only in the page's test field (Notepad open beside it receives nothing).
     Test an open-website rule: nothing opens until **Confirm and open**; then the browser opens
     once. **Reset** empties the field and the trace; the rules still work in other programs.
+
+## #102 additions (follow-up of Step 79)
+
+- **Run a command** (More → *Run a command*): program (a full path), arguments one per line, a
+  working folder and *Stop after*; saving asks for `run-commands` consent naming the program and
+  every argument. **Another Kim tool** (More): *Find installed capabilities* asks Kim in the
+  background (hidden, nothing installed) and lists each capability with its tool, effect and
+  summary; choosing one fills the field. Interop v1 manifests carry no parameter schema, so the
+  arguments stay a JSON object box (a generated argument form needs a manifest extension).
+- **Running programs ▾** next to *Window → program*, *Only in these programs* and *Except in
+  these programs*: a menu of the programs with a visible window (file names only, never titles;
+  elevated windows and Ddalgak's own are left out); typing in the window's program field shows
+  up to five matching running programs.
+- **Not tested here (maintainer, real desktop):** open the menus with a few programs running and
+  check the list, the keyboard path (Tab, Enter) and Narrator's names; with Kim and Noeul
+  installed, *Find installed capabilities* lists `pin.list`, `image.pin`, `screen.capture-file`.
+

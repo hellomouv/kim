@@ -177,6 +177,18 @@ fn step81_kim_installs_ddalgak_which_serves_interop_and_a_guarded_mcp_adapter() 
             "{cap}: {v}"
         );
     }
+    // #102: the editor's tool form finds the same capabilities from the manifests.
+    let caps = ddalgak::win::desktop::discover_with(|| cmd(&kim, p)).expect("Kim answers");
+    let ids: Vec<&str> = caps
+        .iter()
+        .filter(|c| c.tool == "ddalgak")
+        .map(|c| c.id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        ["keys.explain", "mode.set", "mode.status", "rules.list"],
+        "{caps:?}"
+    );
     let (code, v) = run(
         &kim,
         p,

@@ -1660,6 +1660,140 @@ fn screen_map(ui: &mut egui::Ui, layout: &Layout, from: Point, to: Option<Point>
     }
 }
 
+/// #102: the running programs (file names only, never titles), read at most every 2 s while a
+/// picker or a suggestion list is shown.
+fn running_programs(ctx: &egui::Context) -> Vec<String> {
+    let id = egui::Id::unique("ddalgak-running-programs");
+    let now = ctx.input(|i| i.time);
+    if let Some((at, list)) = ctx.data(|d| d.get_temp::<(f64, Vec<String>)>(id))
+        && now - at < 2.0
+    {
+        return list;
+    }
+    let list = ddalgak::win::desktop::running_programs();
+    ctx.data_mut(|d| d.insert_temp(id, (now, list.clone())));
+    list
+}
+
+/// #102: a "Running programs" menu that fills `target` with a program's file name (`lines`:
+/// adds it as a new line of a list instead).
+fn program_picker(ui: &mut egui::Ui, lang: Lang, target: &mut String, lines: bool) {
+    ui.menu_button(lang.t("picker.running"), |ui| {
+        let list = running_programs(ui.ctx());
+        if list.is_empty() {
+            ui.label(small(lang.t("picker.none"), Colors::get().text_muted));
+        }
+        egui::ScrollArea::vertical()
+            .max_height(240.0)
+            .show(ui, |ui| {
+                for name in list {
+                    if ui.button(&name).clicked() {
+                        if lines {
+                            if !target.lines().any(|l| l.trim().eq_ignore_ascii_case(&name)) {
+                                if !target.is_empty() && !target.ends_with('\n') {
+                                    target.push('\n');
+                                }
+                                target.push_str(&name);
+                            }
+                        } else {
+                            *target = name;
+                        }
+                        ui.close();
+                    }
+                }
+            });
+        ui.label(small(lang.t("picker.note"), Colors::get().text_muted));
+    });
+}
+
+/// #102: running programs whose name starts with what was typed (at most 5), as buttons.
+fn program_suggestions(ui: &mut egui::Ui, target: &mut String) {
+    let typed = target.trim().to_lowercase();
+    if typed.is_empty() {
+        return;
+    }
+    let hits: Vec<String> = running_programs(ui.ctx())
+        .into_iter()
+        .filter(|n| n.starts_with(&typed) && *n != typed)
+        .take(5)
+        .collect();
+    if !hits.is_empty() {
+        ui.horizontal_wrapped(|ui| {
+            for n in hits {
+                if ui.small_button(&n).clicked() {
+                    *target = n;
+                }
+            }
+        });
+    }
+}
+
+/// #102: the capabilities the installed Kim tools provide, found on request in the background.
+#[derive(Clone, Default)]
+enum Discovery {
+    #[default]
+    Idle,
+    Searching,
+    Done(Option<Vec<ddalgak::win::desktop::Capability>>),
+}
+
+fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
+    let id = egui::Id::unique("ddalgak-capabilities");
+    let slot: Arc<Mutex<Discovery>> = ui.ctx().data_mut(|d| {
+        d.get_temp_mut_or_default::<Arc<Mutex<Discovery>>>(id)
+            .clone()
+    });
+    let state = slot.lock().map(|g| g.clone()).unwrap_or_default();
+    let c = Colors::get();
+    match state {
+        Discovery::Idle => {
+            if ui.button(lang.t("field.tool.find")).clicked() {
+                if let Ok(mut g) = slot.lock() {
+                    *g = Discovery::Searching;
+                }
+                let ctx = ui.ctx().clone();
+                let s = Arc::clone(&slot);
+                std::thread::spawn(move || {
+                    let found = ddalgak::win::desktop::discover_capabilities();
+                    if let Ok(mut g) = s.lock() {
+                        *g = Discovery::Done(found);
+                    }
+                    ctx.request_repaint();
+                });
+            }
+        }
+        Discovery::Searching => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(small(lang.t("field.tool.searching"), c.text_muted));
+            });
+        }
+        Discovery::Done(None) => {
+            ui.label(small(lang.t("field.tool.no_kim"), c.warning));
+        }
+        Discovery::Done(Some(caps)) => {
+            if caps.is_empty() {
+                ui.label(small(lang.t("field.tool.none"), c.text_muted));
+            }
+            for cap in caps {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .selectable_label(*target == cap.id, &cap.id)
+                        .on_hover_text(&cap.summary)
+                        .clicked()
+                    {
+                        *target = cap.id.clone();
+                    }
+                    ui.label(small(
+                        format!("{} · {} · {}", cap.tool, cap.effect, cap.summary),
+                        c.text_muted,
+                    ));
+                });
+            }
+        }
+    }
+}
+
 fn problems_for(ui: &mut egui::Ui, problems: &[ddalgak::text::FieldProblem], prefix: &[&str]) {
     let c = Colors::get();
     for p in problems
@@ -2208,6 +2342,8 @@ fn details_stage(
                     .hint_text("Code.exe")
                     .desired_width(240.0),
             );
+            program_picker(ui, lang, &mut fl.window.app, false);
+            program_suggestions(ui, &mut fl.window.app);
             if fl.window.op == W::Move {
                 ui.horizontal_wrapped(|ui| {
                     for (v, key) in [
@@ -2309,6 +2445,7 @@ fn details_stage(
                     .hint_text("pin.list")
                     .desired_width(240.0),
             );
+            capability_finder(ui, lang, &mut fl.tool.capability);
             labeled(
                 ui,
                 lang.t("field.tool.args"),
@@ -2380,6 +2517,7 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             )
             .accessible_name(lang.t("form.only_apps"));
+            program_picker(ui, lang, &mut fl.apps, true);
             ui.label(small(lang.t("form.except_apps"), c.text_muted));
             ui.add(
                 egui::TextEdit::multiline(&mut fl.except_apps)
@@ -2388,6 +2526,7 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             )
             .accessible_name(lang.t("form.except_apps"));
+            program_picker(ui, lang, &mut fl.except_apps, true);
             labeled(
                 ui,
                 lang.t("form.title_cond"),

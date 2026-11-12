@@ -84,6 +84,123 @@ fn find(app: &AppMatch) -> Option<HWND> {
     s.found
 }
 
+/// #102: the programs with a visible, unowned top-level window on this desktop (lowercase file
+/// names, sorted, without duplicates), for the editor's picker. Only process image paths are
+/// read: never a window title or any window content. Ddalgak's own windows and windows of
+/// elevated processes (which no rule may touch) are left out.
+pub fn running_programs() -> Vec<String> {
+    struct Found {
+        own: u32,
+        names: std::collections::BTreeSet<String>,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, l: LPARAM) -> i32 {
+        // SAFETY: `l` is the `Found` passed below, alive for the whole enumeration.
+        let f = unsafe { &mut *(l as *mut Found) };
+        // SAFETY: plain queries of a window handle from the enumeration.
+        let visible = unsafe { IsWindowVisible(hwnd) != 0 && GetWindow(hwnd, GW_OWNER).is_null() };
+        if visible
+            && !super::context::is_elevated_window(hwnd, f.own)
+            && let Some((_, path)) = image(hwnd)
+            && let Some(name) = path.rsplit('\\').next()
+            && !name.is_empty()
+        {
+            f.names.insert(name.to_string());
+        }
+        1
+    }
+    let mut f = Found {
+        own: super::own_integrity().unwrap_or(0x2000),
+        names: std::collections::BTreeSet::new(),
+    };
+    // SAFETY: the callback only reads window properties; `f` outlives the call.
+    unsafe { EnumWindows(Some(each), (&raw mut f) as LPARAM) };
+    f.names.into_iter().collect()
+}
+
+/// #102: one capability an installed Kim tool provides (interop v1 `provides`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Capability {
+    pub id: String,
+    pub tool: String,
+    pub effect: String,
+    pub summary: String,
+}
+
+/// Reads the `provides` lists of `kim tools describe --json` documents (other fields ignored).
+pub fn capabilities_of(describe: &serde_json::Value) -> Vec<Capability> {
+    let tool = describe["data"]["tool"]["id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    describe["data"]["capabilities"]["provides"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| {
+                    Some(Capability {
+                        id: p["id"].as_str()?.to_string(),
+                        tool: tool.clone(),
+                        effect: p["effect"].as_str().unwrap_or("").to_string(),
+                        summary: p["summary"].as_str().unwrap_or("").to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// #102: asks the installed Kim (hidden, at most 10 s per call) which capabilities its installed
+/// tools provide: `kim tools list --json`, then `kim tools describe <id> --json` for each. Reads
+/// manifests only; nothing is installed or started. `None`: no Kim.
+pub fn discover_capabilities() -> Option<Vec<Capability>> {
+    let kim = kim_exe()?;
+    discover_with(|| std::process::Command::new(&kim))
+}
+
+/// [`discover_capabilities`] with the Kim command made by `kim` (tests give it a sandbox).
+pub fn discover_with(kim: impl Fn() -> std::process::Command) -> Option<Vec<Capability>> {
+    let run = |args: &[&str]| -> Option<serde_json::Value> {
+        let mut child = kim()
+            .args(args)
+            .args(["--json", "--no-input"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .ok()?;
+        let mut out = child.stdout.take()?;
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut out, &mut buf);
+            buf
+        });
+        let until = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().ok()?.is_none() {
+            if Instant::now() > until {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        serde_json::from_slice(&reader.join().ok()?).ok()
+    };
+    let list = run(&["tools", "list"])?;
+    let mut caps = Vec::new();
+    for t in list["data"]["tools"].as_array().into_iter().flatten() {
+        if t["status"] != "installed" {
+            continue;
+        }
+        let Some(id) = t["id"].as_str() else { continue };
+        if let Some(d) = run(&["tools", "describe", id]) {
+            caps.extend(capabilities_of(&d));
+        }
+    }
+    caps.sort_by(|a, b| a.id.cmp(&b.id));
+    Some(caps)
+}
+
 impl Desktop for WinDesktop {
     fn window(&self, w: &WindowSpec) -> &'static str {
         if !super::input_desktop_available() {
@@ -454,5 +571,44 @@ mod tests {
             "timeout"
         );
         assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
+    /// #102: the picker lists file names only, sorted and unique, never Ddalgak itself.
+    #[test]
+    fn running_programs_are_sorted_unique_file_names() {
+        let list = running_programs();
+        let mut sorted = list.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(list, sorted);
+        assert!(
+            list.iter()
+                .all(|n| !n.contains('\\') && n == &n.to_lowercase()),
+            "{list:?}"
+        );
+        let own = std::env::current_exe().unwrap();
+        let own = own.file_name().unwrap().to_string_lossy().to_lowercase();
+        assert!(!list.contains(&own), "{list:?}");
+    }
+
+    /// #102: `provides` entries of a describe document become capabilities; others are ignored.
+    #[test]
+    fn capabilities_are_read_from_describe_documents() {
+        let d = serde_json::json!({"data": {"tool": {"id": "noeul"}, "capabilities": {"provides": [
+            {"id": "pin.list", "version": "1.0.0", "effect": "read", "summary": "Open pins"},
+            {"version": "1.0.0"}
+        ]}}});
+        assert_eq!(
+            capabilities_of(&d),
+            [Capability {
+                id: "pin.list".into(),
+                tool: "noeul".into(),
+                effect: "read".into(),
+                summary: "Open pins".into()
+            }]
+        );
+        assert!(capabilities_of(&serde_json::json!({"data": {}})).is_empty());
+        let none = discover_with(|| std::process::Command::new(r"C:\no-such-kim\kim.exe"));
+        assert_eq!(none, None);
     }
 }

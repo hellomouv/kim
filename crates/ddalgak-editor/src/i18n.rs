@@ -684,6 +684,37 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "Asks an installed Kim tool through Kim (kim tools find lists them). A missing tool is reported; nothing is installed.",
         "설치된 Kim 도구에 Kim을 통해 요청합니다(kim tools find로 목록 확인). 도구가 없으면 알리고, 아무것도 설치하지 않습니다.",
     ),
+    (
+        "picker.running",
+        "Running programs ▾",
+        "실행 중인 프로그램 ▾",
+    ),
+    (
+        "picker.none",
+        "No other program has a window open.",
+        "창이 열린 다른 프로그램이 없습니다.",
+    ),
+    (
+        "picker.note",
+        "Only program file names are read, never window titles.",
+        "프로그램 파일 이름만 읽고, 창 제목은 읽지 않습니다.",
+    ),
+    (
+        "field.tool.find",
+        "Find installed capabilities",
+        "설치된 기능 찾기",
+    ),
+    ("field.tool.searching", "Asking Kim…", "Kim에 묻는 중…"),
+    (
+        "field.tool.no_kim",
+        "Kim is not installed, so no capability can be found. Nothing is installed.",
+        "Kim이 설치되어 있지 않아 기능을 찾을 수 없습니다. 아무것도 설치하지 않습니다.",
+    ),
+    (
+        "field.tool.none",
+        "No installed tool provides a capability.",
+        "기능을 제공하는 설치된 도구가 없습니다.",
+    ),
     ("tile.remap", "Act as another key", "다른 키로 바꾸기"),
     ("tile.remap.example", "CapsLock → Ctrl", "CapsLock → Ctrl"),
     ("tile.send_keys", "Press a shortcut", "단축키 누르기"),

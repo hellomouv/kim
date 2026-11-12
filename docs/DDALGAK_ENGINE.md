@@ -1107,6 +1107,9 @@ window and notification steps in `<test launch root>\desktop.jsonl`.
 | `win::desktop::tests` | a program with no window, no tray, a missing Kim — graceful outcomes; the test host's recording |
 | editor `form::tests::step79_…` | forms for schedules, windows and the clipboard build rules the engine accepts |
 | `e2e/tests/step79_ddalgak_actions.rs` | headless rules and previews; the running engine fires a 1-minute schedule and records a window step and `tool_missing` |
+| #102: `rules::tests::run_command_needs_consent_…`, `worker::tests::run_command_stages_…`, `win::desktop::tests::win_commands_…` | `run_command` (ADR 0083): consent bound to the exact commands; the stage reaches `Env::commands`; the real runner (hidden) maps exit codes and ends overruns |
+| #102: `win::desktop::tests::running_programs_…`, `capabilities_are_read_…`, e2e step81 | the editor's program picker (file names only, never titles, elevated and own windows left out) and its capability finder (`kim tools list` + `describe`, hidden, 10 s each) |
+| `e2e/tests/issue102_ddalgak_commands.rs` | an agent's command rule needs `run-commands`; previews hide arguments; the test host records a command (`commands.jsonl`) without running it |
 
 **Manual check (maintainer, real desktop).** A rule `Ctrl+Alt+Shift+F21` → `window` `maximize`
 with `app: notepad.exe`: with Notepad open (not elevated) it maximizes; with an elevated Notepad

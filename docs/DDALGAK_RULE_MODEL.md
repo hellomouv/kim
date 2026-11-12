@@ -410,8 +410,8 @@ never blocks the emergency chord. A rule of `block` and `engine` steps is an eng
   environment values.
 - **Errors.** Validation (schema): relative path, non-`.exe`, command interpreters and script
   hosts (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wscript.exe`, `cscript.exe`, `mshta.exe`,
-  `rundll32.exe`, `regsvr32.exe`, `wsl.exe`, `bash.exe`, `conhost.exe`), which belong to Step 79's
-  separately consented command action; an `env` entry with a bad name, or `env` with `app_id`.
+  `rundll32.exe`, `regsvr32.exe`, `wsl.exe`, `bash.exe`, `conhost.exe`), which belong to the
+  separately consented `run_command` step (#102); an `env` entry with a bad name, or `env` with `app_id`.
   Since Step 70 also at compile time (`step_invalid`, reported by `rule check`): a `:` after the
   drive, an override name given twice, a quoted command line longer than Windows' 32 766
   characters. Semantic: `consent_stale` when the target (path, argument, folder, window state,
@@ -622,7 +622,7 @@ the rule is inactive (`step_unsupported`, §9).
 | `clipboard` (set, clear, transform; paste is `type_text` with `method: paste`) | implemented in Step 79, §5.15 | `clipboard` |
 | `notify` (a local notification) | implemented in Step 79, §5.16 | — |
 | `tool` (a capability of another Kim tool) | implemented in Step 79, §5.17 | the tool's own, through Kim |
-| `run_command` (an allowed local command with an explicit argument list) | #102 | its own consent per command |
+| `run_command` (a local command with an explicit argument list) | implemented in #102, §5.14–5.17 | `run-commands`, per command (fingerprint) |
 | `repeat` (nested), `if`, user variables | not in v1 (#101); a bounded repeat of the whole rule is `times` (Step 78) | — |
 | Recorded macros (steps produced by the recorder) | Step 78: ordinary steps (`type_text`, `send_keys`, `delay`) | as their steps |
 
