@@ -6,6 +6,7 @@
   "oneOf": [
     { "$ref": "#/$defs/failure" },
     { "$ref": "#/$defs/ok_capabilities" },
+    { "$ref": "#/$defs/ok_rule_run" },
     { "$ref": "#/$defs/ok_status" },
     { "$ref": "#/$defs/ok_health" },
     { "$ref": "#/$defs/ok_engine" },
@@ -117,6 +118,29 @@
                   }
                 }
               ]
+            }
+          }
+        }
+      ]
+    },
+    "ok_rule_run": {
+      "description": "#101: `ddalgak rule run <id>`: the running app starts one active rule of the active profile now, as if its keys were pressed (not a remap, hold, mode or engine rule, or hotstring). It answers when the run started; the outcome is in `status` `activity`. A dry run checks only.",
+      "allOf": [
+        { "$ref": "#/$defs/envelope_ok" },
+        {
+          "properties": {
+            "command": { "const": "rule.run" },
+            "data": {
+              "type": "object",
+              "required": ["dry_run", "rule", "profile", "started", "engine"],
+              "additionalProperties": false,
+              "properties": {
+                "dry_run": { "type": "boolean" },
+                "rule": { "$ref": "#/$defs/rule_id" },
+                "profile": { "$ref": "#/$defs/profile_id" },
+                "started": { "type": "boolean" },
+                "engine": { "$ref": "#/$defs/engine" }
+              }
             }
           }
         }
@@ -1097,8 +1121,8 @@
                 "position": { "$ref": "#/$defs/count" },
                 "state": { "$ref": "#/$defs/rule_state" },
                 "code": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/inactive_code" }] },
-                "text_redacted": { "description": "Step 69: the text of each type_text step was replaced by {\"redacted\": true, \"preview\": <counts>} (the default; `--show-text` shows it).", "type": "boolean" },
-                "targets_redacted": { "description": "Step 70: the launch targets were redacted (the default; `--show-targets` shows them): an open_program path became {\"redacted\": true, \"program\": <file name>}, its args {\"redacted\": true, \"count\": n}, its working_dir {\"redacted\": true}, its env {\"redacted\": true, \"names\": [...]}, an open_url url {\"redacted\": true, \"shown\": <scheme://host/…>}.", "type": "boolean" },
+                "text_redacted": { "description": "Step 69: the text of each type_text step was replaced by {\"redacted\": true, \"preview\": <counts>} (the default; `--show-text` shows it); since #101 also each set_var `value`, by {\"redacted\": true, \"characters\": n}.", "type": "boolean" },
+                "targets_redacted": { "description": "Step 70: the launch targets were redacted (the default; `--show-targets` shows them): an open_program path became {\"redacted\": true, \"program\": <file name>}, its args {\"redacted\": true, \"count\": n}, its working_dir {\"redacted\": true}, its env {\"redacted\": true, \"names\": [...]}, an open_url url {\"redacted\": true, \"shown\": <scheme://host/…>}; since #102 a run_command's program, args and working_dir the same way as open_program's.", "type": "boolean" },
                 "rule": { "description": "The rule as stored (ddalgak-rules-v1 `rule`, unknown fields included), with snippet text redacted unless `--show-text` and launch targets redacted unless `--show-targets` was given.", "type": "object", "required": ["id"] },
                 "problems": { "type": "array", "items": { "$ref": "#/$defs/problem" } }
               }
@@ -1364,7 +1388,7 @@
     "ok_profile_history": {"allOf": [{"$ref": "#/$defs/envelope_ok"}, {"properties": {"command": {"const": "profile.history"}, "data": {"type": "object", "required": ["profile", "exists", "revision", "versions", "rollback_to"], "additionalProperties": false, "properties": {"profile": {"$ref": "#/$defs/profile_id"}, "exists": {"description": "false: the profile was deleted; its versions can still be restored.", "type": "boolean"}, "revision": {"$ref": "#/$defs/revision"}, "versions": {"description": "Newest first: every save point, and each history snapshot in which the profile differs from the next older one.", "type": "array", "items": {"type": "object", "required": ["name", "kind", "revision", "at", "origin", "command", "label", "rules", "modes", "errors", "working", "current"], "additionalProperties": false, "properties": {"name": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-r[0-9]+(-[a-z0-9]+)?\\.json$"}, "kind": {"enum": ["snapshot", "save_point"]}, "revision": {"type": ["integer", "null"], "minimum": 0}, "at": {"type": ["string", "null"]}, "origin": {"type": ["string", "null"]}, "command": {"type": ["string", "null"]}, "label": {"type": ["string", "null"]}, "rules": {"$ref": "#/$defs/count"}, "modes": {"$ref": "#/$defs/count"}, "errors": {"$ref": "#/$defs/count"}, "working": {"description": "The profile had no error in that version (a rollback goes only to such versions).", "type": "boolean"}, "current": {"description": "It equals the profile as saved now.", "type": "boolean"}}}}, "rollback_to": {"description": "The version `profile rollback` would restore: the newest working one that differs from now.", "type": ["string", "null"]}}}}}]},
     "ok_profile_export": {"allOf": [{"$ref": "#/$defs/envelope_ok"}, {"properties": {"command": {"const": "profile.export"}, "data": {"type": "object", "required": ["dry_run", "file", "written", "profiles", "rules", "bytes", "portable_paths", "env_values_removed", "consent_removed"], "additionalProperties": false, "properties": {"dry_run": {"type": "boolean"}, "file": {"type": "string", "minLength": 1}, "written": {"type": "boolean"}, "profiles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/profile_id"}}, "rules": {"$ref": "#/$defs/count"}, "bytes": {"$ref": "#/$defs/count"}, "portable_paths": {"description": "Program and folder paths written under a known-folder token (%LocalAppData%\\…).", "$ref": "#/$defs/count"}, "env_values_removed": {"description": "Environment values of program rules left out (they may be secrets; --include-env-values keeps them).", "$ref": "#/$defs/count"}, "consent_removed": {"$ref": "#/$defs/count"}}, "description": "Step 75: never the file's content: it is written to `file` (every rule off, no consent, settings or revision)."}}}]},
     "error_code": {
-      "enum": ["io", "internal", "permission_denied", "hook_failed", "usage", "rule_invalid", "hotkey_invalid", "hotkey_reserved", "not_installed", "engine_not_running", "rule_not_found", "profile_not_found", "mode_not_found", "snapshot_not_found", "protocol_error", "app_identity_mismatch", "rules_invalid", "unsupported_platform", "rules_from_newer_version", "engine_elevated", "app_unresponsive", "engine_off", "rule_conflict", "consent_required", "confirmation_required", "busy", "cancelled", "mode_invalid", "mode_in_use", "mode_disabled", "profile_in_use", "import_invalid", "capability_missing", "tool_incompatible"]
+      "enum": ["io", "internal", "permission_denied", "hook_failed", "usage", "rule_invalid", "hotkey_invalid", "hotkey_reserved", "not_installed", "engine_not_running", "rule_not_found", "profile_not_found", "mode_not_found", "snapshot_not_found", "protocol_error", "app_identity_mismatch", "rules_invalid", "unsupported_platform", "rules_from_newer_version", "engine_elevated", "app_unresponsive", "engine_off", "rule_conflict", "consent_required", "confirmation_required", "busy", "cancelled", "mode_invalid", "mode_in_use", "mode_disabled", "profile_in_use", "import_invalid", "capability_missing", "tool_incompatible", "engine_paused", "rule_not_runnable"]
     },
     "failure": {
       "type": "object",
@@ -1392,7 +1416,7 @@
             { "properties": { "exit_code": { "const": 4 }, "code": { "enum": ["protocol_error", "app_identity_mismatch", "rules_invalid", "import_invalid"] } } },
             { "properties": { "exit_code": { "const": 5 }, "code": { "enum": ["unsupported_platform", "rules_from_newer_version", "engine_elevated", "capability_missing", "tool_incompatible"] } } },
             { "properties": { "exit_code": { "const": 6 }, "code": { "const": "app_unresponsive" } } },
-            { "properties": { "exit_code": { "const": 7 }, "code": { "enum": ["engine_off", "rule_conflict", "consent_required", "confirmation_required", "busy", "mode_in_use", "mode_disabled", "profile_in_use"] } } },
+            { "properties": { "exit_code": { "const": 7 }, "code": { "enum": ["engine_off", "rule_conflict", "consent_required", "confirmation_required", "busy", "mode_in_use", "mode_disabled", "profile_in_use", "engine_paused", "rule_not_runnable"] } } },
             { "properties": { "exit_code": { "const": 8 }, "code": { "const": "cancelled" } } }
           ]
         }

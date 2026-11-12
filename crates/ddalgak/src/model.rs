@@ -832,6 +832,40 @@ step_struct!(
     }
 );
 step_struct!(
+    /// `repeat` (#101): the steps up to its `end` run `times` times (block markers keep every real
+    /// step at the top level of `steps`, so permissions, fingerprints and redaction see them).
+    RepeatStep {
+        times: u32,
+    }
+);
+step_struct!(
+    /// `if` (#101): the steps up to its `else` or `end` run only when `when` holds (`apps`,
+    /// `except_apps`, `window_title` as in a rule's `when`, and `var`), otherwise those after
+    /// `else`.
+    IfStep {
+        when: Map<String, Value>,
+    }
+);
+step_struct!(
+    /// `else` (#101).
+    ElseStep {}
+);
+step_struct!(
+    /// `end` (#101): closes the nearest open `repeat` or `if`.
+    EndStep {}
+);
+step_struct!(
+    /// `set_var` (#101): sets a macro variable to `value`, or adds `add` to its number. Variables
+    /// live for one run only and are never stored, logged or shown.
+    SetVar {
+        name: String,
+        #[serde(default, skip_serializing_if = "none")]
+        value: Option<String>,
+        #[serde(default, skip_serializing_if = "none")]
+        add: Option<i64>,
+    }
+);
+step_struct!(
     /// `timer` (#102): starts another rule of the profile once, `after_ms` from now, while the
     /// engine runs (AutoHotkey's one-shot `SetTimer`); arming it again restarts the countdown.
     TimerStep {
@@ -945,6 +979,12 @@ pub enum Action {
     RunCommand(RunCommand),
     /// #102.
     Timer(TimerStep),
+    /// #101: block markers and variables.
+    Repeat(RepeatStep),
+    If(IfStep),
+    Else(ElseStep),
+    End(EndStep),
+    SetVar(SetVar),
     /// A step type of a later version: kept as written; the rule is inactive
     /// (`step_unsupported`, §5.13).
     Future {
@@ -954,7 +994,7 @@ pub enum Action {
 }
 
 /// The step types of rules document v1 (schema `known_step_types`).
-pub const STEP_TYPES: [&str; 18] = [
+pub const STEP_TYPES: [&str; 23] = [
     "remap",
     "block",
     "send_keys",
@@ -973,6 +1013,11 @@ pub const STEP_TYPES: [&str; 18] = [
     "tool",
     "run_command",
     "timer",
+    "repeat",
+    "if",
+    "else",
+    "end",
+    "set_var",
 ];
 
 impl Action {
@@ -996,6 +1041,11 @@ impl Action {
             Action::Tool(_) => "tool",
             Action::RunCommand(_) => "run_command",
             Action::Timer(_) => "timer",
+            Action::Repeat(_) => "repeat",
+            Action::If(_) => "if",
+            Action::Else(_) => "else",
+            Action::End(_) => "end",
+            Action::SetVar(_) => "set_var",
             Action::Future { kind, .. } => kind,
         }
     }
@@ -1033,6 +1083,11 @@ impl Action {
             Action::Tool(s) => first(&s.extra, ""),
             Action::RunCommand(s) => first(&s.extra, ""),
             Action::Timer(s) => first(&s.extra, ""),
+            Action::Repeat(s) => first(&s.extra, ""),
+            Action::If(s) => first(&s.extra, ""),
+            Action::Else(s) => first(&s.extra, ""),
+            Action::End(s) => first(&s.extra, ""),
+            Action::SetVar(s) => first(&s.extra, ""),
             Action::Future { .. } => None,
         }
     }
@@ -1101,6 +1156,11 @@ impl Serialize for Action {
             Action::Tool(x) => serde_json::to_value(x),
             Action::RunCommand(x) => serde_json::to_value(x),
             Action::Timer(x) => serde_json::to_value(x),
+            Action::Repeat(x) => serde_json::to_value(x),
+            Action::If(x) => serde_json::to_value(x),
+            Action::Else(x) => serde_json::to_value(x),
+            Action::End(x) => serde_json::to_value(x),
+            Action::SetVar(x) => serde_json::to_value(x),
             Action::Future { fields, .. } => Ok(Value::Object(fields.clone())),
         }
         .map_err(serde::ser::Error::custom)?;
@@ -1147,6 +1207,11 @@ impl<'de> Deserialize<'de> for Action {
             "tool" => Action::Tool(de(rest)?),
             "run_command" => Action::RunCommand(de(rest)?),
             "timer" => Action::Timer(de(rest)?),
+            "repeat" => Action::Repeat(de(rest)?),
+            "if" => Action::If(de(rest)?),
+            "else" => Action::Else(de(rest)?),
+            "end" => Action::End(de(rest)?),
+            "set_var" => Action::SetVar(de(rest)?),
             _ => Action::Future { kind, fields: m },
         })
     }

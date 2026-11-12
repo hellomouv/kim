@@ -1,0 +1,25 @@
+{
+  "command": "rule.run",
+  "data": {
+    "dry_run": false,
+    "engine": {
+      "hook": {
+        "installed": true,
+        "mouse_installed": false,
+        "observe_only": true
+      },
+      "last_change": {
+        "origin": "cli",
+        "request": "start"
+      },
+      "off_reason": null,
+      "state": "running"
+    },
+    "profile": "default",
+    "rule": "note",
+    "started": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

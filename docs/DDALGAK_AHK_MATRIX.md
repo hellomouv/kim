@@ -192,7 +192,7 @@ Where a page did not state something, the row says so instead of filling the gap
 
 | # | AutoHotkey v2 behavior | Src | Ddalgak | Status | Step | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 8.1 | Expressions, variables, functions, objects and classes | CO | Rules are declarative data. Bounded variables in macros are a follow-up (#101), not a language | not intended | — | — |
+| 8.1 | Expressions, variables, functions, objects and classes | CO | Rules are declarative data. Macros have bounded `repeat` (`Loop n`) and `if`/`else` blocks on the foreground window or a variable, and up to 16 text or counter variables per run (`set_var`, `{var:name}`, #101) — not a language: no expressions, functions or objects | not intended | — | — |
 | 8.2 | `DllCall`, COM, file reading and writing | CO | — | not intended | — | — |
 | 8.3 | `#Include` libraries | SC | — | not intended | — | — |
 | 8.4 | Compiling scripts into executables (Ahk2Exe) | SC | — | not intended | — | — |

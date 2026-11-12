@@ -397,6 +397,41 @@ fn effect(
         }
         // #102: the program's file name, the argument count and the timeout (never the
         // arguments, which may hold secrets).
+        // #101: block markers and variables (a variable's value is never shown).
+        Action::Repeat(r) => (
+            "repeat".into(),
+            format!("Repeats the steps up to its end {} times.", r.times),
+            json!({"times": r.times}),
+            0,
+        ),
+        Action::If(c) => {
+            let holds = crate::actions::IfCond::compile(&Value::Object(c.when.clone()))
+                .ok()
+                .and_then(|c| match (&c.window, &c.var) {
+                    (Some(w), None) => {
+                        let fg = crate::context::FixedForeground {
+                            app: i.app_exe.clone(),
+                            title: i.window_title.clone(),
+                        };
+                        Some(w.holds(&fg, &mut crate::context::Probe::default()))
+                    }
+                    _ => None,
+                });
+            let summary = match holds {
+                Some(true) => "Its condition holds here: the steps up to `else` or `end` run.",
+                Some(false) => "Its condition does not hold here: the steps after `else` run.",
+                None => "Its condition depends on a variable set while the macro runs.",
+            };
+            ("if".into(), summary.into(), json!({"holds": holds}), 0)
+        }
+        Action::Else(_) => ("else".into(), "Otherwise:".into(), json!({}), 0),
+        Action::End(_) => ("end".into(), "Ends the block.".into(), json!({}), 0),
+        Action::SetVar(v) => (
+            "set_var".into(),
+            format!("Sets the variable {}.", v.name),
+            json!({"name": v.name, "op": if v.add.is_some() { "add" } else { "set" }}),
+            0,
+        ),
         // #102: which rule a timer starts, and when.
         Action::Timer(t) => {
             let p = json!({"rule": t.rule, "after_ms": t.after_ms});
@@ -592,6 +627,8 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
     let mut effects = Vec::new();
     let mut injected = 0u64;
     let mut opened = Vec::new();
+    // #101: how a macro unrolls (its `times` and `repeat` blocks), as a count of steps.
+    let mut unrolled = None;
     let decision = if let Some(r) = winner {
         for (n, s) in r.steps.iter().enumerate().take(32) {
             let (ty, summary, preview, events) = effect(s, &keys, i, &mode, profile);
@@ -625,6 +662,18 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
             }
             effects.push(e);
         }
+        let times = u64::from(r.times.unwrap_or(1));
+        let blocks = r
+            .steps
+            .iter()
+            .any(|s| matches!(s, Action::Repeat(_) | Action::If(_)));
+        if times > 1 || blocks {
+            let steps: Vec<Value> = r.steps.iter().map(Action::to_value).collect();
+            let modes = crate::modes::ModeSet::from_profile(profile);
+            if let Ok(n) = crate::rules::check_macro(&steps, times, &modes) {
+                unrolled = Some(json!({"times": times, "steps": n}));
+            }
+        }
         json!({"outcome": "fired", "code": "ok", "rule": r.id,
             "key_reaches_app": r.trigger.pass_through == Some(true), "candidates": candidates})
     } else if let Some((code, r)) = skip {
@@ -649,6 +698,9 @@ pub fn simulate(doc: &Document, i: &Input) -> Result<Value, String> {
     });
     if i.kind == Kind::Live {
         out["live_target"] = json!("playground");
+    }
+    if let Some(u) = unrolled {
+        out["unrolled"] = u;
     }
     Ok(out)
 }

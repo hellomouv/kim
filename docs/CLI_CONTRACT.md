@@ -342,6 +342,8 @@ real runs. The mode commands (Step 72) and the profile commands (Steps 75, 81) u
 | `mode_in_use` | 7 | Step 72: `mode delete` of the default mode, of a mode other modes are layers over, of a mode a rule switches to, or of a mode rules are limited to without `--delete-rules`; nothing was written. `details` name the rules and modes that use it. |
 | `mode_disabled` | 7 | Step 73: `mode set` or `mode toggle` (or the tray's mode menu) to a mode the user disabled; nothing changed. `ddalgak enable --mode <id>` turns it on again. |
 | `profile_in_use` | 7 | Step 75: `profile delete` of the active profile (switch first with `ddalgak profile apply <other>`) or of the only profile; nothing was written. |
+| `engine_paused` | 7 | #101: `rule run` while the engine is paused; `ddalgak resume` first. Nothing ran. |
+| `rule_not_runnable` | 7 | #101: `rule run` of a rule that is inactive (its code and reason in the message) or that works only with its keys (a remap, a hold, a mode or engine rule, a hotstring). Nothing ran. |
 
 ## 7. Output streams and the `--json` envelope
 

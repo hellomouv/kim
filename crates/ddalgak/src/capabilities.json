@@ -109,6 +109,16 @@
       "opens_window": false
     },
     {
+      "name": "rule.run",
+      "usage": "ddalgak rule run <id> [--endpoint <name>] [--dry-run] [--json]",
+      "summary": "Run one active rule now, as if its keys were pressed (needs the running engine)",
+      "effect": "write",
+      "network": false,
+      "dry_run": true,
+      "requires_yes": false,
+      "opens_window": false
+    },
+    {
       "name": "quit",
       "usage": "ddalgak quit [--endpoint <name>] [--dry-run] [--json]",
       "summary": "End the running tray app (the engine is turned off first)",

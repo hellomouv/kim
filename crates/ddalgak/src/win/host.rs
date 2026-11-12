@@ -597,6 +597,66 @@ impl Host {
         })
     }
 
+    /// #101: `ddalgak rule run <id>`: starts one active rule of the active profile now, as if its
+    /// trigger fired. Only while the engine runs (not paused); only a run (typing, keys, a
+    /// launch, mouse steps, a macro), never a remap, a hold, a mode or engine rule or a hotstring;
+    /// the rule's consent is already part of it being active. Modes and `when` are not asked
+    /// (the user asked for this rule); the focus checks of typing still apply when it runs.
+    fn rule_run(&mut self, id: &str, dry_run: bool) -> Result<Value, (String, String)> {
+        let state = self.state();
+        if !state.has_hook() {
+            return Err(refusal(Refusal::EngineOff));
+        }
+        if state == State::Paused {
+            return Err((
+                "engine_paused".into(),
+                "the engine is paused; `ddalgak resume` first".into(),
+            ));
+        }
+        let Some(b) = self.loaded.bindings.iter().find(|b| b.rule == id) else {
+            if let Some(i) = self.loaded.inactive.iter().find(|i| i.rule == id) {
+                return Err((
+                    "rule_not_runnable".into(),
+                    format!("rule `{id}` is not active ({}): {}", i.code, i.reason),
+                ));
+            }
+            return Err((
+                "rule_not_found".into(),
+                format!(
+                    "no active rule `{id}` in the active profile `{}` (a disabled rule is not run)",
+                    self.loaded.profile
+                ),
+            ));
+        };
+        use crate::table::Action as A;
+        let runnable = b.hotstring.is_none()
+            && matches!(
+                b.action,
+                A::Type(_) | A::Keys(_) | A::Launch(_) | A::Mouse(_) | A::Sequence(_)
+            );
+        if !runnable {
+            return Err((
+                "rule_not_runnable".into(),
+                format!(
+                    "rule `{id}` only works with its keys (a remap, a hold, a mode or engine rule, or a hotstring)"
+                ),
+            ));
+        }
+        if !dry_run {
+            self.worker.queue().send(Msg::RunNow {
+                generation: self.generation,
+                rule: id.to_string(),
+            });
+        }
+        Ok(json!({
+            "dry_run": dry_run,
+            "rule": id,
+            "profile": self.loaded.profile,
+            "started": !dry_run,
+            "engine": self.engine_json(),
+        }))
+    }
+
     /// The hook callback reached the hook timeout (Step 73): Windows may have removed the hook
     /// without a word, so the engine turns itself off, releases everything and says so. It never
     /// reinstalls a hook by itself; turning it on again installs a fresh one.
@@ -839,6 +899,7 @@ impl Host {
             Method::RulesReload => Ok(self.reload("cli", dry_run)),
             Method::Mode(cmd) => self.mode_cmd(cmd, dry_run, ModeOrigin::Cli),
             Method::Release => Ok(self.release(dry_run)),
+            Method::RuleRun(id) => self.rule_run(&id, dry_run),
             Method::Quit => {
                 if !dry_run {
                     // SAFETY: posts a plain message to this thread's own window.
@@ -1368,6 +1429,7 @@ pub fn run(opts: Options) -> Result<(), RunError> {
                 // Step 79: windows and the tray's balloons; other Kim tools.
                 desktop: Arc::clone(&desktop) as Arc<dyn crate::actions::Desktop>,
                 tools: Arc::new(super::desktop::KimTools),
+                foreground: super::context::foreground(),
                 commands: Arc::new(super::desktop::WinCommands),
             }
         },

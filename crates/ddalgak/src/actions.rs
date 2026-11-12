@@ -223,6 +223,139 @@ pub struct ScheduleSpec {
     pub catch_up: bool,
 }
 
+/// #101: a compiled `set_var` step.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SetVarSpec {
+    Set { name: String, value: String },
+    Add { name: String, add: i64 },
+}
+
+/// At most this many variables in one rule, and characters in one value (#101).
+pub const MAX_VARS: usize = 16;
+pub const MAX_VAR_CHARS: usize = 1000;
+
+impl SetVarSpec {
+    pub fn compile(v: &Value) -> Result<SetVarSpec, String> {
+        let name = v.get("name").and_then(Value::as_str).unwrap_or_default();
+        if !crate::text::is_var_name(name) {
+            return Err(
+                "`name` is a lowercase letter, then letters, digits or `_` (at most 32)".into(),
+            );
+        }
+        match (v.get("value"), v.get("add")) {
+            (Some(val), None) => {
+                let val = val
+                    .as_str()
+                    .filter(|t| t.chars().count() <= MAX_VAR_CHARS && !t.contains('\0'))
+                    .ok_or("`value` is a text of at most 1000 characters")?;
+                Ok(SetVarSpec::Set {
+                    name: name.into(),
+                    value: val.into(),
+                })
+            }
+            (None, Some(a)) => {
+                let add = a
+                    .as_i64()
+                    .filter(|n| n.unsigned_abs() <= 1_000_000)
+                    .ok_or("`add` is a whole number of at most ±1000000")?;
+                Ok(SetVarSpec::Add {
+                    name: name.into(),
+                    add,
+                })
+            }
+            _ => Err("a `set_var` has exactly one of `value` and `add`".into()),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            SetVarSpec::Set { name, .. } | SetVarSpec::Add { name, .. } => name,
+        }
+    }
+
+    /// Applies the step to the run's variables (an `add` to a text that is no number starts at 0).
+    pub fn apply(&self, vars: &mut std::collections::BTreeMap<String, String>) {
+        match self {
+            SetVarSpec::Set { name, value } => {
+                vars.insert(name.clone(), value.clone());
+            }
+            SetVarSpec::Add { name, add } => {
+                let n = vars
+                    .get(name)
+                    .and_then(|v| v.trim().parse::<i64>().ok())
+                    .unwrap_or(0);
+                vars.insert(name.clone(), n.saturating_add(*add).to_string());
+            }
+        }
+    }
+}
+
+/// #101: an `if` step's condition: the foreground (as a rule's `when`) and a variable's value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IfCond {
+    pub window: Option<crate::context::Cond>,
+    /// (`name`, `equals`).
+    pub var: Option<(String, String)>,
+}
+
+impl IfCond {
+    pub fn compile(when: &Value) -> Result<IfCond, String> {
+        let mut o = when
+            .as_object()
+            .cloned()
+            .ok_or("`when` must be an object")?;
+        let var = match o.remove("var") {
+            None => None,
+            Some(v) => {
+                let name = v.get("name").and_then(Value::as_str).unwrap_or_default();
+                let equals = v.get("equals").and_then(Value::as_str);
+                let keys_ok = v
+                    .as_object()
+                    .is_some_and(|m| m.keys().all(|k| k == "name" || k == "equals"));
+                match (crate::text::is_var_name(name), equals, keys_ok) {
+                    (true, Some(e), true) if e.chars().count() <= MAX_VAR_CHARS => {
+                        Some((name.to_string(), e.to_string()))
+                    }
+                    _ => return Err("`when.var` is {\"name\": …, \"equals\": \"text\"}".into()),
+                }
+            }
+        };
+        let window = if o.is_empty() {
+            None
+        } else {
+            Some(crate::context::Cond::compile(&Value::Object(o))?)
+        };
+        if window.is_none() && var.is_none() {
+            return Err("`when` is empty".into());
+        }
+        Ok(IfCond { window, var })
+    }
+
+    /// Whether it holds now (an unknown foreground never matches, as in `when`).
+    pub fn holds(
+        &self,
+        fg: &dyn crate::context::Foreground,
+        vars: &std::collections::BTreeMap<String, String>,
+    ) -> bool {
+        if let Some((name, equals)) = &self.var
+            && vars.get(name).map_or("", String::as_str) != equals.as_str()
+        {
+            return false;
+        }
+        match &self.window {
+            Some(c) => c.holds(fg, &mut crate::context::Probe::default()),
+            None => true,
+        }
+    }
+}
+
+/// #101: a compiled `if`: its condition and how many stages its `then` branch spans.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BranchSpec {
+    pub cond: IfCond,
+    pub skip: u16,
+}
+
 /// #102: a compiled `timer` step: starts the rule `rule` (same profile) once, `after` from now,
 /// while the engine runs. Arming it again restarts the countdown.
 #[derive(Clone, Debug, PartialEq, Eq)]

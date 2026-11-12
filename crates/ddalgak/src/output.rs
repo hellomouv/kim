@@ -47,10 +47,14 @@ pub enum Code {
     // Step 81: the Kim interop provider (docs/INTEROP.md).
     CapabilityMissing,
     ToolIncompatible,
+    /// #101: `rule run` while the engine is paused.
+    EnginePaused,
+    /// #101: `rule run` of a rule that is not active or not a run (a remap, a mode or engine rule, a hotstring).
+    RuleNotRunnable,
 }
 
 impl Code {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 37] = [
         Self::Io,
         Self::Internal,
         Self::PermissionDenied,
@@ -86,6 +90,8 @@ impl Code {
         Self::ImportInvalid,
         Self::CapabilityMissing,
         Self::ToolIncompatible,
+        Self::EnginePaused,
+        Self::RuleNotRunnable,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -125,6 +131,8 @@ impl Code {
             Self::ImportInvalid => "import_invalid",
             Self::CapabilityMissing => "capability_missing",
             Self::ToolIncompatible => "tool_incompatible",
+            Self::EnginePaused => "engine_paused",
+            Self::RuleNotRunnable => "rule_not_runnable",
         }
     }
 
@@ -165,7 +173,9 @@ impl Code {
             | Self::Busy
             | Self::ModeInUse
             | Self::ModeDisabled
-            | Self::ProfileInUse => 7,
+            | Self::ProfileInUse
+            | Self::EnginePaused
+            | Self::RuleNotRunnable => 7,
             Self::Cancelled => 8,
         }
     }

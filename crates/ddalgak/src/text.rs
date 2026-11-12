@@ -134,6 +134,17 @@ pub enum Piece<'a> {
     Brace(char),
     Var(Var),
     Cursor,
+    /// #101: `{var:name}`, a macro variable (empty when it is not set).
+    User(&'a str),
+}
+
+/// #101: whether `name` is a macro variable name: a lowercase letter, then up to 31 lowercase
+/// letters, digits or `_`.
+pub fn is_var_name(name: &str) -> bool {
+    let mut c = name.chars();
+    c.next().is_some_and(|f| f.is_ascii_lowercase())
+        && name.len() <= 32
+        && c.all(|x| x.is_ascii_lowercase() || x.is_ascii_digit() || x == '_')
 }
 
 /// Why a template is refused (the schema refuses the same texts; these messages say where).
@@ -201,6 +212,8 @@ pub fn parse(text: &str) -> Result<Vec<Piece<'_>>, TemplateError> {
                     Piece::Cursor
                 } else if let Some(v) = Var::parse(name) {
                     Piece::Var(v)
+                } else if let Some(u) = name.strip_prefix("var:").filter(|u| is_var_name(u)) {
+                    Piece::User(u)
                 } else if name.contains('{') || name.is_empty() {
                     return Err(TemplateError::LoneBrace { at: char_at(i) });
                 } else {
@@ -240,6 +253,16 @@ pub struct Rendered {
 
 /// Renders a step's text: literally, or with the variables at `now` when `variables` is set.
 pub fn render(text: &str, variables: bool, now: &LocalTime) -> Result<Rendered, TemplateError> {
+    render_with(text, variables, now, &|_| None)
+}
+
+/// [`render`] with the macro's variables (#101): `{var:name}` is `user(name)` or empty.
+pub fn render_with(
+    text: &str,
+    variables: bool,
+    now: &LocalTime,
+    user: &dyn Fn(&str) -> Option<String>,
+) -> Result<Rendered, TemplateError> {
     if !variables {
         return Ok(Rendered {
             text: text.to_string(),
@@ -262,6 +285,7 @@ pub fn render(text: &str, variables: bool, now: &LocalTime) -> Result<Rendered, 
                 r.cursor = true;
                 after = Some(r.text.chars().count());
             }
+            Piece::User(u) => r.text.push_str(&user(u).unwrap_or_default()),
         }
     }
     if let Some(a) = after {
@@ -1004,5 +1028,22 @@ mod tests {
         assert!(taps(VK_LEFT, 0).is_empty());
         assert_eq!(paste_keys()[0], OutEvent::down(OutCode::Vk(VK_LCONTROL)));
         assert_eq!(count("a\n\nb"), (4, 3));
+    }
+
+    /// #101: `{var:name}` is a macro variable; it renders as the run's value or empty.
+    #[test]
+    fn macro_variables_render_from_the_run() {
+        let now = LocalTime::default();
+        let user = |n: &str| (n == "who").then(|| "Kim".to_string());
+        assert_eq!(
+            render_with("Hi {var:who}{var:none}!", true, &now, &user)
+                .unwrap()
+                .text,
+            "Hi Kim!"
+        );
+        assert_eq!(render("{var:who}", false, &now).unwrap().text, "{var:who}");
+        assert!(parse("{var:Bad}").is_err());
+        assert!(parse("{var:}").is_err());
+        assert!(is_var_name("count_2") && !is_var_name("2count") && !is_var_name(&"a".repeat(33)));
     }
 }

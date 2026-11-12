@@ -165,6 +165,12 @@ pub enum Msg {
     },
     /// Cancel timers (pause, stop, profile switch).
     Cancel,
+    /// #101: `ddalgak rule run`: start this rule of these rules now (the host checked that the
+    /// engine runs and the rule is an active run).
+    RunNow {
+        generation: u32,
+        rule: String,
+    },
     Stop,
 }
 
@@ -302,6 +308,8 @@ struct Macro {
     focus: Option<u128>,
     /// A launch stage running on its thread: its outcome when done.
     launch: Option<Arc<Mutex<Option<&'static str>>>>,
+    /// #101: the run's variables (in memory for this run only; never logged).
+    vars: std::collections::BTreeMap<String, String>,
 }
 
 /// How often a macro looks whether its launch stage finished.
@@ -613,6 +621,7 @@ impl Ctx<'_> {
                 due: now,
                 focus: None,
                 launch: None,
+                vars: std::collections::BTreeMap::new(),
             });
             self.step();
             return;
@@ -741,7 +750,7 @@ impl Ctx<'_> {
                 Stage::Text(_) | Stage::Keys(_) => {
                     let local = (self.env.clock)();
                     let pieces = match &stage {
-                        Stage::Text(t) => run::plan_text(t, None, &local),
+                        Stage::Text(t) => run::plan_text_with(t, None, &local, &m.vars),
                         Stage::Keys(k) => run::plan_keys(k, None),
                         _ => Vec::new(),
                     };
@@ -814,6 +823,20 @@ impl Ctx<'_> {
                 Stage::Notify(n) => {
                     let code = self.env.desktop.notify(&n);
                     self.stage_done(code);
+                }
+                // #101: variables, and the branches of `if` blocks (repeats are unrolled).
+                Stage::SetVar(v) => v.apply(&mut m.vars),
+                Stage::Branch(b) => {
+                    if !b.cond.holds(&*self.env.foreground, &m.vars) {
+                        for _ in 0..b.skip {
+                            m.stages.pop_front();
+                        }
+                    }
+                }
+                Stage::Skip(n) => {
+                    for _ in 0..n {
+                        m.stages.pop_front();
+                    }
                 }
                 // #102: arms (or re-arms) a one-shot timer; the stage itself is done at once.
                 Stage::Timer(t) => {
@@ -1155,6 +1178,14 @@ fn run(rx: &Receiver<Msg>, control: &Sink, stats: &Stats, ctx: &mut Ctx<'_>) {
                 ctx.cancel();
                 ctx.stop_motions("cancelled");
                 rules = Some(r);
+            }
+            Ok(Msg::RunNow { generation, rule }) => {
+                if running
+                    && let Some(r) = rules.as_ref().filter(|r| r.generation == generation)
+                    && let Some(b) = r.bindings.iter().find(|b| b.rule == rule)
+                {
+                    ctx.start(r, b, None);
+                }
             }
             Ok(Msg::Cancel) => {
                 holds.clear();
@@ -3139,5 +3170,69 @@ mod tests {
             "{:?}",
             outcomes(&w)
         );
+    }
+
+    // ---- #101: variables and `if` branches (repeats are unrolled by the loader).
+
+    #[test]
+    fn variables_and_branches_type_the_branch_that_holds() {
+        use crate::actions::{BranchSpec, IfCond, SetVarSpec};
+        let (w, log) = output_worker();
+        let q = w.queue();
+        let text = |t: &str| {
+            Stage::Text(Arc::new(TextSpec {
+                text: t.into(),
+                paste: false,
+                key_delay_ms: 0,
+                variables: true,
+            }))
+        };
+        let add = || {
+            Stage::SetVar(Arc::new(SetVarSpec::Add {
+                name: "n".into(),
+                add: 1,
+            }))
+        };
+        let branch = |equals: &str| {
+            Stage::Branch(Arc::new(BranchSpec {
+                cond: IfCond {
+                    window: None,
+                    var: Some(("n".into(), equals.into())),
+                },
+                skip: 2,
+            }))
+        };
+        q.send(Msg::Rules(macro_rules(
+            vec![
+                Stage::SetVar(Arc::new(SetVarSpec::Set {
+                    name: "n".into(),
+                    value: "0".into(),
+                })),
+                add(),
+                add(),
+                add(),
+                // n is 3: the `then` branch types it, the `else` branch is passed over.
+                branch("3"),
+                text("n={var:n};"),
+                Stage::Skip(1),
+                text("never"),
+                // n is not 7: the `then` branch is passed over, the `else` branch types.
+                branch("7"),
+                text("never"),
+                Stage::Skip(1),
+                text("else"),
+            ],
+            false,
+        )));
+        q.signal(1, fire(0));
+        assert_eq!(
+            wait_outcomes(&w, 1),
+            [("macro".to_string(), "ok".to_string())]
+        );
+        let want = [text::events("n=3;"), text::events("else")].concat();
+        assert_eq!(*log.lock().unwrap(), want);
+        let j = w.activity.lock().unwrap().to_json(10).to_string();
+        assert!(!j.contains("n=3"), "{j}");
+        let _ = wait_for;
     }
 }

@@ -113,12 +113,29 @@ impl EditorApp {
                 start = true;
             }
         });
+        // #101: blocks and variables.
+        ui.horizontal_wrapped(|ui| {
+            for kind in ["repeat", "if", "else", "end", "set_var"] {
+                if ui
+                    .add_enabled(
+                        !recording && f.fields.macro_steps.len() < 32,
+                        egui::Button::new(lang.t(&format!("macro.add_{kind}"))),
+                    )
+                    .clicked()
+                {
+                    f.add_marker(kind);
+                }
+            }
+        });
         let summaries = f.step_summaries(profile);
+        let depths = f.step_depths();
         let n = f.fields.macro_steps.len();
         let mut act: Option<(usize, &str)> = None;
         for (i, s) in summaries.iter().enumerate() {
             ui.horizontal_wrapped(|ui| {
+                ui.add_space(18.0 * depths.get(i).copied().unwrap_or(0) as f32);
                 let row = ui.label(format!("{}. {s}", i + 1));
+                macro_inline(ui, lang, &mut f.fields.macro_steps[i], i);
                 if f.fields.macro_steps[i]["type"] == "delay" {
                     let mut ms = f.fields.macro_steps[i]["ms"].as_u64().unwrap_or(500);
                     if ui
@@ -139,7 +156,10 @@ impl EditorApp {
                     (
                         lang.t("macro.edit"),
                         "edit",
-                        f.fields.macro_steps[i]["type"] != "delay",
+                        !matches!(
+                            f.fields.macro_steps[i]["type"].as_str(),
+                            Some("delay" | "repeat" | "if" | "else" | "end" | "set_var")
+                        ),
                     ),
                     ("✕", "remove", true),
                 ] {
@@ -194,5 +214,92 @@ impl EditorApp {
         if stop {
             self.stop_recording();
         }
+    }
+}
+
+/// #101: the in-place fields of a block marker or a variable step.
+fn macro_inline(ui: &mut egui::Ui, lang: Lang, v: &mut serde_json::Value, i: usize) {
+    let name = |k: &str| format!("{} {}", lang.t(k), i + 1);
+    match v["type"].as_str() {
+        Some("repeat") => {
+            let mut n = v["times"].as_u64().unwrap_or(2);
+            if ui
+                .add(egui::DragValue::new(&mut n).range(1..=100))
+                .accessible_name(name("macro.times"))
+                .changed()
+            {
+                v["times"] = serde_json::json!(n);
+            }
+        }
+        Some("if") => {
+            let mut app = v["when"]["apps"][0]["exe"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let mut var = v["when"]["var"]["name"].as_str().unwrap_or("").to_string();
+            let mut equals = v["when"]["var"]["equals"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let mut changed = false;
+            ui.label(small(lang.t("macro.if_app"), Colors::get().text_secondary));
+            changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut app)
+                        .desired_width(120.0)
+                        .hint_text("notepad.exe"),
+                )
+                .accessible_name(name("macro.if_app"))
+                .changed();
+            ui.label(small(lang.t("macro.if_var"), Colors::get().text_secondary));
+            changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut var)
+                        .desired_width(70.0)
+                        .hint_text("count"),
+                )
+                .accessible_name(name("macro.if_var"))
+                .changed();
+            ui.label("=");
+            changed |= ui
+                .add(egui::TextEdit::singleline(&mut equals).desired_width(70.0))
+                .accessible_name(name("macro.var_value"))
+                .changed();
+            if changed {
+                let mut when = serde_json::Map::new();
+                if !app.trim().is_empty() {
+                    when.insert("apps".into(), serde_json::json!([{ "exe": app.trim() }]));
+                }
+                if !var.trim().is_empty() {
+                    when.insert(
+                        "var".into(),
+                        serde_json::json!({ "name": var.trim(), "equals": equals }),
+                    );
+                }
+                v["when"] = serde_json::Value::Object(when);
+            }
+        }
+        Some("set_var") => {
+            let mut n = v["name"].as_str().unwrap_or("").to_string();
+            let mut val = v["value"].as_str().map(str::to_string);
+            if ui
+                .add(egui::TextEdit::singleline(&mut n).desired_width(80.0))
+                .accessible_name(name("macro.var_name"))
+                .changed()
+            {
+                v["name"] = serde_json::json!(n.trim());
+            }
+            if let Some(val) = val.as_mut() {
+                ui.label("=");
+                if ui
+                    .add(egui::TextEdit::singleline(val).desired_width(120.0))
+                    .accessible_name(name("macro.var_value"))
+                    .changed()
+                {
+                    v["value"] = serde_json::json!(val);
+                }
+            }
+        }
+        _ => {}
     }
 }

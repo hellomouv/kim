@@ -133,6 +133,13 @@ pub enum Stage {
     Command(Arc<crate::actions::CommandSpec>),
     /// #102.
     Timer(Arc<crate::actions::TimerSpec>),
+    /// #101: sets or adds to a macro variable.
+    SetVar(Arc<crate::actions::SetVarSpec>),
+    /// #101: when the condition does not hold, the next `skip` stages are passed over (an `if`'s
+    /// branch; repeats are unrolled when the rules load).
+    Branch(Arc<crate::actions::BranchSpec>),
+    /// #101: passes over the next stages (the `else` branch after a `then` branch ran).
+    Skip(u16),
 }
 
 impl Stage {

@@ -412,6 +412,13 @@ fn show(a: &Args, files: &Files, ctx: &Context) -> Outcome {
                 redacted += 1;
             }
         }
+        // #101: a variable's value is personal like a snippet (its length only).
+        for s in steps.iter_mut().filter(|s| s["type"] == "set_var") {
+            if let Some(v) = s["value"].as_str() {
+                s["value"] = json!({ "redacted": true, "characters": v.chars().count() });
+                redacted += 1;
+            }
+        }
     }
     // Launch targets are personal too (Step 70): a path names the user's folders, arguments,
     // URL paths and queries and environment values can carry tokens. Shown only with
@@ -465,6 +472,21 @@ fn redact_targets(s: &mut Value) -> bool {
         if let Some(env) = s["env"].as_array() {
             let names: Vec<Value> = env.iter().map(|e| e["name"].clone()).collect();
             s["env"] = json!({ "redacted": true, "names": names });
+            changed = true;
+        }
+    }
+    // #102: a command's path, arguments and folder are as personal as a launch's.
+    if s["type"] == "run_command" {
+        if let Some(p) = s["program"].as_str() {
+            s["program"] = json!({ "redacted": true, "program": ddalgak::launch::program_name(p) });
+            changed = true;
+        }
+        if let Some(n) = s["args"].as_array().map(Vec::len) {
+            s["args"] = json!({ "redacted": true, "count": n });
+            changed = true;
+        }
+        if s["working_dir"].is_string() {
+            s["working_dir"] = json!({ "redacted": true });
             changed = true;
         }
     }

@@ -53,7 +53,7 @@ USAGE:
     ddalgak test <keys> [--on press|release|hold|repeat] [--profile <p>] [--mode <m>] [--paused]
                      [--focus normal|password_field|elevated_window|secure_desktop]
                      [--app <exe>] [--title <text>] [--ime] [--injected] [--draft] [--dry-run] [--json]
-    ddalgak mcp serve [--allow rules|modes|profiles|engine]... [--endpoint <name>]
+    ddalgak mcp serve [--allow rules|modes|profiles|engine|run]... [--endpoint <name>]
     ddalgak mcp tools [--allow <area>]... [--json]
     ddalgak interop invoke [--dry-run] [--json]    (one kim.interop.request on stdin)
     ddalgak explain <keys> [--context <json>] [--on <kind>] [--profile <p>] [--injected] [--draft]
@@ -131,6 +131,11 @@ COMMANDS:
                   state, and release keys Windows still considers pressed although nobody holds
                   them (a modifier you are pressing is left alone while the engine is on). For
                   a key that acts stuck; the tray menu has the same item.
+    rule run <id> Run one active rule of the active profile now, as if its keys were pressed
+                  (typing, keys, launches, mouse steps and macros; not remaps, holds, mode or
+                  engine rules or hotstrings). Needs the running app with the engine on and not
+                  paused (engine_off, engine_paused); a rule that is not active is
+                  rule_not_runnable. Its consent is the one it already has. --dry-run checks.
     quit          End the tray app (the engine is turned off first).
     startup ...   Opt-in start of the tray app when you sign in, as one value under
                   HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run. No service, no task.
@@ -520,6 +525,15 @@ fn run(cmd: Cmd, a: &Args) -> Outcome {
         }
         Cmd::Release => {
             client::call(&endpoint, Method::Release, a.dry_run).map(|(v, _)| (v, Vec::new()))
+        }
+        // #101: the running app runs one active rule now (never from here: only it has the
+        // engine, the consent check and the pause and emergency state).
+        Cmd::RuleRun => {
+            let id = a.positional[0].clone();
+            if !ddalgak::model::is_rule_id(&id) {
+                return Err(CliError::usage(format!("`{id}` is not a rule ID")));
+            }
+            client::call(&endpoint, Method::RuleRun(id), a.dry_run).map(|(v, _)| (v, Vec::new()))
         }
         Cmd::ModeSet | Cmd::ModeToggle | Cmd::ModeReset => {
             let m = match cmd {
@@ -1077,6 +1091,21 @@ fn human(cmd: Cmd, d: &Value) -> String {
         Cmd::Help | Cmd::Version => {}
         Cmd::Enable | Cmd::Disable => return mode_cmd::scope_human(cmd, d),
         Cmd::Release => return mode_cmd::release_human(d),
+        Cmd::RuleRun => {
+            if d["dry_run"] == true {
+                o.push_str(&format!(
+                    "would run rule {} now
+",
+                    s(&d["rule"])
+                ));
+            } else {
+                o.push_str(&format!(
+                    "rule {} started (its outcome is in `ddalgak status`)
+",
+                    s(&d["rule"])
+                ));
+            }
+        }
         c if c.name().starts_with("mode.") => return mode_cmd::human(cmd, d),
         c if c.is_profile() => return profile_cmd::human(cmd, d),
         _ => return rule_cmd::human(cmd, d),

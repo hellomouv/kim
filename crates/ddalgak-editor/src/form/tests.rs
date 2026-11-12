@@ -685,3 +685,52 @@ fn timer_form_and_wake_option_build_and_round_trip() {
     );
     assert!(RuleForm::edit("default", &r).fields.trigger.catch_up);
 }
+
+/// #101: the macro builder's blocks and variables make a rule the engine accepts; rows are
+/// indented by depth and summarized; an unclosed block is a problem.
+#[test]
+fn macro_blocks_and_variables_build_and_indent() {
+    let mut f = with(Effect::Notify, "Ctrl+Alt+Shift+F19");
+    f.fields.notify.title = "Tick".into();
+    f.add_marker("set_var");
+    f.add_marker("repeat");
+    f.add_to_macro(Some(&profile())).unwrap();
+    f.add_marker("end");
+    f.add_marker("if");
+    f.fields.notify.title = "In Notepad".into();
+    f.fields.effect = Some(Effect::Notify);
+    f.add_to_macro(Some(&profile())).unwrap();
+    f.add_marker("else");
+    f.fields.notify.title = "Elsewhere".into();
+    f.fields.effect = Some(Effect::Notify);
+    f.add_to_macro(Some(&profile())).unwrap();
+    assert!(
+        paths(&f).iter().any(|p| p.starts_with("steps")),
+        "the `if` is not closed yet: {:?}",
+        paths(&f)
+    );
+    f.add_marker("end");
+    assert!(paths(&f).is_empty(), "{:?}", paths(&f));
+    assert_eq!(f.step_depths(), [0, 0, 1, 0, 0, 1, 0, 1, 0]);
+    let s = f.step_summaries(Some(&profile()));
+    assert_eq!(
+        (
+            s[0].as_str(),
+            s[1].as_str(),
+            s[4].as_str(),
+            s[6].as_str(),
+            s[8].as_str()
+        ),
+        (
+            "Set count",
+            "Repeat 2 times:",
+            "If in notepad.exe:",
+            "Otherwise:",
+            "End"
+        )
+    );
+    let r = f.build("blocks", Some(&profile())).unwrap();
+    let back = RuleForm::edit("default", &r);
+    assert!(back.unsupported.is_none(), "{:?}", back.unsupported);
+    assert_eq!(back.fields.macro_steps.len(), 9);
+}

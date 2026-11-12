@@ -940,6 +940,34 @@ fn extend(
             // name given twice in `env`, a command line longer than Windows takes, a URL with
             // characters a browser's command line could misread. Without this the rule would load
             // inactive with no problem listed. Messages never quote the target.
+            // #101: blocks and variables are checked the way the engine lays them out (an
+            // unclosed block, a misplaced `else`, nesting, unset variables, the 1000-step bound).
+            if rule.steps.iter().any(|s| {
+                matches!(
+                    s,
+                    Action::Repeat(_)
+                        | Action::If(_)
+                        | Action::Else(_)
+                        | Action::End(_)
+                        | Action::SetVar(_)
+                )
+            }) {
+                let steps: Vec<Value> = rule.steps.iter().map(Action::to_value).collect();
+                let modes = crate::modes::ModeSet::from_profile(profile);
+                if let Err(e) =
+                    crate::rules::check_macro(&steps, u64::from(rule.times.unwrap_or(1)), &modes)
+                {
+                    push(
+                        item,
+                        "step_invalid",
+                        Severity::Error,
+                        format!("{at}.steps"),
+                        format!("{at}.steps: {e}"),
+                        None,
+                        vec![Offer::Disable],
+                    );
+                }
+            }
             // #102: `run_command` steps are checked the way the engine compiles them.
             for (i, s) in rule.steps.iter().enumerate() {
                 let v = serde_json::to_value(s).unwrap_or_default();

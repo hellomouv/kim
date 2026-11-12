@@ -1,0 +1,12 @@
+{
+  "command": "rule.run",
+  "error": {
+    "code": "rule_not_runnable",
+    "details": [],
+    "exit_code": 7,
+    "hint": null,
+    "message": "rule `to-nav` only works with its keys (a remap, a hold, a mode or engine rule, or a hotstring)"
+  },
+  "ok": false,
+  "schema_version": 1
+}

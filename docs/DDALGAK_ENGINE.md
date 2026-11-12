@@ -200,6 +200,7 @@ never registered later, not even when the other program lets go (tested,
 | `enable` / `disable` | write, `--dry-run` | Step 73, §16: the engine on or off, like `engine start`/`stop`; a `disable` is remembered across restarts until the next `enable`. With `--rule <id>…`, `--mode <id> [--profile p]` or `--profile <id>` they switch that scope in `rules.json` instead (no app needed; `--draft`, `--if-revision`, and `--allow` with `--rule`). |
 | `mode enable|disable <id>` | write, `--dry-run` | Step 73: a mode's `enabled`; never the default mode (`mode_invalid`). |
 | `release` | write, `--dry-run` | Step 73: releases Ddalgak's ledger, makes the hook forget its key state, releases stale keys Windows still considers pressed (counts only). |
+| `rule run <id>` | write, `--dry-run` | #101: the running app starts one active run rule now (`engine_off`, `engine_paused`, `rule_not_runnable`, `rule_not_found`; RULE_MODEL §5.18). |
 | `quit` | write, `--dry-run` | Ends the tray app (engine off first). |
 | `startup status|enable|disable` | read / write, `--dry-run` | The user's Run value only. |
 | `capabilities` | read | [tool-capabilities-v1](contracts/schemas/tool-capabilities-v1.schema.json) |

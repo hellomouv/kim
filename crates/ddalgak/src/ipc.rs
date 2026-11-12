@@ -46,6 +46,8 @@ pub enum Method {
     /// Step 73: release every key and button Ddalgak holds, forget the hook's key state and
     /// release keys Windows still considers pressed that nobody holds (`ddalgak release`).
     Release,
+    /// #101: run one active rule now, as if its trigger fired (`ddalgak rule run`).
+    RuleRun(String),
 }
 
 impl Method {
@@ -60,6 +62,7 @@ impl Method {
             Method::Mode(ModeCmd::Toggle(_)) => "mode.toggle".into(),
             Method::Mode(ModeCmd::Reset) => "mode.reset".into(),
             Method::Release => "keys.release".into(),
+            Method::RuleRun(_) => "rule.run".into(),
         }
     }
 
@@ -91,6 +94,9 @@ pub fn request(method: &Method, dry_run: bool) -> String {
     if let Method::Mode(ModeCmd::Set(m) | ModeCmd::Toggle(m)) = method {
         v["mode"] = json!(m);
     }
+    if let Method::RuleRun(r) = method {
+        v["rule"] = json!(r);
+    }
     let mut line = v.to_string();
     line.push('\n');
     line
@@ -115,6 +121,13 @@ pub fn parse_request(line: &[u8]) -> Result<(Method, bool), (&'static str, Strin
         "mode.set" => Method::Mode(ModeCmd::Set(mode()?)),
         "mode.toggle" => Method::Mode(ModeCmd::Toggle(mode()?)),
         "mode.reset" => Method::Mode(ModeCmd::Reset),
+        "rule.run" => Method::RuleRun(
+            v["rule"]
+                .as_str()
+                .filter(|r| crate::model::is_rule_id(r))
+                .map(str::to_string)
+                .ok_or(("usage", "`rule.run` needs a rule ID".to_string()))?,
+        ),
         _ => Method::parse(name).ok_or(("usage", format!("unknown method `{name}`")))?,
     };
     Ok((method, v["dry_run"].as_bool().unwrap_or(false)))

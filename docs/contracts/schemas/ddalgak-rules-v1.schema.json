@@ -264,9 +264,9 @@
       ]
     },
     "text_template": {
-      "description": "Text with variables (`variables: true`): `{date}`, `{time}`, `{datetime}`, `{year}`, `{month}`, `{day}`, `{hour}`, `{minute}`, `{second}`, at most one `{cursor}` (the insertion point), `{{` and `}}` for braces. Nothing else in braces: no environment or clipboard variables.",
+      "description": "Text with variables (`variables: true`): `{date}`, `{time}`, `{datetime}`, `{year}`, `{month}`, `{day}`, `{hour}`, `{minute}`, `{second}`, at most one `{cursor}` (the insertion point), `{{` and `}}` for braces, and in a macro (#101) `{var:name}` for a variable its `set_var` steps set. Nothing else in braces: no environment or clipboard variables.",
       "type": "string",
-      "pattern": "^(?:[^{}\\x00-\\x08\\x0b-\\x1f\\x7f]|\\{\\{|\\}\\}|\\{(?:date|time|datetime|year|month|day|hour|minute|second)\\})*(?:\\{cursor\\}(?:[^{}\\x00-\\x08\\x0b-\\x1f\\x7f]|\\{\\{|\\}\\}|\\{(?:date|time|datetime|year|month|day|hour|minute|second)\\})*)?$"
+      "pattern": "^(?:[^{}\\x00-\\x08\\x0b-\\x1f\\x7f]|\\{\\{|\\}\\}|\\{(?:date|time|datetime|year|month|day|hour|minute|second)\\}|\\{var:[a-z][a-z0-9_]{0,31}\\})*(?:\\{cursor\\}(?:[^{}\\x00-\\x08\\x0b-\\x1f\\x7f]|\\{\\{|\\}\\}|\\{(?:date|time|datetime|year|month|day|hour|minute|second)\\}|\\{var:[a-z][a-z0-9_]{0,31}\\})*)?$"
     },
     "app_matcher": {
       "description": "The focused window's process: by image file name (case-insensitive) or by full path.",
@@ -317,7 +317,7 @@
       }
     },
     "known_step_types": {
-      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command", "timer"]
+      "enum": ["remap", "block", "send_keys", "type_text", "open_program", "open_url", "mouse_move", "mouse_scroll", "mouse_click", "mode", "engine", "delay", "window", "clipboard", "notify", "tool", "run_command", "timer", "repeat", "if", "else", "end", "set_var"]
     },
     "injecting_step": {
       "description": "Steps that synthesize keyboard or mouse input.",
@@ -656,6 +656,46 @@
         "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 600000}
       }
     },
+    "var_name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+    "step_repeat": {
+      "description": "#101: the steps up to the matching `end` run `times` times. Blocks are markers in the flat `steps` list (every real step stays at the top level, so permissions, fingerprints and redaction see it), nested at most 3 deep; with `times` of the rule, at most 1000 steps in all.",
+      "type": "object",
+      "required": ["type", "times"],
+      "properties": {"type": {"const": "repeat"}, "times": {"type": "integer", "minimum": 1, "maximum": 100}}
+    },
+    "step_if": {
+      "description": "#101: the steps up to its `else` (or `end`) run when `when` holds, the steps after `else` otherwise. `when` takes a rule's conditions (`apps`, `except_apps`, `window_title`, about the foreground window when the step runs) and `var` (a variable's value).",
+      "type": "object",
+      "required": ["type", "when"],
+      "properties": {
+        "type": {"const": "if"},
+        "when": {
+          "type": "object",
+          "anyOf": [{"required": ["apps"]}, {"required": ["except_apps"]}, {"required": ["window_title"]}, {"required": ["var"]}],
+          "properties": {
+            "apps": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/app_matcher"}},
+            "except_apps": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/app_matcher"}},
+            "window_title": {"type": "object", "oneOf": [{"required": ["contains"]}, {"required": ["equals"]}], "properties": {"contains": {"type": "string", "minLength": 1, "maxLength": 200}, "equals": {"type": "string", "minLength": 1, "maxLength": 200}}},
+            "var": {"type": "object", "required": ["name", "equals"], "additionalProperties": false, "properties": {"name": {"$ref": "#/$defs/var_name"}, "equals": {"type": "string", "maxLength": 1000}}}
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "step_else": {"description": "#101: the other branch of the nearest open `if`.", "type": "object", "required": ["type"], "properties": {"type": {"const": "else"}}},
+    "step_end": {"description": "#101: closes the nearest open `repeat` or `if`.", "type": "object", "required": ["type"], "properties": {"type": {"const": "end"}}},
+    "step_set_var": {
+      "description": "#101: sets a variable of this run to `value`, or adds `add` to its number (a text that is no number counts as 0). At most 16 variables per rule; they live for one run, are never stored, logged or shown, and are typed by `type_text` with `variables: true` as `{var:name}`.",
+      "type": "object",
+      "required": ["type", "name"],
+      "oneOf": [{"required": ["value"]}, {"required": ["add"]}],
+      "properties": {
+        "type": {"const": "set_var"},
+        "name": {"$ref": "#/$defs/var_name"},
+        "value": {"type": "string", "maxLength": 1000},
+        "add": {"type": "integer", "minimum": -1000000, "maximum": 1000000}
+      }
+    },
     "step_timer": {
       "description": "#102: starts the rule `rule` of the same profile once, `after_ms` from now, while the engine runs (AutoHotkey's one-shot `SetTimer`). Arming it again restarts the countdown; a pause, a turn-off, a reload, a profile switch or the emergency cancels it. It never starts its own rule. No permission of its own: the started rule needs its own consent.",
       "type": "object",
@@ -692,6 +732,11 @@
         {"$ref": "#/$defs/step_tool"},
         {"$ref": "#/$defs/step_run_command"},
         {"$ref": "#/$defs/step_timer"},
+        {"$ref": "#/$defs/step_repeat"},
+        {"$ref": "#/$defs/step_if"},
+        {"$ref": "#/$defs/step_else"},
+        {"$ref": "#/$defs/step_end"},
+        {"$ref": "#/$defs/step_set_var"},
         {"$ref": "#/$defs/step_future"}
       ]
     },

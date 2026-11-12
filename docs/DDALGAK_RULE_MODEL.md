@@ -603,6 +603,37 @@ dialog: the user approves the exact argument list, never an interpolated string.
 and `ddalgak test` show the program's file name, whether it exists, the argument count and the
 timeout; nothing runs.
 
+### 5.18 Blocks and variables in macros (#101)
+
+[ADR 0085](adr/0085-ddalgak-macro-blocks-variables-and-run-now.md). Blocks are **markers in the
+flat `steps` list**, so every real step stays at the top level and permissions, launch and command
+fingerprints, redaction and previews see it unchanged:
+
+| Step | Inputs | Meaning |
+| --- | --- | --- |
+| `repeat` | `times` (1–100) | the steps up to its `end` run `times` times |
+| `if` | `when`: `apps`, `except_apps`, `window_title` (as a rule's `when`, about the foreground window when the step runs) and `var` (`{name, equals}`) | the steps up to its `else` or `end` run when every part holds; otherwise the steps after `else` |
+| `else` | — | the other branch of the nearest open `if` |
+| `end` | — | closes the nearest open `repeat` or `if` |
+| `set_var` | `name` (`[a-z][a-z0-9_]{0,31}`) and `value` (≤ 1000 characters) or `add` (±1000000) | sets a variable of this run, or adds to its number (a text that is no number counts as 0) |
+
+Blocks nest at most **3** deep; with the rule's `times` a macro unrolls to at most **1000**
+steps (`step_invalid` otherwise). At most 16 variables per rule; `type_text` with
+`variables: true` types `{var:name}` (empty if not set yet; a variable no `set_var` sets is
+`step_invalid`). Variables live for one run: never stored, logged, shown in the activity or
+previews, and `rule show` replaces a `set_var` `value` with its length unless `--show-text`. An
+unknown foreground never matches (as in `when`). `ddalgak test` reports a winning macro's
+`unrolled` count (`{times, steps}`). The editor's macro builder has *Repeat block*, *If block*,
+*Otherwise*, *End block* and *Set a variable*, edited in place and indented by depth.
+
+**Run now.** `ddalgak rule run <id> [--dry-run]` asks the running app to start one active rule
+of the active profile as if its keys were pressed: typing, keys, launches, mouse steps and macros
+(never a remap, a hold, a mode or engine rule or a hotstring: `rule_not_runnable`). It needs the
+engine on (`engine_off`) and not paused (`engine_paused`); the rule runs with the consent it
+already has (an inactive rule is `rule_not_runnable` with its code). Modes and `when` are not
+asked — the user named the rule — but typing's focus checks still apply. An agent can call it
+only through the MCP adapter's separate `run` grant (DDALGAK_MCP).
+
 ### 3.5 Schedules (Step 79)
 
 `trigger.schedule` replaces `keys`: `{"every_minutes": n}` (1–1440, from when the engine starts)
@@ -626,7 +657,7 @@ the rule is inactive (`step_unsupported`, §9).
 | `notify` (a local notification) | implemented in Step 79, §5.16 | — |
 | `tool` (a capability of another Kim tool) | implemented in Step 79, §5.17 | the tool's own, through Kim |
 | `run_command` (a local command with an explicit argument list) | implemented in #102, §5.14–5.17 | `run-commands`, per command (fingerprint) |
-| `repeat` (nested), `if`, user variables | not in v1 (#101); a bounded repeat of the whole rule is `times` (Step 78) | — |
+| `repeat` (nested), `if`/`else`, `end`, `set_var` | implemented in #101, §5.18 | — (the steps inside need their own) |
 | Recorded macros (steps produced by the recorder) | Step 78: ordinary steps (`type_text`, `send_keys`, `delay`) | as their steps |
 
 Trigger kinds planned additively: mouse wheel notches (without an owner Step since Step 71,

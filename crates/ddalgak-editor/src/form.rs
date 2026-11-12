@@ -137,7 +137,13 @@ impl Effect {
             Action::RunCommand(_) => Effect::Command,
             Action::Tool(_) => Effect::Tool,
             Action::Timer(_) => Effect::Timer,
-            Action::Delay(_) | Action::Future { .. } => return None,
+            Action::Delay(_)
+            | Action::Repeat(_)
+            | Action::If(_)
+            | Action::Else(_)
+            | Action::End(_)
+            | Action::SetVar(_)
+            | Action::Future { .. } => return None,
         })
     }
 
@@ -794,9 +800,7 @@ impl RuleForm {
         let mut unsupported = None;
         f.times = rule.times.unwrap_or(1);
         f.continue_on_error = rule.on_error == Some(ddalgak::model::OnError::Continue);
-        let is_macro = rule.steps.len() > 1
-            || f.times > 1
-            || rule.steps.iter().any(|s| matches!(s, Action::Delay(_)));
+        let is_macro = rule.steps.len() > 1 || f.times > 1 || rule.steps.iter().any(is_macro_only);
         match rule.steps.as_slice() {
             _ if is_macro => {
                 if let Some(s) = rule
@@ -913,7 +917,13 @@ impl RuleForm {
                             args: t.args.as_ref().map(Value::to_string).unwrap_or_default(),
                         };
                     }
-                    Action::Delay(_) | Action::Future { .. } => {
+                    Action::Delay(_)
+                    | Action::Repeat(_)
+                    | Action::If(_)
+                    | Action::Else(_)
+                    | Action::End(_)
+                    | Action::SetVar(_)
+                    | Action::Future { .. } => {
                         unsupported = Some(format!("its step `{}` has no form yet", step.kind()));
                     }
                 }
@@ -1602,6 +1612,44 @@ impl RuleForm {
     }
 
     /// Adds a wait step.
+    /// #101: adds a block marker or a variable step (edited in place in the list).
+    pub fn add_marker(&mut self, kind: &str) {
+        if self.fields.macro_steps.len() >= 32 {
+            return;
+        }
+        let v = match kind {
+            "repeat" => serde_json::json!({ "type": "repeat", "times": 2 }),
+            "if" => {
+                serde_json::json!({ "type": "if", "when": { "apps": [{ "exe": "notepad.exe" }] } })
+            }
+            "else" => serde_json::json!({ "type": "else" }),
+            "end" => serde_json::json!({ "type": "end" }),
+            _ => serde_json::json!({ "type": "set_var", "name": "count", "value": "0" }),
+        };
+        self.fields.macro_steps.push(v);
+    }
+
+    /// #101: how deep each listed step sits inside `repeat` and `if` blocks (for indenting).
+    pub fn step_depths(&self) -> Vec<usize> {
+        let mut d = 0usize;
+        self.fields
+            .macro_steps
+            .iter()
+            .map(|v| match v["type"].as_str() {
+                Some("repeat" | "if") => {
+                    d += 1;
+                    d - 1
+                }
+                Some("else") => d.saturating_sub(1),
+                Some("end") => {
+                    d = d.saturating_sub(1);
+                    d
+                }
+                _ => d,
+            })
+            .collect()
+    }
+
     pub fn add_delay(&mut self, ms: u32) {
         self.fields
             .macro_steps
@@ -1636,7 +1684,7 @@ impl RuleForm {
         let Ok(action) = serde_json::from_value::<Action>(v) else {
             return;
         };
-        if matches!(action, Action::Delay(_) | Action::Future { .. }) {
+        if is_macro_only(&action) || matches!(action, Action::Future { .. }) {
             return;
         }
         let tmp = Rule::new(
@@ -1672,6 +1720,41 @@ impl RuleForm {
             .map(|v| {
                 if v["type"] == "delay" {
                     return format!("Waits {} ms", v["ms"]);
+                }
+                // #101: block markers and variables.
+                match v["type"].as_str() {
+                    Some("repeat") => return format!("Repeat {} times:", v["times"]),
+                    Some("if") => {
+                        let w = &v["when"];
+                        let mut parts = Vec::new();
+                        if let Some(a) = w["apps"].as_array() {
+                            let names: Vec<&str> = a
+                                .iter()
+                                .filter_map(|m| m["exe"].as_str().or_else(|| m["path"].as_str()))
+                                .collect();
+                            parts.push(format!("in {}", names.join(", ")));
+                        }
+                        if let Some(n) = w["var"]["name"].as_str() {
+                            parts.push(format!(
+                                "{n} is “{}”",
+                                w["var"]["equals"].as_str().unwrap_or("")
+                            ));
+                        }
+                        if w.get("window_title").is_some() {
+                            parts.push("the window title matches".into());
+                        }
+                        return format!("If {}:", parts.join(" and "));
+                    }
+                    Some("else") => return "Otherwise:".into(),
+                    Some("end") => return "End".into(),
+                    Some("set_var") => {
+                        let n = v["name"].as_str().unwrap_or("?");
+                        return match v["add"].as_i64() {
+                            Some(a) => format!("Add {a} to {n}"),
+                            None => format!("Set {n}"),
+                        };
+                    }
+                    _ => {}
                 }
                 let Ok(action) = serde_json::from_value::<Action>(v.clone()) else {
                     return format!("`{}` step", v["type"].as_str().unwrap_or("?"));
@@ -1887,3 +1970,16 @@ pub fn launch_targets(rule: &Rule) -> Vec<String> {
 
 #[cfg(test)]
 mod tests;
+
+/// #101: steps that exist only inside a macro (delays, block markers, variables).
+pub fn is_macro_only(a: &Action) -> bool {
+    matches!(
+        a,
+        Action::Delay(_)
+            | Action::Repeat(_)
+            | Action::If(_)
+            | Action::Else(_)
+            | Action::End(_)
+            | Action::SetVar(_)
+    )
+}

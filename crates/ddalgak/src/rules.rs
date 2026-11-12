@@ -115,7 +115,7 @@ impl Loaded {
 /// `block` steps is an engine-control rule; a `remap`, a `block` among other steps, a held button,
 /// a mode hold and a move while held are always the rule's only step (schema `holds_trigger`);
 /// any other mix, a delay or `times` above 1 is a macro (Step 78, ADR 0079).
-pub const RUNNABLE_STEPS: [&str; 18] = [
+pub const RUNNABLE_STEPS: [&str; 23] = [
     "engine",
     "remap",
     "block",
@@ -134,6 +134,11 @@ pub const RUNNABLE_STEPS: [&str; 18] = [
     "tool",
     "run_command",
     "timer",
+    "repeat",
+    "if",
+    "else",
+    "end",
+    "set_var",
 ];
 
 const HOTSTRING_STEPS: &str =
@@ -301,11 +306,83 @@ pub fn check_macro(steps: &[Value], times: u64, modes: &ModeSet) -> Result<usize
 
 /// Step 78: a macro's steps as stages, each compiled exactly as when it runs alone.
 fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'static str, String)> {
-    let mut out = Vec::new();
+    // #101: `repeat` … `end` and `if` … `else` … `end` are block markers, nested at most
+    // `MAX_DEPTH` deep; the tree is unrolled into stages with relative jumps.
+    let mut stack: Vec<Frame> = vec![Frame::default()];
+    let mut set: Vec<&str> = Vec::new();
+    let mut used: Vec<(usize, String)> = Vec::new();
     for (i, s) in steps.iter().enumerate() {
         let ty = s.get("type").and_then(Value::as_str).unwrap_or_default();
         let bad = |e: String| ("step_invalid", format!("step {i}: {e}"));
-        out.push(match ty {
+        match ty {
+            "repeat" | "if" => {
+                if stack.len() > MAX_DEPTH {
+                    return Err(bad(format!("blocks nest at most {MAX_DEPTH} deep")));
+                }
+                let kind = if ty == "repeat" {
+                    let n = s
+                        .get("times")
+                        .and_then(Value::as_u64)
+                        .filter(|n| (1..=100).contains(n))
+                        .ok_or_else(|| bad("`times` is 1–100".into()))?;
+                    Block::Repeat(u32::try_from(n).unwrap_or(1))
+                } else {
+                    let when = s.get("when").cloned().unwrap_or(Value::Null);
+                    let c = crate::actions::IfCond::compile(&when).map_err(bad)?;
+                    if let Some((name, _)) = &c.var {
+                        used.push((i, name.clone()));
+                    }
+                    Block::If(c)
+                };
+                stack.push(Frame {
+                    block: Some(kind),
+                    ..Frame::default()
+                });
+                continue;
+            }
+            "else" => {
+                match stack.last_mut() {
+                    Some(f) if matches!(f.block, Some(Block::If(_))) && f.otherwise.is_none() => {
+                        f.otherwise = Some(Vec::new());
+                    }
+                    _ => return Err(bad("`else` belongs right inside an `if`".into())),
+                }
+                continue;
+            }
+            "end" => {
+                if stack.len() == 1 {
+                    return Err(bad("`end` without a `repeat` or `if`".into()));
+                }
+                let f = stack.pop().expect("more than the root");
+                let node = match f.block.expect("an open block") {
+                    Block::Repeat(n) => Node::Repeat(n, f.body),
+                    Block::If(c) => Node::If(Arc::new(c), f.body, f.otherwise.unwrap_or_default()),
+                };
+                stack.last_mut().expect("root").push(node);
+                continue;
+            }
+            "set_var" => {
+                let v = crate::actions::SetVarSpec::compile(s).map_err(bad)?;
+                if !set.contains(&v.name()) {
+                    set.push(s["name"].as_str().unwrap_or_default());
+                }
+                stack
+                    .last_mut()
+                    .expect("root")
+                    .push(Node::Leaf(Stage::SetVar(Arc::new(v))));
+                continue;
+            }
+            "type_text" if s["variables"] == true => {
+                let text = s["text"].as_str().unwrap_or_default();
+                for p in crate::text::parse(text).unwrap_or_default() {
+                    if let crate::text::Piece::User(u) = p {
+                        used.push((i, u.to_string()));
+                    }
+                }
+            }
+            _ => {}
+        }
+        let leaf = match ty {
             "type_text" | "send_keys" => match compile_run(s, ty)? {
                 Action::Type(t) => Stage::Text(t),
                 Action::Keys(k) => Stage::Keys(k),
@@ -422,9 +499,116 @@ fn compile_stages(steps: &[Value], modes: &ModeSet) -> Result<Vec<Stage>, (&'sta
                     format!("`{ty}` steps are not implemented in this version yet"),
                 ));
             }
-        });
+        };
+        stack.last_mut().expect("root").push(Node::Leaf(leaf));
     }
+    if stack.len() > 1 {
+        return Err(("step_invalid", "a `repeat` or `if` has no `end`".into()));
+    }
+    if set.len() > crate::actions::MAX_VARS {
+        return Err((
+            "step_invalid",
+            format!("at most {} variables in one rule", crate::actions::MAX_VARS),
+        ));
+    }
+    if let Some((i, name)) = used.iter().find(|(_, n)| !set.contains(&n.as_str())) {
+        return Err((
+            "step_invalid",
+            format!("step {i}: the variable `{name}` is never set (`set_var`)"),
+        ));
+    }
+    let root = stack.pop().expect("root").body;
+    let size = nodes_size(&root);
+    if size > crate::table::MAX_STAGES {
+        return Err((
+            "step_invalid",
+            format!(
+                "the steps with their repeats make {size} steps; at most {}",
+                crate::table::MAX_STAGES
+            ),
+        ));
+    }
+    let mut out = Vec::with_capacity(size);
+    emit(&root, &mut out);
     Ok(out)
+}
+
+/// #101: how deep `repeat` and `if` blocks may nest.
+pub const MAX_DEPTH: usize = 3;
+
+enum Block {
+    Repeat(u32),
+    If(crate::actions::IfCond),
+}
+
+/// One open block while the steps are read: its body, and an `if`'s `else` branch once seen.
+#[derive(Default)]
+struct Frame {
+    block: Option<Block>,
+    body: Vec<Node>,
+    otherwise: Option<Vec<Node>>,
+}
+
+impl Frame {
+    fn push(&mut self, n: Node) {
+        match &mut self.otherwise {
+            Some(o) => o.push(n),
+            None => self.body.push(n),
+        }
+    }
+}
+
+enum Node {
+    Leaf(Stage),
+    Repeat(u32, Vec<Node>),
+    If(Arc<crate::actions::IfCond>, Vec<Node>, Vec<Node>),
+}
+
+/// The number of stages `nodes` unroll to (saturating, so a huge repeat is refused, not built).
+fn nodes_size(nodes: &[Node]) -> usize {
+    nodes.iter().fold(0usize, |acc, n| {
+        acc.saturating_add(match n {
+            Node::Leaf(_) => 1,
+            Node::Repeat(times, body) => nodes_size(body).saturating_mul(*times as usize),
+            Node::If(_, then, other) => {
+                let o = nodes_size(other);
+                1usize
+                    .saturating_add(nodes_size(then))
+                    .saturating_add(if o > 0 { o.saturating_add(1) } else { 0 })
+            }
+        })
+    })
+}
+
+/// Unrolls repeats and lays out branches: `Branch { skip }` passes over the `then` stages (and
+/// the `Skip` after them) when the condition fails; `Skip(n)` passes over the `else` stages.
+fn emit(nodes: &[Node], out: &mut Vec<Stage>) {
+    for n in nodes {
+        match n {
+            Node::Leaf(s) => out.push(s.clone()),
+            Node::Repeat(times, body) => {
+                for _ in 0..*times {
+                    emit(body, out);
+                }
+            }
+            Node::If(cond, then, other) => {
+                let mut t = Vec::new();
+                emit(then, &mut t);
+                let mut e = Vec::new();
+                emit(other, &mut e);
+                let skip = t.len() + usize::from(!e.is_empty());
+                out.push(Stage::Branch(Arc::new(crate::actions::BranchSpec {
+                    cond: (**cond).clone(),
+                    skip: u16::try_from(skip).unwrap_or(u16::MAX),
+                })));
+                out.extend(t);
+                if !e.is_empty() {
+                    out.push(Stage::Skip(u16::try_from(e.len()).unwrap_or(u16::MAX)));
+                    out.extend(e);
+                }
+            }
+        }
+    }
 }
 
 /// Step 79: a `window` step.
@@ -820,7 +1004,16 @@ fn compile(
         || kinds.iter().any(|k| {
             matches!(
                 *k,
-                "delay" | "window" | "clipboard" | "notify" | "tool" | "run_command" | "timer"
+                "delay"
+                    | "window"
+                    | "clipboard"
+                    | "notify"
+                    | "tool"
+                    | "run_command"
+                    | "timer"
+                    | "repeat"
+                    | "if"
+                    | "set_var"
             )
         })
         || (kinds.len() > 1
@@ -2147,5 +2340,102 @@ mod tests {
             "{:?}",
             report.problems
         );
+    }
+
+    /// #101: `repeat` and `if` blocks unroll into stages with relative jumps; structure errors,
+    /// nesting deeper than 3, unset variables and more than 1000 steps keep the rule inactive.
+    #[test]
+    fn blocks_unroll_and_bad_blocks_are_refused() {
+        let modes = ModeSet::single();
+        let note = json!({"type": "notify", "title": "x"});
+        let steps = vec![
+            json!({"type": "set_var", "name": "n", "value": "0"}),
+            json!({"type": "repeat", "times": 3}),
+            json!({"type": "set_var", "name": "n", "add": 1}),
+            json!({"type": "end"}),
+            json!({"type": "if", "when": {"var": {"name": "n", "equals": "3"}}}),
+            note.clone(),
+            json!({"type": "else"}),
+            note.clone(),
+            note.clone(),
+            json!({"type": "end"}),
+        ];
+        let st = compile_stages(&steps, &modes).unwrap();
+        // set, 3 adds, branch, then (1), skip, else (2).
+        assert_eq!(st.len(), 1 + 3 + 1 + 1 + 1 + 2);
+        assert!(matches!(&st[4], Stage::Branch(b) if b.skip == 2));
+        assert!(matches!(&st[6], Stage::Skip(2)));
+        assert_eq!(check_macro(&steps, 2, &modes), Ok(18));
+
+        let err = |steps: Vec<Value>| compile_stages(&steps, &modes).err().map(|e| e.1);
+        assert!(
+            err(vec![json!({"type": "repeat", "times": 2}), note.clone()])
+                .unwrap()
+                .contains("no `end`")
+        );
+        assert!(
+            err(vec![json!({"type": "else"})])
+                .unwrap()
+                .contains("`else`")
+        );
+        assert!(
+            err(vec![json!({"type": "end"})])
+                .unwrap()
+                .contains("`end` without")
+        );
+        let deep: Vec<Value> = (0..4)
+            .map(|_| json!({"type": "repeat", "times": 1}))
+            .chain([note.clone()])
+            .chain((0..4).map(|_| json!({"type": "end"})))
+            .collect();
+        assert!(err(deep).unwrap().contains("nest"));
+        assert!(
+            err(vec![
+                json!({"type": "type_text", "text": "{var:who}", "variables": true})
+            ])
+            .unwrap()
+            .contains("never set")
+        );
+        let huge = vec![
+            json!({"type": "repeat", "times": 100}),
+            json!({"type": "repeat", "times": 100}),
+            note.clone(),
+            json!({"type": "end"}),
+            json!({"type": "end"}),
+        ];
+        assert!(err(huge).unwrap().contains("at most 1000"));
+        assert!(
+            err(vec![
+                json!({"type": "if", "when": {}}),
+                note,
+                json!({"type": "end"})
+            ])
+            .is_some()
+        );
+    }
+
+    /// #101: a macro with blocks loads as a rule (the schema accepts the markers and `{var:…}`).
+    #[test]
+    fn a_macro_with_blocks_and_variables_loads() {
+        let mut r = engine_rule("count", "F13", "pause");
+        r["steps"] = json!([
+            {"type": "set_var", "name": "n", "value": "1"},
+            {"type": "repeat", "times": 2},
+            {"type": "notify", "title": "Tick"},
+            {"type": "end"},
+            {"type": "if", "when": {"apps": [{"exe": "notepad.exe"}]}},
+            {"type": "notify", "title": "{n}"},
+            {"type": "end"}
+        ]);
+        let mut t = engine_rule("typed", "F14", "pause");
+        t["steps"] = json!([
+            {"type": "set_var", "name": "who", "value": "Kim"},
+            {"type": "type_text", "text": "Hi {var:who}", "variables": true}
+        ]);
+        t["consent"] =
+            json!({"input-injection": {"granted_at": "2026-11-12T09:00:00Z", "via": "gui"}});
+        let l = parse(&doc(json!([r, t])));
+        let active: Vec<&str> = l.bindings.iter().map(|b| b.rule.as_str()).collect();
+        assert_eq!(active, ["count", "typed"], "{:?}", l.inactive);
     }
 }

@@ -318,6 +318,8 @@ pub struct Env {
     /// Step 79: windows and notifications, and other Kim tools.
     pub desktop: std::sync::Arc<dyn crate::actions::Desktop>,
     pub tools: std::sync::Arc<dyn crate::actions::Tools>,
+    /// #101: the foreground window, for a macro's `if` conditions.
+    pub foreground: std::sync::Arc<dyn crate::context::Foreground>,
     /// #102: local commands.
     pub commands: std::sync::Arc<dyn crate::actions::Commands>,
 }
@@ -342,6 +344,7 @@ impl Env {
             screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
             desktop: std::sync::Arc::new(crate::actions::NoDesktop),
             tools: std::sync::Arc::new(crate::actions::NoTools),
+            foreground: std::sync::Arc::new(crate::context::NoForeground),
             commands: std::sync::Arc::new(crate::actions::NoCommands),
         }
     }
@@ -434,9 +437,22 @@ fn erase(h: Option<&HotstringFire>, out: &mut Vec<Piece>) {
 
 /// The plan of a `type_text` run (`now` fills in the variables).
 pub fn plan_text(spec: &TextSpec, hs: Option<&HotstringFire>, now: &LocalTime) -> Vec<Piece> {
-    let r = text::render(&spec.text, spec.variables, now).unwrap_or_else(|_| text::Rendered {
-        text: spec.text.clone(),
-        ..text::Rendered::default()
+    plan_text_with(spec, hs, now, &std::collections::BTreeMap::new())
+}
+
+/// [`plan_text`] with a macro's variables (#101).
+pub fn plan_text_with(
+    spec: &TextSpec,
+    hs: Option<&HotstringFire>,
+    now: &LocalTime,
+    vars: &std::collections::BTreeMap<String, String>,
+) -> Vec<Piece> {
+    let user = |n: &str| vars.get(n).cloned();
+    let r = text::render_with(&spec.text, spec.variables, now, &user).unwrap_or_else(|_| {
+        text::Rendered {
+            text: spec.text.clone(),
+            ..text::Rendered::default()
+        }
     });
     let typed = match hs {
         Some(h) => text::apply_case(&r.text, h.case),
@@ -862,6 +878,7 @@ mod tests {
                     screen: Box::new(crate::mouse::SimPointer::test_host().screen()),
                     desktop: std::sync::Arc::new(crate::actions::NoDesktop),
                     tools: std::sync::Arc::new(crate::actions::NoTools),
+                    foreground: std::sync::Arc::new(crate::context::NoForeground),
                     commands: std::sync::Arc::new(crate::actions::NoCommands),
                 },
                 probe,

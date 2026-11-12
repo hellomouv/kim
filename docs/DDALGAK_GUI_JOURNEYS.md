@@ -648,3 +648,13 @@ result (pass, fail, remark) in the Step 74 issue.
 - **Start another rule later** (More): choose a rule of the profile and a delay (1 s – 24 h); in
   a macro it works like AutoHotkey's one-shot `SetTimer`. A schedule has *If the computer was
   asleep at that time, run it once when it wakes* (`missed: run_once`).
+
+## #101 additions (follow-up of Step 78)
+
+- The macro builder has *Repeat block*, *If block*, *Otherwise*, *End block* and *Set a variable*.
+  A repeat's count, an `if`'s program or `variable = value`, and a variable's name and value are
+  edited in the row; rows are indented by block depth; an unclosed block is shown as a problem
+  and the rule cannot be saved until it is closed.
+- **Not tested here (maintainer):** build a macro with a repeat and an if in the editor with the
+  keyboard only, and check Narrator reads each row's fields.
+

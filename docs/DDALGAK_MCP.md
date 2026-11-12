@@ -47,8 +47,9 @@ key would fire in a context; nothing runs). Rule listings carry titles, triggers
 | `modes` | `ddalgak_mode_set`, `ddalgak_mode_reset` | the running engine's mode |
 | `profiles` | `ddalgak_profile_apply` | switches the active profile atomically |
 | `engine` | `ddalgak_pause`, `ddalgak_resume` | never turns an engine that is off on |
+| `run` | `ddalgak_rule_run` | #101 ([ADR 0085](adr/0085-ddalgak-macro-blocks-variables-and-run-now.md)): starts one **active** rule the user asked for, with the consent the user already gave it; needs the running engine, not paused; no other grant includes it |
 
-An ungranted tool is not even listed. **No tool can** run a rule or a macro, type or press keys,
+An ungranted tool is not even listed. **No tool can** (without `run`) run a rule or a macro, type or press keys,
 open a program or a website, grant consent, write rule content, start the app, read the
 clipboard, a window title or typed text.
 

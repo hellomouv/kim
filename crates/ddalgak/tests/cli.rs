@@ -4193,3 +4193,75 @@ fn a_running_app_switches_profiles_atomically_and_survives_an_exit_during_a_swit
     sb.json(&["quit"]);
     assert_eq!(host.wait_exit(Duration::from_secs(10)), Some(0));
 }
+
+/// #101: `rule run` needs the running app with the engine on and not paused; it starts one
+/// active run rule (here a notification the test host records) and refuses mode rules, unknown
+/// rules and rules that are not active. No key is sent.
+#[test]
+fn rule_run_starts_an_active_rule_only_while_the_engine_runs() {
+    let sb = Sandbox::new("rulerun");
+    sb.write_rules(&json!({
+        "schema": "ddalgak.rules", "schema_version": 1, "hotkey_contract": 1, "revision": 1,
+        "active_profile": "default",
+        "profiles": [ { "id": "default", "title": "Default", "default_mode": "base",
+            "modes": [ { "id": "base", "title": "Base" }, { "id": "nav", "title": "Nav" } ],
+            "rules": [
+                { "id": "note", "title": "A note", "enabled": true,
+                  "trigger": { "keys": "Ctrl+Alt+Shift+F21" },
+                  "steps": [ { "type": "notify", "title": "Run now" } ] },
+                { "id": "to-nav", "title": "To nav", "enabled": true,
+                  "trigger": { "keys": "Ctrl+Alt+Shift+F22" },
+                  "steps": [ { "type": "mode", "op": "set", "mode": "nav" } ] },
+                { "id": "window", "title": "Needs consent", "enabled": true,
+                  "trigger": { "keys": "Ctrl+Alt+Shift+F23" },
+                  "steps": [ { "type": "window", "op": "maximize" } ] }
+            ] } ]
+    }));
+    let err = |args: &[&str], code: &str, exit: i32| {
+        let (e, d) = sb.json(args);
+        assert_eq!(
+            (e, d["error"]["code"].as_str()),
+            (exit, Some(code)),
+            "{d:#}"
+        );
+        d
+    };
+    err(&["rule", "run", "note"], "engine_not_running", 3);
+    err(&["rule", "run", "Not An ID"], "usage", 2);
+    let root = sb.root.join("launch-root");
+    std::fs::create_dir_all(&root).unwrap();
+    let lr = root.display().to_string();
+    let mut host = sb.host_with(&["--test-launch-root", &lr]);
+    err(&["rule", "run", "note"], "engine_off", 7);
+    if elevated() {
+        eprintln!("skipped (elevated): the app refuses to turn its engine on as administrator");
+        sb.json(&["quit"]);
+        return;
+    }
+    let (_, d) = sb.json(&["engine", "start"]);
+    assert_eq!(d["data"]["engine"]["state"], "running", "{d:#}");
+    let record = root.join("desktop.jsonl");
+    let (code, d) = sb.json(&["rule", "run", "note", "--dry-run"]);
+    assert_eq!((code, &d["data"]["started"]), (0, &json!(false)), "{d:#}");
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(!record.exists(), "a dry run runs nothing");
+    let (code, d) = sb.json(&["rule", "run", "note"]);
+    assert_eq!((code, &d["data"]["started"]), (0, &json!(true)), "{d:#}");
+    bless("rule-run", &d);
+    let t = Instant::now();
+    while !record.exists() && t.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        std::fs::read_to_string(&record).unwrap().trim(),
+        r#"{"body":0,"notify":7}"#
+    );
+    let d = err(&["rule", "run", "to-nav"], "rule_not_runnable", 7);
+    bless("error-rule-not-runnable", &d);
+    err(&["rule", "run", "window"], "rule_not_runnable", 7);
+    err(&["rule", "run", "nobody"], "rule_not_found", 3);
+    sb.json(&["pause"]);
+    err(&["rule", "run", "note"], "engine_paused", 7);
+    sb.json(&["quit"]);
+    assert_eq!(host.wait_exit(Duration::from_secs(10)), Some(0));
+}

@@ -1,7 +1,7 @@
 //! Step 81 (DDALGAK-FR-060, DDALGAK-FR-062, DDALGAK-SEC-006, ADR 0082): Ddalgak for agents and
 //! for other Kim tools.
 //!
-//! **`ddalgak mcp serve [--allow rules|modes|profiles|engine]…`** — an optional, local MCP adapter
+//! **`ddalgak mcp serve [--allow rules|modes|profiles|engine|run]…`** — an optional, local MCP adapter
 //! over stdio (JSON-RPC 2.0, one message per line), started only by the user's MCP client from
 //! the configuration the user wrote. No socket, no listener; it never starts the app.
 //!
@@ -36,6 +36,8 @@ pub enum Grant {
     Modes,
     Profiles,
     Engine,
+    /// #101: run a rule now (`ddalgak rule run`); never part of another grant.
+    Run,
 }
 
 impl Grant {
@@ -45,6 +47,7 @@ impl Grant {
             "modes" => Some(Grant::Modes),
             "profiles" => Some(Grant::Profiles),
             "engine" => Some(Grant::Engine),
+            "run" => Some(Grant::Run),
             _ => None,
         }
     }
@@ -55,6 +58,7 @@ impl Grant {
             Grant::Modes => "modes",
             Grant::Profiles => "profiles",
             Grant::Engine => "engine",
+            Grant::Run => "run",
         }
     }
 }
@@ -189,6 +193,16 @@ pub fn tools() -> Vec<Tool> {
             description: "Pauses every rule except engine-control rules.",
         },
         Tool {
+            name: "ddalgak_rule_run",
+            title: "Run a rule now",
+            grant: Some(Grant::Run),
+            schema: obj(
+                &json!({"id": {"type": "string", "pattern": ID}, "dry_run": {"type": "boolean"}}),
+                &["id"],
+            ),
+            description: "Runs one active rule of the active profile now, as if its keys were pressed (typing, keys, launches, mouse steps, macros), with the consent the rule already has. Needs the running engine (not paused). Offered only when the user granted `run`.",
+        },
+        Tool {
             name: "ddalgak_resume",
             title: "Resume the engine",
             grant: Some(Grant::Engine),
@@ -234,7 +248,7 @@ pub fn argv(name: &str, a: &Value) -> Result<Vec<String>, String> {
     let o = a.as_object().cloned().unwrap_or_default();
     let allowed: &[&str] = match name {
         "ddalgak_rule_list" => &["profile", "mode"],
-        "ddalgak_rule_show" | "ddalgak_profile_apply" => &["id", "dry_run"],
+        "ddalgak_rule_show" | "ddalgak_profile_apply" | "ddalgak_rule_run" => &["id", "dry_run"],
         "ddalgak_explain" => &["keys", "context"],
         "ddalgak_rule_enable" | "ddalgak_rule_disable" => &["ids", "dry_run"],
         "ddalgak_mode_set" => &["mode", "dry_run"],
@@ -322,6 +336,7 @@ pub fn argv(name: &str, a: &Value) -> Result<Vec<String>, String> {
         "ddalgak_profile_apply" => vec!["profile".into(), "apply".into(), id("id")?],
         "ddalgak_pause" => s(&["pause"]),
         "ddalgak_resume" => s(&["resume"]),
+        "ddalgak_rule_run" => vec!["rule".into(), "run".into(), id("id")?],
         _ => return Err(format!("unknown tool `{name}`")),
     };
     if o.get("dry_run").and_then(Value::as_bool) == Some(true) {
@@ -405,8 +420,13 @@ pub fn respond(
                     "capabilities": {"tools": {"listChanged": false}},
                     "serverInfo": {"name": "ddalgak", "title": "Ddalgak automation rules", "version": ddalgak::VERSION},
                     "instructions": format!(
-                        "Ddalgak is the user's key remapping and automation engine on Windows. Reading and explaining are always available. Granted changes: {}. You can never run a rule or macro, type, open programs, grant consent or read typed text, the clipboard or window titles; ask the user to do those.",
-                        if g.is_empty() { "none".to_string() } else { g.join(", ") }
+                        "Ddalgak is the user's key remapping and automation engine on Windows. Reading and explaining are always available. Granted changes: {}. {} You can never type or open programs yourself, grant consent or read typed text, the clipboard or window titles; ask the user to do those.",
+                        if g.is_empty() { "none".to_string() } else { g.join(", ") },
+                        if grants.contains(&Grant::Run) {
+                            "With `run` you may run an active rule the user asked for (ddalgak_rule_run); it runs with the consent the user gave that rule."
+                        } else {
+                            "You can never run a rule or macro."
+                        }
                     ),
                 }),
             )
@@ -636,6 +656,17 @@ mod tests {
         let (r, ran, _) = call(&[Grant::Engine], "ddalgak_pause", &json!({"dry_run": true}));
         assert_eq!(r["result"]["isError"], false);
         assert_eq!(ran, [["pause", "--dry-run"]]);
+        // #101: running a rule needs its own grant; no other grant includes it.
+        let every = [Grant::Rules, Grant::Modes, Grant::Profiles, Grant::Engine];
+        assert!(!names(&every).contains(&"ddalgak_rule_run"));
+        assert!(names(&[Grant::Run]).contains(&"ddalgak_rule_run"));
+        let (_, ran, audited) = call(&every, "ddalgak_rule_run", &json!({"id": "note"}));
+        assert!(ran.is_empty());
+        assert_eq!(audited[0].1, "not_offered");
+        let (_, ran, _) = call(&[Grant::Run], "ddalgak_rule_run", &json!({"id": "note"}));
+        assert_eq!(ran, [["rule", "run", "note"]]);
+        let (_, ran, _) = call(&[Grant::Run], "ddalgak_rule_run", &json!({"id": "--all"}));
+        assert!(ran.is_empty(), "an option is never an ID");
     }
 
     /// Malformed or hostile arguments never reach the command line.

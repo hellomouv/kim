@@ -54,6 +54,8 @@ pub enum Cmd {
     ModeCopy,
     ModeDelete,
     ModeSet,
+    /// #101.
+    RuleRun,
     ModeToggle,
     ModeReset,
     ModeStatus,
@@ -224,6 +226,7 @@ impl Cmd {
             Self::ModeCopy => "mode.copy".into(),
             Self::ModeDelete => "mode.delete".into(),
             Self::ModeSet => "mode.set".into(),
+            Self::RuleRun => "rule.run".into(),
             Self::ModeToggle => "mode.toggle".into(),
             Self::ModeReset => "mode.reset".into(),
             Self::ModeStatus => "mode.status".into(),
@@ -413,6 +416,7 @@ impl Cmd {
                 vec![("--endpoint", Value), ("--dry-run", Flag)]
             }
             Self::ModeStatus => vec![("--endpoint", Value)],
+            Self::RuleRun => vec![("--endpoint", Value), ("--dry-run", Flag)],
             Self::Enable | Self::Disable => {
                 let mut v = vec![("--rule", Multi), ("--mode", Value), ("--profile", Value)];
                 if self == Self::Enable {
@@ -513,6 +517,7 @@ impl Cmd {
             | Self::ModeCopy
             | Self::ModeDelete
             | Self::ModeSet
+            | Self::RuleRun
             | Self::ModeToggle
             | Self::ModeEnable
             | Self::ModeDisable => (1, 1),
@@ -597,6 +602,7 @@ fn command(words: &[&str]) -> Result<(Cmd, usize), String> {
         ["startup"] => (Cmd::StartupStatus, 1),
         ["rule", "list", ..] => (Cmd::RuleList, 2),
         ["rule", "show", ..] => (Cmd::RuleShow, 2),
+        ["rule", "run", ..] => (Cmd::RuleRun, 2),
         ["test", ..] => (Cmd::Test, 1),
         ["mcp", "serve", ..] => (Cmd::McpServe, 2),
         ["mcp", "tools", ..] => (Cmd::McpTools, 2),

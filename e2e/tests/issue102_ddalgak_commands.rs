@@ -156,6 +156,19 @@ fn issue102_an_agent_adds_a_command_rule_that_needs_its_own_consent() {
     );
     assert!(text.contains("\"arguments\":2"), "{t:#}");
 
+    // `rule show` redacts the command like a launch unless --show-targets (#102).
+    let shown = e.ok(&["rule", "show", "cmd"]);
+    assert!(!shown.to_string().contains(SECRET), "{shown:#}");
+    assert_eq!(shown["targets_redacted"], true);
+    assert_eq!(
+        shown["rule"]["steps"][0]["program"],
+        json!({ "redacted": true, "program": "where.exe" })
+    );
+    assert_eq!(
+        shown["rule"]["steps"][0]["args"],
+        json!({ "redacted": true, "count": 2 })
+    );
+
     let before = std::fs::read(e.config().join("rules.json")).unwrap();
     let bad = json!({ "type": "run_command", "program": "where.exe" }).to_string();
     let (code, d) = e.json(&[
