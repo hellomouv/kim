@@ -95,3 +95,26 @@ fn a_pin_takes_the_clipboard_picture_in_place() {
         "nothing to paste: unchanged"
     );
 }
+
+/// #99 (`SET-06`): the tray icon's left and middle clicks follow `[general] tray_*_click`.
+#[test]
+fn tray_clicks_follow_their_settings() {
+    let (mut a, _syn, _dir) = overlay_app("tray-clicks");
+    a.shell.clipboard = Some((40, 30));
+    set_config(
+        &mut a,
+        &[
+            ("general.tray_left_click", "pin_clipboard"),
+            ("general.tray_middle_click", "none"),
+        ],
+    );
+    a.tray_click(crate::tray::Click::Middle);
+    assert!(a.pins.is_empty(), "the middle click does nothing");
+    a.tray_click(crate::tray::Click::Left);
+    assert_eq!(a.pins.len(), 1, "the left click pinned the clipboard");
+    assert!(!a.overlay_open());
+    assert_eq!(
+        a.settings().to_json()["tray_clicks"],
+        serde_json::json!({"left": "pin_clipboard", "middle": "none"})
+    );
+}

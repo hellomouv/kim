@@ -15,7 +15,7 @@ service, no hot corners).
 | Area | Rows | Implemented | Partial | Planned | Not intended |
 | --- | --- | --- | --- | --- | --- |
 | Starting a capture and selecting (`SNIP`) | 22 | 0 | 12 | 2 | 8 |
-| Detection, magnifier, precision (`DET`) | 12 | 0 | 10 | 2 | 0 |
+| Detection, magnifier, precision (`DET`) | 12 | 0 | 11 | 1 | 0 |
 | Colour picker (`COLOR`) | 7 | 0 | 6 | 1 | 0 |
 | History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
 | Output and clipboard writes (`OUT`) | 12 | 0 | 11 | 0 | 1 |
@@ -23,10 +23,10 @@ service, no hot corners).
 | Pins (`PIN`) | 30 | 2 | 20 | 6 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
-| Settings and shortcuts (`SET`) | 22 | 3 | 10 | 3 | 6 |
+| Settings and shortcuts (`SET`) | 22 | 3 | 11 | 2 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **111** | **18** | **24** |
+| **All** | **164** | **11** | **113** | **16** | **24** |
 
 ## 2. The critical workflows
 
@@ -52,12 +52,11 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 
 Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
-`SET-11`, then `PIN-21`, `PIN-22` and `PIN-27` to *partial*.
+`SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06` and `DET-09` to *partial*.
 
 - `SNIP-10` Move the area while still dragging by holding `Space`
 - `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
 - `DET-03` Step to the parent or child element with the mouse wheel (Pro)
-- `DET-09` Swap the roles of `W A S D` and the arrow keys (setting)
 - `COLOR-05` Edit the value of a color card (Pro)
 - `ANN-12` Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
@@ -69,6 +68,5 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 - `PIN-24` Magnifier and color picking on image windows
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-03` Run when the system starts
-- `SET-06` Customize the tray icon's mouse actions (Pro)
 - `SET-21` Interface translations
 - `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/hellomouv/kim/issues/69), done on the Linux server)

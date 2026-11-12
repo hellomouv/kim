@@ -186,11 +186,44 @@ impl Preset {
 /// The actions whose bindings a preset may change (reset by `noeul config reset gestures`).
 pub const PRESET_ACTIONS: &[&str] = &["capture.pin", "capture.copy"];
 
+/// #99 (`SET-06`): what a click on the tray icon does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayAction {
+    Capture,
+    PinClipboard,
+    Settings,
+    None,
+}
+
+impl TrayAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TrayAction::Capture => "capture",
+            TrayAction::PinClipboard => "pin_clipboard",
+            TrayAction::Settings => "settings",
+            TrayAction::None => "none",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<TrayAction> {
+        Some(match s {
+            "capture" => TrayAction::Capture,
+            "pin_clipboard" => TrayAction::PinClipboard,
+            "settings" => TrayAction::Settings,
+            "none" => TrayAction::None,
+            _ => return None,
+        })
+    }
+}
+
 /// Effective settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     /// Show the notification-area icon (NOEUL-FR-004; on by default).
     pub tray_icon: bool,
+    /// #99 (`SET-06`): the tray icon's left and middle clicks (the right click is the menu).
+    pub tray_left_click: TrayAction,
+    pub tray_middle_click: TrayAction,
     /// The overlay's keyboard help (ADR 0026).
     pub keyboard_help: KeyboardHelp,
     /// Where quick save writes; `None`: the user's Pictures folder + `Noeul` (NOEUL-FR-032).
@@ -289,6 +322,8 @@ impl Default for Settings {
     fn default() -> Settings {
         Settings {
             tray_icon: true,
+            tray_left_click: TrayAction::Capture,
+            tray_middle_click: TrayAction::PinClipboard,
             keyboard_help: KeyboardHelp::FirstRun,
             quick_save_folder: None,
             gestures: Gestures::default(),
@@ -343,6 +378,7 @@ impl Loaded {
             "path": self.path.display().to_string(),
             "state": self.state.as_str(),
             "tray_icon": s.tray_icon,
+            "tray_clicks": { "left": s.tray_left_click.as_str(), "middle": s.tray_middle_click.as_str() },
             "keyboard_help": s.keyboard_help.as_str(),
             "quick_save_folder": s.quick_save_folder.as_ref().map(|p| p.display().to_string()),
             "detection": s.detection.as_str(),
@@ -431,6 +467,18 @@ const KEYS: &[Key] = &[
         name: "tray_icon",
         takes: "true or false",
         default: "true",
+    },
+    Key {
+        section: "general",
+        name: "tray_left_click",
+        takes: "\"capture\", \"pin_clipboard\", \"settings\" or \"none\"",
+        default: "\"capture\"",
+    },
+    Key {
+        section: "general",
+        name: "tray_middle_click",
+        takes: "\"capture\", \"pin_clipboard\", \"settings\" or \"none\"",
+        default: "\"pin_clipboard\"",
     },
     Key {
         section: "capture",
@@ -631,6 +679,12 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
     let s = v.as_str();
     match (section, name) {
         ("general", "tray_icon") => settings.tray_icon = v.as_bool().ok_or(())?,
+        ("general", "tray_left_click") => {
+            settings.tray_left_click = s.and_then(TrayAction::parse).ok_or(())?;
+        }
+        ("general", "tray_middle_click") => {
+            settings.tray_middle_click = s.and_then(TrayAction::parse).ok_or(())?;
+        }
         ("capture", "keyboard_help") => {
             settings.keyboard_help = s.and_then(KeyboardHelp::parse).ok_or(())?;
         }

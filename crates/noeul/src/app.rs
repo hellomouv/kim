@@ -3632,15 +3632,23 @@ impl<S: Shell> App<S> {
     }
 
     pub fn tray_click(&mut self, click: Click) {
-        match click {
-            Click::Middle => self.action("paste.float", None),
-            // Left click starts a capture (NOEUL-FR-004).
-            Click::Left => {
+        // #99 (`SET-06`): `[general] tray_left_click` / `tray_middle_click`; by default the left
+        // click starts a capture (NOEUL-FR-004) and the middle click pins the clipboard.
+        let s = &self.settings.settings;
+        let what = match click {
+            Click::Left => s.tray_left_click,
+            Click::Middle => s.tray_middle_click,
+            // The menu opens (the runtime shows it).
+            Click::Right => return,
+        };
+        match what {
+            settings::TrayAction::Capture => {
                 let r = self.capture_region_action(Origin::Tray, Instant::now());
                 self.last_action = Some(("capture.region".into(), r));
             }
-            // The menu opens (the runtime shows it).
-            Click::Right => {}
+            settings::TrayAction::PinClipboard => self.action("paste.float", None),
+            settings::TrayAction::Settings => self.tray_command(MenuItem::Settings),
+            settings::TrayAction::None => {}
         }
     }
 

@@ -101,7 +101,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `DET-06` | Magnifier appears when useful; hold `Alt` to show it | G, K | Shown while selecting; `magnifier.toggle` (`M`) ◆ (the hotkey contract has no bare-modifier keys). Step 52: 15 × 15 frozen pixels at 8 logical pixels each, a centre crosshair, the device-pixel position and HEX/RGB, while selecting and next to a selection; `M` toggles it. Step 59: the readout writes what `C` copies (`rgb(…)`, HSL when chosen) with the chosen format marked, and the overlay's accessible name carries it; missing: the manual check on the visible desktop (UX spec §4.8, §4.14) | partial | NOEUL-FR-041 | N1 | T, M | T: `crates/noeul/src/overlay.rs` the_magnifier_enlarges_exact_pixels_with_a_crosshair_and_reads_the_colour; T: `crates/noeul/src/win/overlay.rs` the_real_window_draws_the_magnifier_reports_key_positions_and_keeps_the_cursor |
 | `DET-07` | Move the pointer one pixel with `W A S D` | G, K | `pointer.move-*` on the physical keys `W A S D` (same position on every layout), with repeat and acceleration. Step 52: matched from the scan code, one device pixel per press (1, 2, 5, 10 while held), also during a drag or resize; the real cursor follows with `SetCursorPos` only for the foreground overlay; missing: the manual check on the visible desktop (UX spec §4.8) | partial | NOEUL-FR-042 | N1 | T | T: `crates/noeul/src/overlay.rs` pointer_keys_move_one_pixel_accelerate_and_pause_detection; T: `crates/noeul/src/hotkeys.rs` overlay_keys_match_the_capture_overlay_context; T: `crates/noeul/src/win/overlay.rs` the_real_window_draws_the_magnifier_reports_key_positions_and_keeps_the_cursor |
 | `DET-08` | Move the area with arrows, grow with `Ctrl`+arrows, shrink with `Shift`+arrows | G, K | Same keys, one device pixel, repeat. Step 50: arrows move, `Ctrl`+arrows grow and `Shift`+arrows shrink by one device pixel per press and per repeat. Step 52: held keys accelerate (1, 2, 5, 10 pixels per repeat); missing: the manual check on the visible desktop (UX spec §4.8) | partial | NOEUL-FR-042 | N1 | T | T: `crates/noeul/src/overlay.rs` keyboard_moves_grows_shrinks_and_pins, pointer_keys_move_one_pixel_accelerate_and_pause_detection; T: `crates/noeul/src/hotkeys.rs` overlay_keys_match_the_capture_overlay_context |
-| `DET-09` | Swap the roles of `W A S D` and the arrow keys (setting) | A | Every key is rebindable through the hotkey contract | planned | NOEUL-FR-100, NOEUL-FR-101 | N5 | T | — |
+| `DET-09` | Swap the roles of `W A S D` and the arrow keys (setting) | A | The arrow keys (`selection.move-*`) and `W A S D` (`pointer.move-*`) are separate actions of the hotkey contract, so `noeul hotkeys set` or the settings window swaps them (#99 checked). Missing: a one-step swap setting | partial | NOEUL-FR-100, NOEUL-FR-101 | N5 | T | T: `crates/noeul/tests/cli.rs` hotkeys_commands_follow_the_contract |
 | `DET-10` | Magnifier style, or hide it entirely (Pro) | P | Magnifier toggle and size setting. Step 52: `M` during a capture and `[capture] magnifier = "on" \| "off"`; missing: a size setting | partial | NOEUL-FR-041 | N1 | T | T: `crates/noeul/src/overlay.rs` the_magnifier_enlarges_exact_pixels_with_a_crosshair_and_reads_the_colour; T: `crates/noeul/src/app.rs` detection_off_lists_no_windows_until_e_turns_it_on_and_the_magnifier_setting_applies |
 | `DET-11` | Region size in device or logical pixels (Pro) | P | Device pixels by default; logical units as a refinement. Step 52: on a scaled monitor the magnifier also shows the logical position on that monitor (stable conversions, `crates/noeul/src/dpi.rs`); missing: logical units for the size chip (N4) | partial | NOEUL-FR-046 | N4 | T | T: `crates/noeul/src/overlay.rs` the_magnifier_follows_the_monitor_scale_and_shows_logical_coordinates; T: `crates/noeul/src/dpi.rs` lengths_round_trip_without_drift_at_every_scale, points_keep_their_monitor_and_round_trip_on_mixed_layouts |
 | `DET-12` | Keyboard-only rectangle selection | — (Noeul addition) | `selection.mark` (`Space`) marks two corners, or accepts the detected window. Step 52: `Space` accepts the highlighted window or element, otherwise (or after the pointer keys) marks the first corner, then the opposite one; a click sets the second corner, a right-click undoes the mark; missing: the manual check on the visible desktop (UX spec §4.8) | partial | NOEUL-FR-043 | N1 | T (FLOW-18), M | T: `crates/noeul/src/overlay.rs` space_marks_two_corners_or_accepts_the_detection; T: `crates/noeul/src/app.rs` keyboard_only_marking_pins_the_marked_rectangle; T: `crates/noeul/tests/smart_selection.rs` detection_magnifier_pointer_keys_and_history_through_the_real_binary |
@@ -242,7 +242,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `SET-03` | Run when the system starts | F | Opt-in start at sign-in (per-user, no service) | planned | NOEUL-FR-002 | N5 | T, M | — |
 | `SET-04` | Theme color, interface font, tray icon options | H, P | Kim tokens, light theme, contrast themes Step 61: the settings window uses the system colours (High Contrast), a dark title bar and dark controls in dark mode, the system message font at the monitor's DPI; missing: the Kim tokens in the window | partial | NOEUL-FR-103 | N5 | M | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs` |
 | `SET-05` | Hide the tray icon | A | Setting; everything stays reachable. Step 49: `[general] tray_icon = false` and `noeul start --no-tray`; missing: the settings window (N5) and a manual check | partial | NOEUL-FR-004 | N1 | M | T: `crates/noeul/src/settings.rs` values_unknown_keys_and_fallbacks; T: `crates/noeul/tests/instance.rs` lifecycle_status_health_capture_checks_and_quit |
-| `SET-06` | Customize the tray icon's mouse actions (Pro) | P | Fixed defaults; customization as a refinement | planned | NOEUL-FR-004 | N1 | M | — |
+| `SET-06` | Customize the tray icon's mouse actions (Pro) | P | `[general] tray_left_click` and `tray_middle_click`: capture (left, default), pin the clipboard (middle, default), open the settings, or nothing; the right click is the menu (#99). Missing: a double-click action and the manual check | partial | NOEUL-FR-004 | N1 | M | T: `crates/noeul/src/app/output_tests.rs` tray_clicks_follow_their_settings |
 | `SET-07` | Global hotkeys for most functions (Pro) | P | Every action is bindable; actions with `global` in their scopes can be bound globally by the user Step 61: every action is listed and rebindable in the window (global and context keys) | implemented | NOEUL-FR-100 | N5 | T | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs` |
 | `SET-08` | Customize in-app shortcuts (Pro) | L | Every context shortcut is rebindable, free Step 61: every context shortcut is rebindable in the window and the CLI | implemented | NOEUL-FR-100, NOEUL-FR-101 | N5 | T | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs` |
 | `SET-09` | Turn global hotkeys off and on (Pro command) | C | `noeul hotkeys disable --all`, tray switch, `--no-hotkeys`. Step 49: `noeul hotkeys disable --all`/`enable --all`, `--no-hotkeys`, `KIM_NO_HOTKEYS` and the tray switch; missing: manual tray check | partial | NOEUL-FR-100 | N1 | T | T: `crates/noeul/tests/cli.rs` hotkeys_commands_follow_the_contract; T: `crates/noeul/tests/instance.rs` no_hotkeys_flag_registers_nothing |
@@ -322,15 +322,15 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 108 |
-| `planned` | 39 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 110 |
+| `planned` | 37 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
 | Group | partial | planned | not intended | Total |
 | --- | --- | --- | --- | --- |
 | 1. Starting and selecting (`SNIP`) | 12 | 2 | 8 | 22 |
-| 2. Detection and precision (`DET`) | 10 | 2 | 0 | 12 |
+| 2. Detection and precision (`DET`) | 11 | 1 | 0 | 12 |
 | 3. Color picker (`COLOR`) | 6 | 1 | 0 | 7 |
 | 4. History (`HIST`) | 3 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 10 | 1 | 1 | 12 |
@@ -338,7 +338,7 @@ picture.
 | 7. Floating pins (`PIN`) | 20 | 8 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 5 | 0 | 1 | 6 |
-| 10. Settings (`SET`) | 8 | 8 | 6 | 22 |
+| 10. Settings (`SET`) | 9 | 7 | 6 | 22 |
 | 11. Command line (`CLI`) | 5 | 3 | 1 | 9 |
 | 12. Application (`APP`) | 1 | 3 | 3 | 7 |
 | 13. Noeul additions (`ADD`) | 2 | 5 | 0 | 7 |
@@ -366,3 +366,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-04 | 2.11.3 (2026-01-18) | Step 59 | Colour picker (ADR 0053): 4 more rows `partial` (`COLOR-01` `C` in the overlay, `COLOR-02` `Shift+C` ◆, `COLOR-04` HEX, RGB and HSL, `COLOR-06` the case and alpha settings), `COLOR-03` (`hsl()` swatches), `COLOR-07`, `DET-06` and `CLI-08` (why no command picks a pixel) extended; `PIN-24` (picking on pins) and `COLOR-05` stay planned; 98 `partial`, none `supported` until the manual check of UX spec §4.14. |
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Output and capture follow-ups: `SNIP-11`, `CLI-02` (`capture --delay`), `HIST-06` (auto-save), `OUT-06` (copy as a file), `OUT-07` (JPEG quality), `OUT-12` (cloud-sync exclusion, already in the code) and `SET-11` (documented) move to `partial` with their remaining gaps; `APP-03` (Linux) is tracked by #69. |
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Pin follow-ups: `PIN-21` (grayscale, invert, topmost), `PIN-22` (replace with the clipboard) and `PIN-27` (sharp pixels) move to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |

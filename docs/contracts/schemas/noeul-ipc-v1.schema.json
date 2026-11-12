@@ -310,6 +310,16 @@
         "path": { "type": "string", "minLength": 1 },
         "state": { "enum": ["default", "user", "invalid", "newer_version"] },
         "tray_icon": { "type": "boolean" },
+        "tray_clicks": {
+          "description": "`[general] tray_left_click` and `tray_middle_click` (#99): what a left or middle click on the tray icon does; the right click is the menu.",
+          "type": "object",
+          "required": ["left", "middle"],
+          "additionalProperties": false,
+          "properties": {
+            "left": { "enum": ["capture", "pin_clipboard", "settings", "none"] },
+            "middle": { "enum": ["capture", "pin_clipboard", "settings", "none"] }
+          }
+        },
         "keyboard_help": { "description": "`[capture] keyboard_help`: when the capture overlay shows its keyboard help (Step 50).", "enum": ["first-run", "always", "never"] },
         "quick_save_folder": { "description": "`[capture] quick_save_folder` (Step 51); null: the Pictures folder + Noeul.", "type": ["string", "null"] },
         "detection": { "description": "`[capture] detection` (Step 52, NOEUL-FR-040): what the overlay detects under the pointer when it opens.", "enum": ["window", "element", "off"] },
