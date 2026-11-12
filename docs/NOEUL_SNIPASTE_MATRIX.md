@@ -75,7 +75,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `SNIP-07` | Select the whole screen with `Ctrl+A` (again: all screens) | K, L | `selection.full` (`Ctrl+A`): the monitor under the pointer, again all monitors. Step 50: `selection.full`, the monitor under the pointer (nearest one in a gap), again all monitors; missing: the manual check | partial | NOEUL-FR-014 | N1 | T | T: `crates/noeul/src/overlay.rs` ctrl_a_selects_the_monitor_then_all_and_r_restores_the_last; T: `crates/noeul/src/app.rs` keyboard_only_capture_with_ctrl_a_arrows_and_enter |
 | `SNIP-08` | Reuse the last successful rectangle with `R` | K | `selection.last` (`R`). Step 50: `selection.last` restores the rectangle of the last pin made from the overlay; missing: the manual check | partial | NOEUL-FR-014 | N1 | T | T: `crates/noeul/src/overlay.rs` ctrl_a_selects_the_monitor_then_all_and_r_restores_the_last; T: `crates/noeul/src/app.rs` enter_pins_exactly_the_selection_and_nothing_is_copied_or_written |
 | `SNIP-09` | Square selection while holding `Shift` | L | Same while dragging. Step 50: `Shift` while dragging keeps the sides equal inside the picture; missing: the manual check | partial | NOEUL-FR-011 | N1 | T | T: `crates/noeul/src/overlay.rs` shift_makes_a_square_inside_the_picture |
-| `SNIP-10` | Move the area while still dragging by holding `Space` | A | Planned as a refinement; `Space` without a held button marks corners for keyboard selection | planned | NOEUL-FR-046 | N4 | T | — |
+| `SNIP-10` | Move the area while still dragging by holding `Space` | A | Holding `Space` during a drag moves the area with the pointer (its size stays); pressing `Space` mid-drag no longer turns the drag into a corner marking (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-046 | N4 | T | T: `crates/noeul/src/overlay.rs` tests::space_held_while_dragging_moves_the_area |
 | `SNIP-11` | Delayed capture and a dialog for position, size and delay | P, C | Delayed capture: `noeul capture --delay <seconds>` (0–60) waits before capturing or opening the overlay (#99). Missing: the tray item and the position, size and delay dialog | partial | NOEUL-FR-015 | N5 | T | T: `crates/noeul/src/main.rs` tests::capture_delay_is_bounded |
 | `SNIP-12` | Type the region size during snipping; fixed-ratio capture (Pro) | P | Typed size and fixed aspect ratio | planned | NOEUL-FR-046 | N4 | T | — |
 | `SNIP-13` | Capture the mouse cursor, toggled in the overlay | P, K | Optional pointer capture, off by default. Step 58 (ADR 0050): `noeul capture … --pointer` and `[capture] pointer = "on"` (the `F1` freeze and the `capture.monitor`/`capture.window` keys) draw the real pointer into the capture's own bitmap at its hotspot (`GetCursorInfo`, `DrawIconEx` at the image's own size); a hidden or outside pointer is reported; missing: the overlay's toggle and the manual check of the pointer's size on scaled monitors (UX spec §4.13) | partial | NOEUL-FR-016 | N4 | T, M | T: `crates/noeul/src/displays/tests.rs` the_synthetic_pointer_is_drawn_exactly_at_its_hotspot_or_says_why_not; T: `crates/noeul/src/app/display_tests.rs` the_pointer_is_drawn_into_the_picture_only_when_asked_and_says_why_not; T: `crates/noeul/src/win/displays.rs` system_pointers_are_drawn_at_their_hotspot_into_a_memory_bitmap; T: `crates/noeul/tests/displays.rs` monitor_window_and_region_captures_through_the_cli_are_pixel_exact |
@@ -322,14 +322,14 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 110 |
-| `planned` | 37 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 111 |
+| `planned` | 36 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
 | Group | partial | planned | not intended | Total |
 | --- | --- | --- | --- | --- |
-| 1. Starting and selecting (`SNIP`) | 12 | 2 | 8 | 22 |
+| 1. Starting and selecting (`SNIP`) | 13 | 1 | 8 | 22 |
 | 2. Detection and precision (`DET`) | 11 | 1 | 0 | 12 |
 | 3. Color picker (`COLOR`) | 6 | 1 | 0 | 7 |
 | 4. History (`HIST`) | 3 | 3 | 0 | 6 |
@@ -367,3 +367,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Output and capture follow-ups: `SNIP-11`, `CLI-02` (`capture --delay`), `HIST-06` (auto-save), `OUT-06` (copy as a file), `OUT-07` (JPEG quality), `OUT-12` (cloud-sync exclusion, already in the code) and `SET-11` (documented) move to `partial` with their remaining gaps; `APP-03` (Linux) is tracked by #69. |
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Pin follow-ups: `PIN-21` (grayscale, invert, topmost), `PIN-22` (replace with the clipboard) and `PIN-27` (sharp pixels) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |

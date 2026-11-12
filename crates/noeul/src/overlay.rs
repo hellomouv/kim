@@ -123,6 +123,8 @@ pub struct Mods {
     pub alt: bool,
     /// Either Windows key.
     pub win: bool,
+    /// #99 (`SNIP-10`): `Space` is held (a drag then moves the area instead of resizing it).
+    pub space: bool,
 }
 
 impl Mods {
@@ -131,30 +133,35 @@ impl Mods {
         shift: false,
         alt: false,
         win: false,
+        space: false,
     };
     pub const SHIFT: Mods = Mods {
         ctrl: false,
         shift: true,
         alt: false,
         win: false,
+        space: false,
     };
     pub const CTRL: Mods = Mods {
         ctrl: true,
         shift: false,
         alt: false,
         win: false,
+        space: false,
     };
     pub const ALT: Mods = Mods {
         ctrl: false,
         shift: false,
         alt: true,
         win: false,
+        space: false,
     };
     pub const WIN: Mods = Mods {
         ctrl: false,
         shift: false,
         alt: false,
         win: true,
+        space: false,
     };
 
     /// Whether any modifier is held (a press with one never counts as a click, rule 2).
@@ -927,6 +934,8 @@ pub struct Overlay {
     shift: bool,
     /// `Alt` held during the last pointer event: no snapping.
     alt: bool,
+    /// #99: `Space` is held (from the last pointer move).
+    space: bool,
     last: Option<Rect>,
     detect: Detection,
     magnifier: bool,
@@ -989,6 +998,7 @@ impl Overlay {
             gestures: Gestures::default(),
             state: State::Hover,
             selection: None,
+            space: false,
             pointer: (picture.x, picture.y),
             shift: false,
             alt: false,
@@ -1700,6 +1710,7 @@ impl Overlay {
                 self.mouse_at(self.clamp((x, y)));
                 self.shift = mods.shift;
                 self.alt = mods.alt;
+                self.space = mods.space;
                 self.pointer_moved();
                 Outcome::Stay
             }
@@ -2001,7 +2012,18 @@ impl Overlay {
                 };
                 self.pointer_moved();
             }
-            State::Dragging { anchor, before, .. } => {
+            State::Dragging {
+                anchor, to, before, ..
+            } => {
+                // #99 (`SNIP-10`): with `Space` held the area moves with the pointer.
+                let anchor = if self.space {
+                    (
+                        anchor.0.saturating_add(p.0 - to.0),
+                        anchor.1.saturating_add(p.1 - to.1),
+                    )
+                } else {
+                    anchor
+                };
                 self.state = State::Dragging {
                     anchor,
                     to: p,
@@ -2278,6 +2300,10 @@ impl Overlay {
             return Outcome::Stay;
         }
         if a == Action::Mark && self.mode == Mode::PinEdit {
+            return Outcome::Stay;
+        }
+        // #99 (`SNIP-10`): `Space` during a drag only moves the area (held, see the pointer).
+        if a == Action::Mark && matches!(self.state, State::Dragging { .. }) {
             return Outcome::Stay;
         }
         // While an annotation is selected, the selection keys act on it.
@@ -3981,6 +4007,40 @@ mod tests {
         // The pointer is clamped to the picture.
         drag(&mut o, (700, 500), (5000, -40));
         assert_eq!(o.selection(), Some(Rect::new(700, 0, 100, 501)));
+    }
+
+    /// #99 (`SNIP-10`): with `Space` held a drag moves the area; `Space` pressed during a drag
+    /// never turns it into a corner marking; released, the drag resizes again.
+    #[test]
+    fn space_held_while_dragging_moves_the_area() {
+        let mut o = one(800, 600);
+        press(&mut o, Button::Left, 100, 100);
+        mv(&mut o, 200, 150);
+        assert_eq!(o.live(), Some(Rect::new(100, 100, 101, 51)));
+        o.handle(Input::Action(Action::Mark));
+        assert_eq!(o.phase(), Phase::Dragging, "still dragging");
+        let space = Mods {
+            space: true,
+            ..Mods::NONE
+        };
+        o.handle(Input::Move {
+            x: 250,
+            y: 170,
+            mods: space,
+        });
+        assert_eq!(
+            o.live(),
+            Some(Rect::new(150, 120, 101, 51)),
+            "moved, same size"
+        );
+        mv(&mut o, 300, 200);
+        assert_eq!(
+            o.live(),
+            Some(Rect::new(150, 120, 151, 81)),
+            "resizes again"
+        );
+        release(&mut o, 300, 200);
+        assert_eq!(o.selection(), Some(Rect::new(150, 120, 151, 81)));
     }
 
     #[test]

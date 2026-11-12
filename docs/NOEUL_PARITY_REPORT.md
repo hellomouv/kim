@@ -14,7 +14,7 @@ service, no hot corners).
 
 | Area | Rows | Implemented | Partial | Planned | Not intended |
 | --- | --- | --- | --- | --- | --- |
-| Starting a capture and selecting (`SNIP`) | 22 | 0 | 12 | 2 | 8 |
+| Starting a capture and selecting (`SNIP`) | 22 | 0 | 13 | 1 | 8 |
 | Detection, magnifier, precision (`DET`) | 12 | 0 | 11 | 1 | 0 |
 | Colour picker (`COLOR`) | 7 | 0 | 6 | 1 | 0 |
 | History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
@@ -26,7 +26,7 @@ service, no hot corners).
 | Settings and shortcuts (`SET`) | 22 | 3 | 11 | 2 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **113** | **16** | **24** |
+| **All** | **164** | **11** | **114** | **15** | **24** |
 
 ## 2. The critical workflows
 
@@ -52,9 +52,8 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 
 Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
-`SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06` and `DET-09` to *partial*.
+`SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06`, `DET-09` and `SNIP-10` to *partial*.
 
-- `SNIP-10` Move the area while still dragging by holding `Space`
 - `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
 - `DET-03` Step to the parent or child element with the mouse wheel (Pro)
 - `COLOR-05` Edit the value of a color card (Pro)

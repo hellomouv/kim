@@ -73,7 +73,7 @@ use windows_sys::Win32::UI::Input::Ime::{
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetDoubleClickTime, GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_APPS, VK_CONTROL,
-    VK_F10, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    VK_F10, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetMessageTime,
@@ -222,6 +222,7 @@ fn mods(wp: WPARAM) -> Mods {
         shift: flags & MK_SHIFT != 0,
         alt: down(VK_MENU),
         win: down(VK_LWIN) || down(VK_RWIN),
+        space: down(VK_SPACE),
     }
 }
 
@@ -232,6 +233,7 @@ fn key_mods() -> Mods {
         shift: down(VK_SHIFT),
         alt: down(VK_MENU),
         win: down(VK_LWIN) || down(VK_RWIN),
+        space: down(VK_SPACE),
     }
 }
 
