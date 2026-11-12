@@ -8,7 +8,8 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100 delivered and closed; #99 in progress (15 rows to partial, 14 planned left; APP-03 moved to #69); then #98 and #97
+- Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100 delivered and closed; #99 in progress (9 planned rows left); then #98 and #97
+- Real-UI checks (user, 2026-11-13: real keyboard and mouse allowed, never touch already-open windows): the guarded driver lives in the session scratchpad (only the test's own pids receive input; obscure F13-F24 test hotkey; sandboxed Noeul profile). Done: NOEUL_UX_SPEC 4.5-4.7 → #55 and #58 closed, #56 open (high DPI, real clipboard copy); fixes 8772e45, fce5582. Next: 4.8 (#57), 4.9 (#61), 4.10 (#62), 4.11, 4.12, 4.14 (#64), #66, then Ddalgak acceptance and Subak checks (own instances only, never the user's Subak 69788/72496)
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
@@ -17,6 +18,8 @@ checkpoint."*
   repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-13: real-UI §4.5-4.7 on the visible desktop (release, 5120×1440 100 %): first frame p50 111 ms / p95 115 ms; found and fixed Ctrl+click selection, snapping edges, wheel zoom drift, pin quick-save format; `cargo xtask ci` EXIT 0 at fce5582.
 
 - 2026-11-13: #102, #101, #100 closed; #99 batches (output, pins, tray, Space drag) with e2e issue99/100/101/102 passing; `cargo xtask ci` EXIT 0 at a20f86d.
 - 2026-11-12: Step 82 — `cargo xtask bench-ddalgak --record`: 8/8 budgets (0 ms CPU and 0
