@@ -20,13 +20,13 @@ service, no hot corners).
 | History (`HIST`) | 6 | 4 | 2 | 0 | 0 |
 | Output and clipboard writes (`OUT`) | 12 | 0 | 11 | 0 | 1 |
 | Annotation (`ANN`) | 17 | 0 | 14 | 3 | 0 |
-| Pins (`PIN`) | 30 | 2 | 17 | 9 | 2 |
+| Pins (`PIN`) | 30 | 2 | 20 | 6 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
 | Settings and shortcuts (`SET`) | 22 | 3 | 10 | 3 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **108** | **21** | **24** |
+| **All** | **164** | **11** | **111** | **18** | **24** |
 
 ## 2. The critical workflows
 
@@ -52,7 +52,7 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 
 Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
-`SET-11` to *partial*.
+`SET-11`, then `PIN-21`, `PIN-22` and `PIN-27` to *partial*.
 
 - `SNIP-10` Move the area while still dragging by holding `Space`
 - `SNIP-12` Type the region size during snipping; fixed-ratio capture (Pro)
@@ -66,10 +66,7 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 - `PIN-15` Group manager window (Pro)
 - `PIN-17` Snap to other images and windows while dragging with `Shift`
 - `PIN-20` Select several images with `Ctrl`+click, or all with `Ctrl+A` (Pro)
-- `PIN-21` Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro)
-- `PIN-22` Replace an image with the clipboard content (`Ctrl+V`)
 - `PIN-24` Magnifier and color picking on image windows
-- `PIN-27` Disable smooth scaling for sharp text
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-03` Run when the system starts
 - `SET-06` Customize the tray icon's mouse actions (Pro)

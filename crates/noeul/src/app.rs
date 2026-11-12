@@ -642,6 +642,11 @@ const MENU: &[Option<(&str, &str)>] = &[
     Some(("pin.opacity-down", "More transparent")),
     None,
     Some(("pin.thumbnail", "Thumbnail")),
+    Some(("pin.grayscale", "Grayscale")),
+    Some(("pin.invert", "Invert colours")),
+    Some(("pin.sharp", "Sharp pixels")),
+    Some(("pin.topmost", "Always on top")),
+    Some(("pin.paste-replace", "Replace with clipboard image")),
     Some(("pin.click-through", "Click-through")),
     Some(("pin.group-new", "Move to a new group")),
     None,
@@ -1132,6 +1137,15 @@ impl<S: Shell> App<S> {
         }
         if let Some(on) = c.click_through {
             any |= ok(self.pins.set_click_through(id, on));
+        }
+        if let Some(f) = c.filter {
+            any |= ok(self.pins.set_filter(id, f));
+        }
+        if let Some(on) = c.sharp {
+            any |= ok(self.pins.set_sharp(id, on));
+        }
+        if let Some(on) = c.topmost {
+            any |= ok(self.pins.set_topmost(id, on));
         }
         if c.thumbnail == Some(true) {
             any |= ok(self.pins.set_thumbnail(id, true));
@@ -1836,6 +1850,42 @@ impl<S: Shell> App<S> {
             ("pin.opacity-up", Some(id)) => self.opacity_step(id, true),
             ("pin.opacity-down", Some(id)) => self.opacity_step(id, false),
             ("pin.thumbnail", Some(id)) => self.toggle_thumbnail(id),
+            // #99: the view's filter, sharp pixels, the z-order, the picture from the clipboard.
+            ("pin.grayscale" | "pin.invert", Some(id)) => {
+                let f = if action == "pin.grayscale" {
+                    transform::Filter::Grayscale
+                } else {
+                    transform::Filter::Invert
+                };
+                let now = self.pins.info(id).map(|i| i.transforms.filter);
+                let next = if now == Some(f) {
+                    transform::Filter::None
+                } else {
+                    f
+                };
+                match self.pins.set_filter(id, next) {
+                    Ok(true) => "changed",
+                    Ok(false) => "unchanged",
+                    Err(_) => "failed",
+                }
+            }
+            ("pin.sharp", Some(id)) => {
+                let on = !self.pins.info(id).is_some_and(|i| i.transforms.sharp);
+                match self.pins.set_sharp(id, on) {
+                    Ok(true) => "changed",
+                    Ok(false) => "unchanged",
+                    Err(_) => "failed",
+                }
+            }
+            ("pin.topmost", Some(id)) => {
+                let on = !self.pins.info(id).is_some_and(|i| i.transforms.topmost);
+                match self.pins.set_topmost(id, on) {
+                    Ok(true) => "changed",
+                    Ok(false) => "unchanged",
+                    Err(_) => "failed",
+                }
+            }
+            ("pin.paste-replace", Some(id)) => self.replace_from_clipboard(id),
             ("pin.click-through", Some(id)) => self.toggle_click_through(id),
             ("pin.group-new", Some(id)) => self.new_group(id),
             (PINS_CLICKABLE, _) => {
@@ -3918,6 +3968,10 @@ struct SetChange {
     thumbnail: Option<bool>,
     click_through: Option<bool>,
     group: Option<String>,
+    /// #99.
+    filter: Option<transform::Filter>,
+    sharp: Option<bool>,
+    topmost: Option<bool>,
 }
 
 impl SetChange {
@@ -3986,6 +4040,14 @@ impl SetChange {
             thumbnail: flag("thumbnail")?,
             click_through: flag("click_through")?,
             group,
+            filter: match p.get("filter") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_str().and_then(transform::Filter::parse).ok_or_else(
+                    || bad("`filter` must be \"none\", \"grayscale\" or \"invert\""),
+                )?),
+            },
+            sharp: flag("sharp")?,
+            topmost: flag("topmost")?,
         };
         if c == SetChange::default() {
             return Err(bad(
@@ -5391,6 +5453,11 @@ pub(crate) mod tests {
                 ("More transparent\tCtrl+Minus", true),
                 ("", false),
                 ("Thumbnail\tT", true),
+                ("Grayscale", true),
+                ("Invert colours", true),
+                ("Sharp pixels", true),
+                ("Always on top", true),
+                ("Replace with clipboard image\tCtrl+V", true),
                 // No tray and no `pins.clickable` key: no way back, so it cannot be turned on.
                 ("Click-through\tCtrl+Shift+T", false),
                 ("Move to a new group (now in default)", true),

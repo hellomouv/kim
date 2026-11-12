@@ -6,7 +6,8 @@
 //! off-screen; the real screen, displays and clipboard are never read or changed): a script sets
 //! `[output] jpeg_quality`, captures a region to a `.jpg` file (JPEG at that quality) and to a
 //! `.png` file (PNG), and captures again with `--delay 1` (it waits). The new settings show in
-//! `config show` with their defaults off. No tray icon, no visible window, no hotkey registered,
+//! `config show` with their defaults off. A captured pin then gets a grayscale view, sharp pixels
+//! and the normal z-order through `pin set`, and `pin list` reports them. No tray icon, no visible window, no hotkey registered,
 //! no input synthesized; the instance is quit (or ended by a guard).
 #![cfg(windows)]
 
@@ -154,6 +155,36 @@ fn issue99_capture_writes_jpeg_or_png_and_waits_for_its_delay() {
     assert!(
         t.elapsed() < Duration::from_secs(4),
         "a dry run never waits"
+    );
+    // #99 (`PIN-21`, `PIN-27`): a pin's view filter, sharp pixels and z-order, set headlessly.
+    let pinned = n.ok(&["capture", "--region", region, "--pin"]);
+    let id = pinned["pin"]["id"]
+        .as_str()
+        .map_or_else(|| "pin-1".to_string(), str::to_string);
+    let set = n.ok(&[
+        "pin",
+        "set",
+        &id,
+        "--filter",
+        "grayscale",
+        "--sharp",
+        "on",
+        "--topmost",
+        "off",
+    ]);
+    assert_eq!(set["changed"], json!([id.as_str()]), "{set:#}");
+    let list = n.ok(&["pin", "list"]);
+    let pin = list["pins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == id.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (&pin["filter"], &pin["sharp"], &pin["topmost"]),
+        (&json!("grayscale"), &json!(true), &json!(false)),
+        "{pin:#}"
     );
     n.ok(&["quit", "--yes"]);
 }

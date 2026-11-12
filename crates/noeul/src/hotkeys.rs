@@ -151,6 +151,11 @@ pub const IMPLEMENTED: &[&str] = &[
     "pin.click-through",
     "pin.group-new",
     "pin.annotate",
+    "pin.grayscale",
+    "pin.invert",
+    "pin.sharp",
+    "pin.topmost",
+    "pin.paste-replace",
 ];
 
 /// Global actions of the final manifest that later Steps add, for `--help` and the docs (none

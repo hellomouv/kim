@@ -70,3 +70,28 @@ fn copy_as_file_and_auto_save_follow_their_settings() {
     a.shutdown();
     assert!(!a.paths.data_dir.join("copies").exists(), "removed at quit");
 }
+
+/// #99 (`PIN-22`): `pin.paste-replace` puts the clipboard's picture into the pin at the same
+/// corner; with nothing to paste the pin stays.
+#[test]
+fn a_pin_takes_the_clipboard_picture_in_place() {
+    let (mut a, _syn, _dir) = overlay_app("out-replace");
+    a.shell.clipboard = Some((40, 30));
+    a.action("paste.float", None);
+    let id = crate::pins::PinId(1);
+    let before = a.pins.info(id).unwrap();
+    assert_eq!(before.image, (40, 30));
+    a.shell.clipboard = Some((20, 10));
+    a.action("pin.paste-replace", Some(id));
+    let after = a.pins.info(id).unwrap();
+    assert_eq!(after.image, (20, 10));
+    assert_eq!((after.rect.x, after.rect.y), (before.rect.x, before.rect.y));
+    assert_eq!(a.status()["last_action"]["result"], "replaced");
+    a.shell.clipboard = None;
+    a.action("pin.paste-replace", Some(id));
+    assert_eq!(
+        a.pins.info(id).unwrap().image,
+        (20, 10),
+        "nothing to paste: unchanged"
+    );
+}

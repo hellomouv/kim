@@ -110,6 +110,12 @@ pub fn render(frame: &Frame, w: u32, h: u32, dst: &mut [u8]) {
 /// [`render`] into a larger surface whose rows are `stride` pixels apart (the picture inside a
 /// pin window's outline and shadow, Step 54); `dst` starts at the picture's top-left pixel.
 pub fn render_into(frame: &Frame, w: u32, h: u32, dst: &mut [u8], stride: usize) {
+    render_into_with(frame, w, h, dst, stride, false);
+}
+
+/// [`render_into`]; with `sharp` (#99, `PIN-27`), zoomed out takes each covered span's first
+/// pixel instead of the average (zooming in repeats pixels either way).
+pub fn render_into_with(frame: &Frame, w: u32, h: u32, dst: &mut [u8], stride: usize, sharp: bool) {
     let (fw, fh) = (frame.width(), frame.height());
     let src = frame.pixels().as_chunks::<4>().0;
     let out = dst.as_chunks_mut::<4>().0;
@@ -130,7 +136,7 @@ pub fn render_into(frame: &Frame, w: u32, h: u32, dst: &mut [u8], stride: usize)
     for (y, (y0, y1)) in rows.iter().enumerate() {
         let line = &mut out[y * stride..y * stride + wu];
         for (d, (x0, x1)) in line.iter_mut().zip(&cols) {
-            if y1 - y0 == 1 && x1 - x0 == 1 {
+            if sharp || (y1 - y0 == 1 && x1 - x0 == 1) {
                 let p = premultiply(&src[y0 * fw + x0]);
                 *d = [p[0] as u8, p[1] as u8, p[2] as u8, p[3] as u8];
                 continue;
@@ -265,5 +271,19 @@ mod tests {
             &[180, 200, 7, 255],
             "and the bottom-right one"
         );
+    }
+
+    /// #99 (`PIN-27`): zoomed out, `sharp` takes each span's first pixel instead of the average.
+    #[test]
+    fn sharp_downscaling_takes_pixels_instead_of_averaging() {
+        let ledger = Ledger::new();
+        let px = [[0u8, 0, 0, 255], [200, 200, 200, 255]].concat();
+        let f = Frame::new(&ledger, Rect::new(0, 0, 2, 1), px).unwrap();
+        let mut avg = vec![0u8; 4];
+        render_into_with(&f, 1, 1, &mut avg, 1, false);
+        let mut sharp = vec![0u8; 4];
+        render_into_with(&f, 1, 1, &mut sharp, 1, true);
+        assert_eq!(&sharp, &[0, 0, 0, 255]);
+        assert_eq!(&avg[..3], &[100, 100, 100]);
     }
 }

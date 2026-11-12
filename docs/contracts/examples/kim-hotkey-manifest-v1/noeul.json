@@ -99,6 +99,11 @@
     { "id": "pin.hide", "title": "Hide the pin (show it again from the tray)", "context": "pin", "defaults": ["H"] },
     { "id": "pin.click-through", "title": "Let mouse clicks pass through the pin", "context": "pin", "defaults": ["Ctrl+Shift+T"] },
     { "id": "pin.group-new", "title": "Move the pin to a new group", "context": "pin", "defaults": [] },
-    { "id": "pin.annotate", "title": "Annotate the pin", "context": "pin", "defaults": ["Space"] }
+    { "id": "pin.annotate", "title": "Annotate the pin", "context": "pin", "defaults": ["Space"] },
+    { "id": "pin.grayscale", "title": "Grayscale on or off (the view only)", "context": "pin", "defaults": [] },
+    { "id": "pin.invert", "title": "Inverted colours on or off (the view only)", "context": "pin", "defaults": [] },
+    { "id": "pin.sharp", "title": "Sharp pixels when zoomed out on or off", "context": "pin", "defaults": [] },
+    { "id": "pin.topmost", "title": "Above other windows on or off", "context": "pin", "defaults": [] },
+    { "id": "pin.paste-replace", "title": "Replace the picture with the clipboard's image", "context": "pin", "defaults": ["Ctrl+V"] }
   ]
 }

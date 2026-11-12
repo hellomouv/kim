@@ -74,8 +74,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CS_DBLCLKS, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DestroyWindow, GWL_EXSTYLE, GWLP_USERDATA, GetForegroundWindow, GetWindowLongPtrW,
     GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS,
-    IDC_SIZENWSE, IDC_SIZEWE, IsWindow, IsWindowVisible, LoadCursorW, MA_ACTIVATE,
+    HTTOPLEFT, HTTOPRIGHT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL, IDC_SIZENESW,
+    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsWindow, IsWindowVisible, LoadCursorW, MA_ACTIVATE,
     MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassExW,
     SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
     SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
@@ -782,6 +782,8 @@ impl Style {
 pub struct WinPin {
     hwnd: HWND,
     style: Style,
+    /// #99: the user put this pin in the normal z-order (only for topmost-capable pins).
+    below: bool,
 }
 
 impl std::fmt::Debug for WinPin {
@@ -865,9 +867,30 @@ impl PinWindow for WinPin {
         }
     }
 
+    fn set_topmost(&mut self, on: bool) {
+        // Test windows (never topmost) stay as they are.
+        if !self.style.topmost {
+            return;
+        }
+        self.below = !on;
+        let z = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+        // SAFETY: our window; only its z-order band changes, nothing is activated.
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                z,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        };
+    }
+
     fn set_visible(&mut self, visible: bool) {
         if visible {
-            let top = if self.style.topmost {
+            let top = if self.style.topmost && !self.below {
                 HWND_TOPMOST
             } else {
                 HWND_TOP
@@ -1008,7 +1031,11 @@ pub fn create(id: PinId, frame: &Frame, spec: &WindowSpec, style: Style) -> Resu
             },
         );
     });
-    let mut pin = WinPin { hwnd, style };
+    let mut pin = WinPin {
+        hwnd,
+        style,
+        below: false,
+    };
     // SAFETY: our window; the id is read back by the window procedure.
     unsafe {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, isize::try_from(id.0).unwrap_or(0));

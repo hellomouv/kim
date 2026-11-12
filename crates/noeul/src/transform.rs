@@ -410,6 +410,63 @@ pub struct View {
     pub click_through: bool,
     /// Dragging its border resizes it (not a thumbnail).
     pub resizable: bool,
+    /// #99 (`PIN-27`): zoomed out, the nearest pixel instead of the average.
+    pub sharp: bool,
+}
+
+/// #99 (`PIN-21`): how a pin's colours are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Filter {
+    #[default]
+    None,
+    Grayscale,
+    Invert,
+}
+
+impl Filter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Filter::None => "none",
+            Filter::Grayscale => "grayscale",
+            Filter::Invert => "invert",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Filter> {
+        Some(match s {
+            "none" => Filter::None,
+            "grayscale" => Filter::Grayscale,
+            "invert" => Filter::Invert,
+            _ => return None,
+        })
+    }
+}
+
+/// `frame` with `filter` applied (`None` for no filter): grayscale by the Rec. 709 luma, or every
+/// colour inverted; alpha unchanged.
+pub fn filtered(frame: &Frame, filter: Filter) -> Option<Frame> {
+    if filter == Filter::None {
+        return None;
+    }
+    let mut px = frame.pixels().to_vec();
+    for p in px.as_chunks_mut::<4>().0 {
+        match filter {
+            Filter::Grayscale => {
+                let y = (2126 * u32::from(p[2])
+                    + 7152 * u32::from(p[1])
+                    + 722 * u32::from(p[0])
+                    + 5000)
+                    / 10_000;
+                let y = u8::try_from(y).unwrap_or(255);
+                (p[0], p[1], p[2]) = (y, y, y);
+            }
+            Filter::Invert => {
+                (p[0], p[1], p[2]) = (255 - p[0], 255 - p[1], 255 - p[2]);
+            }
+            Filter::None => {}
+        }
+    }
+    frame.derived(frame.rect(), px).ok()
 }
 
 impl View {
@@ -422,6 +479,7 @@ impl View {
             opacity: OPACITY_FULL,
             click_through: false,
             resizable: true,
+            sharp: false,
         }
     }
 
@@ -569,12 +627,13 @@ pub fn paint(frame: &Frame, view: &View, dst: &mut [u8]) {
         }
     }
     let start = (m * ww + m) * 4;
-    zoom::render_into(
+    zoom::render_into_with(
         frame,
         view.rect.width,
         view.rect.height,
         &mut dst[start..],
         ww,
+        view.sharp,
     );
     if let Some(badge) = view.badge() {
         let px = dst.as_chunks_mut::<4>().0;

@@ -86,6 +86,35 @@ impl<S: Shell> App<S> {
         )
     }
 
+    /// #99 (`PIN-22`): `pin.paste-replace` (`Ctrl+V` on a pin): the clipboard's image (read once,
+    /// as a paste reads it) becomes the pin's picture at the same corner and zoom. Anything else
+    /// on the clipboard leaves the pin as it is.
+    pub(super) fn replace_from_clipboard(&mut self, id: PinId) -> &'static str {
+        let opts = self.paste_options();
+        let taken = match self.shell.clipboard_take(Some(Kind::Image), opts) {
+            Ok(t) => t,
+            Err(e) => {
+                self.paste_failed_notice(&e);
+                return "nothing_to_paste";
+            }
+        };
+        let Payload::Image { format, bytes, .. } = taken.payload else {
+            self.shell
+                .notice("The clipboard holds no picture; the pin stays as it is.");
+            return "not_an_image";
+        };
+        match self.decode_clipboard_image(format, &bytes) {
+            Ok((frame, _)) => match self.pins.replace_picture(id, frame) {
+                Ok(_) => "replaced",
+                Err(_) => "failed",
+            },
+            Err(e) => {
+                self.paste_failed_notice(&e);
+                "not_an_image"
+            }
+        }
+    }
+
     /// Pins image files: `noeul pin <file>` and files dropped on a pin (NOEUL-FR-073).
     pub(super) fn paste_files(
         &mut self,

@@ -176,6 +176,8 @@ pub trait PinWindow {
     fn present(&mut self, frame: &Frame, view: &View) -> Result<(), String>;
     /// Changes only the opacity (percent): nothing is rendered again.
     fn set_opacity(&mut self, opacity: u32);
+    /// #99: above other windows or in the normal z-order (never activating anything).
+    fn set_topmost(&mut self, _on: bool) {}
     /// Hides or shows the window without changing which window has focus; a window shown again
     /// is above the other pins.
     fn set_visible(&mut self, visible: bool);
@@ -232,6 +234,14 @@ pub struct Transforms {
     pub thumbnail: Option<(u32, u32)>,
     /// The pin lets the mouse through to the window below (NOEUL-FR-063).
     pub click_through: bool,
+    /// #99 (`PIN-21`): shown in grayscale or inverted (the view only; copy and save keep the
+    /// picture's own colours).
+    pub filter: transform::Filter,
+    /// #99 (`PIN-27`): zoomed out, the nearest pixel instead of the average (zooming in always
+    /// repeats pixels).
+    pub sharp: bool,
+    /// #99 (`PIN-21`): above other windows (the default) or in the normal z-order.
+    pub topmost: bool,
 }
 
 impl Default for Transforms {
@@ -241,6 +251,9 @@ impl Default for Transforms {
             opacity: transform::OPACITY_FULL,
             thumbnail: None,
             click_through: false,
+            filter: transform::Filter::None,
+            sharp: false,
+            topmost: true,
         }
     }
 }
@@ -311,6 +324,7 @@ impl Pin {
             opacity: self.state.opacity,
             click_through: self.state.click_through,
             resizable: self.state.thumbnail.is_none(),
+            sharp: self.state.sharp,
         }
     }
 
@@ -348,7 +362,12 @@ fn shown_size(base: (u32, u32), zoom: u32) -> (u32, u32) {
 fn present(p: &mut Pin, look: Look) -> Result<(), String> {
     let pic = shown(&p.frame, &p.annotations, p.state.orientation);
     let view = p.view(look);
-    p.window.present(pic.as_ref().unwrap_or(&p.frame), &view)
+    let base = pic.as_ref().unwrap_or(&p.frame);
+    // #99: a filter changes only what the window shows.
+    match transform::filtered(base, p.state.filter) {
+        Some(f) => p.window.present(&f, &view),
+        None => p.window.present(base, &view),
+    }
 }
 
 /// The picture with its annotations drawn on it, when it has any (the picture itself never
@@ -533,6 +552,7 @@ impl Pins {
                 opacity: state.opacity,
                 click_through: false,
                 resizable: true,
+                sharp: false,
             },
             focus,
             guard,
@@ -726,6 +746,7 @@ impl Pins {
             opacity: state.opacity,
             click_through: state.click_through,
             resizable: state.thumbnail.is_none(),
+            sharp: state.sharp,
         };
         let pic = shown(frame, &annotations, state.orientation);
         p.window
@@ -789,6 +810,7 @@ impl Pins {
                 opacity: c.state.opacity,
                 click_through: c.state.click_through,
                 resizable: c.state.thumbnail.is_none(),
+                sharp: c.state.sharp,
             },
             focus,
             guard: None,
@@ -975,6 +997,61 @@ impl Pins {
 
     /// Lets the mouse through a pin, or not (NOEUL-FR-063); the window shows the badge meanwhile.
     /// The caller makes sure a recovery path exists. `Ok(false)` when unchanged.
+    /// #99 (`PIN-21`): the view's filter.
+    pub fn set_filter(&mut self, id: PinId, f: transform::Filter) -> Result<bool, PinError> {
+        self.change(id, |p| {
+            if p.state.filter == f {
+                return false;
+            }
+            p.state.filter = f;
+            true
+        })
+    }
+
+    /// #99 (`PIN-27`): the nearest pixel when zoomed out.
+    pub fn set_sharp(&mut self, id: PinId, on: bool) -> Result<bool, PinError> {
+        self.change(id, |p| {
+            if p.state.sharp == on {
+                return false;
+            }
+            p.state.sharp = on;
+            true
+        })
+    }
+
+    /// #99 (`PIN-21`): above other windows or in the normal z-order.
+    pub fn set_topmost(&mut self, id: PinId, on: bool) -> Result<bool, PinError> {
+        let p = self.open.get_mut(&id).ok_or(PinError::NotFound(id))?;
+        if p.state.topmost == on {
+            return Ok(false);
+        }
+        p.state.topmost = on;
+        p.window.set_topmost(on);
+        Ok(true)
+    }
+
+    /// #99 (`PIN-22`): the pin shows `frame` instead of its picture, at the same top-left corner
+    /// and zoom; its annotations go (they were drawn on the old picture), a thumbnail ends.
+    pub fn replace_picture(&mut self, id: PinId, mut frame: Frame) -> Result<bool, PinError> {
+        let look = self.look;
+        let p = self.open.get_mut(&id).ok_or(PinError::NotFound(id))?;
+        let r = p.frame.rect();
+        frame.set_origin(r.x, r.y);
+        let old = std::mem::replace(&mut p.frame, frame);
+        let notes = std::mem::take(&mut p.annotations);
+        let state = p.state;
+        p.state.thumbnail = None;
+        if let Err(e) = present(p, look) {
+            p.frame = old;
+            p.annotations = notes;
+            p.state = state;
+            return Err(PinError::Window(e));
+        }
+        p.content.kind = ContentKind::Image;
+        p.content.text = None;
+        Ok(true)
+    }
+
     pub fn set_click_through(&mut self, id: PinId, on: bool) -> Result<bool, PinError> {
         self.change(id, |p| {
             if on == p.state.click_through {
@@ -1269,6 +1346,9 @@ impl Pins {
             "opacity": p.state.opacity,
             "thumbnail": p.state.thumbnail.is_some(),
             "click_through": p.state.click_through,
+            "filter": p.state.filter.as_str(),
+            "sharp": p.state.sharp,
+            "topmost": p.state.topmost,
             "group": p.group,
             "animation": p.animation.map(|n| json!({"frames": n, "shown": "first_frame"})),
             "content": p.content.kind.as_str(),

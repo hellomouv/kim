@@ -192,13 +192,13 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `PIN-18` | Off-screen images after a display change stay put; "restore off-screen images" in the tray | L | Same model: pins stay; "Bring pins on screen" in tray and CLI. Step 53: display and work-area changes keep pins in place, `pin.list` and `status` report off-screen pins, a notice names the way back, the tray's Bring pins on screen and `noeul pin show --all --on-screen` move lost pins into the nearest work area (zoomed out when larger); missing: a real monitor unplug (manual, UX spec §4.6) | partial | NOEUL-FR-067 | N4 | T, M | T: `crates/noeul/src/app.rs` a_monitor_disconnect_keeps_pins_and_offers_the_way_back; T: `crates/noeul/src/pins.rs` a_monitor_disconnect_keeps_pins_in_place_until_they_are_brought_back |
 | `PIN-19` | Animated GIFs: playback speed, previous and next frame | H | GIF playback and frame stepping; a pin says when it shows only the first frame. Step 54: no GIF decoder and no animated pins yet (frame navigation, pause and speed are not implemented and have no actions); an animated GIF offered on the clipboard is pinned as its first frame with a notice, in the pin's menu and in `pin.list` (`animation`), never silently. Step 55: GIF files (pasted, dropped, `noeul pin <file>`) are decoded and pinned the same way; missing: playback, stepping and speed (NOEUL-FR-068, P2) | partial | NOEUL-FR-068 | N2 | T | T: `crates/noeul/src/gif.rs` frames_are_counted_without_decoding_anything; T: `crates/noeul/src/app.rs` an_animated_gif_is_never_flattened_silently; T: `crates/noeul/src/pins/tests.rs` an_animated_picture_says_it_shows_its_first_frame |
 | `PIN-20` | Select several images with `Ctrl`+click, or all with `Ctrl+A` (Pro) | P, K | Pin extra (multi-selection) | planned | NOEUL-FR-069 | N4 | T | — |
-| `PIN-21` | Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro) | P | Pin extras | planned | NOEUL-FR-069 | N4 | T | — |
-| `PIN-22` | Replace an image with the clipboard content (`Ctrl+V`) | K | Pin extra | planned | NOEUL-FR-069 | N4 | T | — |
+| `PIN-21` | Solo mode, topmost toggle, grayscale, inversion, background modes for transparency (Pro) | P | Per pin: grayscale and inverted views (`pin.grayscale`, `pin.invert`, `pin set --filter`; copy and save keep the colours) and the topmost toggle (`pin.topmost`, `--topmost`) (#99). Missing: solo mode and the background modes for transparency | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/pins/tests.rs` filters_sharp_topmost_and_replace_change_what_they_should, filtered_frames_have_the_expected_pixels; T: `e2e/tests/issue99_noeul_output.rs` |
+| `PIN-22` | Replace an image with the clipboard content (`Ctrl+V`) | K | `pin.paste-replace` (`Ctrl+V` on a pin): the clipboard picture replaces the pin's at the same corner and zoom; other clipboard content leaves it (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/app/output_tests.rs` a_pin_takes_the_clipboard_picture_in_place |
 | `PIN-23` | Copy the original text of a text image (`Ctrl+Shift+C`) | K | `pin.copy-text` (`Ctrl+Shift+C`) Step 55: `pin.copy-text` (`Ctrl+Shift+C`) copies a card's text | implemented | NOEUL-FR-071 | N2 | T | T: `crates/noeul/src/app/paste_tests.rs` copy_text_returns_the_cards_text |
 | `PIN-24` | Magnifier and color picking on image windows | G | `color.copy` on pins. Step 59 shipped the picker in the overlay only: pins need a magnifier and a `pin` binding (a manifest change, ADR 0053) | planned | NOEUL-FR-044 | N3 | T | — |
 | `PIN-25` | Confirm before closing several images at once | L | Same. Step 54: closing every pin or a group at once from the CLI needs `--yes` (exit 7 `confirmation_required` otherwise); missing: a GUI command that closes several pins (the settings window, N5) | partial | NOEUL-FR-064 | N2 | T | T: `crates/noeul/tests/pin_transform.rs` groups_switch_and_act_together; T: `crates/noeul/tests/pins.rs` many_pins_are_independent_windows_driven_by_cli_ipc_and_their_own_messages |
 | `PIN-26` | Move images beyond the screen edge | L, F | Allowed; recovery through "Bring pins on screen". Step 53: pins may lie partly or wholly off-screen; Bring pins on screen recovers them; missing: the manual check | partial | NOEUL-FR-061, NOEUL-FR-067 | N4 | M | T: `crates/noeul/src/pins.rs` on_screen_needs_a_grabbable_part, a_monitor_disconnect_keeps_pins_in_place_until_they_are_brought_back |
-| `PIN-27` | Disable smooth scaling for sharp text | F | Pixelated scaling as a pin extra | planned | NOEUL-FR-069 | N4 | T | — |
+| `PIN-27` | Disable smooth scaling for sharp text | F | Zooming in always repeats pixels (sharp, ADR 0029); `pin.sharp` / `pin set --sharp on` also takes the nearest pixel when zoomed out (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/zoom.rs` tests::sharp_downscaling_takes_pixels_instead_of_averaging |
 | `PIN-28` | Images on virtual desktops (Pro) | P | Pin extra | planned | NOEUL-FR-069 | N4 | M | — |
 | `PIN-29` | Paste or drag images from web pages, downloaded from the internet (Pro) | P | No network; an image already on the clipboard is pinned normally | not intended | D-05 | — | — | — |
 | `PIN-30` | Print an image window (`Ctrl+P`) | K | Deferred | not intended | D-13 | — | — | — |
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 105 |
-| `planned` | 42 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 108 |
+| `planned` | 39 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -335,7 +335,7 @@ picture.
 | 4. History (`HIST`) | 3 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 10 | 1 | 1 | 12 |
 | 6. Annotation (`ANN`) | 14 | 3 | 0 | 17 |
-| 7. Floating pins (`PIN`) | 17 | 11 | 2 | 30 |
+| 7. Floating pins (`PIN`) | 20 | 8 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 5 | 0 | 1 | 6 |
 | 10. Settings (`SET`) | 8 | 8 | 6 | 22 |
@@ -365,3 +365,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-04 | 2.11.3 (2026-01-18) | Step 58 | Displays, monitor and window capture (ADR 0050): 5 more rows `partial` (`SNIP-13` the pointer, `SNIP-14` monitor and active-window capture ◆ without tray items, `COLOR-07` and `DISP-05` sRGB values with an honest HDR warning ◆, `DISP-03` mixed DPI), `DISP-01`, `DISP-02`, `DISP-04` and `CLI-01` extended; 94 `partial`, none `supported` until the physical matrix of UX spec §4.13. |
 | 2026-11-04 | 2.11.3 (2026-01-18) | Step 59 | Colour picker (ADR 0053): 4 more rows `partial` (`COLOR-01` `C` in the overlay, `COLOR-02` `Shift+C` ◆, `COLOR-04` HEX, RGB and HSL, `COLOR-06` the case and alpha settings), `COLOR-03` (`hsl()` swatches), `COLOR-07`, `DET-06` and `CLI-08` (why no command picks a pixel) extended; `PIN-24` (picking on pins) and `COLOR-05` stay planned; 98 `partial`, none `supported` until the manual check of UX spec §4.14. |
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Output and capture follow-ups: `SNIP-11`, `CLI-02` (`capture --delay`), `HIST-06` (auto-save), `OUT-06` (copy as a file), `OUT-07` (JPEG quality), `OUT-12` (cloud-sync exclusion, already in the code) and `SET-11` (documented) move to `partial` with their remaining gaps; `APP-03` (Linux) is tracked by #69. |
+| 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Pin follow-ups: `PIN-21` (grayscale, invert, topmost), `PIN-22` (replace with the clipboard) and `PIN-27` (sharp pixels) move to `partial`. |

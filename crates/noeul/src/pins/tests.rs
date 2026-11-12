@@ -1032,3 +1032,61 @@ fn an_animated_picture_says_it_shows_its_first_frame() {
     );
     assert_eq!(pins.info(id).unwrap().animation, Some(12));
 }
+
+/// #99 (`PIN-21`, `PIN-27`, `PIN-22`): a filter, sharp pixels and the z-order change only the
+/// pin's view and state; copy output (`rendered`) keeps the picture's own colours; a replaced
+/// picture keeps the corner and drops the old annotations.
+#[test]
+fn filters_sharp_topmost_and_replace_change_what_they_should() {
+    let ledger = Ledger::new();
+    let d = desk();
+    let mut w = FakeWindows::default();
+    let mut pins = Pins::new();
+    let red = Frame::solid(&ledger, Rect::new(10, 20, 4, 4), [0, 0, 255, 255]).unwrap();
+    let id = pins
+        .create(&mut w, &d, exact(red, Source::Capture, false))
+        .unwrap();
+    assert!(
+        pins.info(id).unwrap().transforms.topmost,
+        "on top by default"
+    );
+    assert_eq!(pins.set_filter(id, transform::Filter::Grayscale), Ok(true));
+    assert_eq!(pins.set_filter(id, transform::Filter::Grayscale), Ok(false));
+    assert_eq!(
+        pins.info(id).unwrap().transforms.filter,
+        transform::Filter::Grayscale
+    );
+    assert!(
+        pins.rendered(id).is_none() && pins.picture(id).unwrap().pixels()[2] == 255,
+        "copy and save keep the colours"
+    );
+    assert_eq!(pins.set_sharp(id, true), Ok(true));
+    assert!(w.log.borrow().views.last().unwrap().1.sharp);
+    assert_eq!(pins.set_topmost(id, false), Ok(true));
+    assert!(!pins.info(id).unwrap().transforms.topmost);
+    let blue = Frame::solid(&ledger, Rect::new(0, 0, 6, 3), [255, 0, 0, 255]).unwrap();
+    assert_eq!(pins.replace_picture(id, blue), Ok(true));
+    let info = pins.info(id).unwrap();
+    assert_eq!((info.rect.x, info.rect.y, info.image), (10, 20, (6, 3)));
+    let entry = pins.entry_of(&d, id).unwrap();
+    assert_eq!(
+        (
+            entry["filter"].as_str(),
+            entry["sharp"].as_bool(),
+            entry["topmost"].as_bool()
+        ),
+        (Some("grayscale"), Some(true), Some(false))
+    );
+}
+
+/// #99: grayscale uses the Rec. 709 luma; invert flips every colour; alpha stays.
+#[test]
+fn filtered_frames_have_the_expected_pixels() {
+    let ledger = Ledger::new();
+    let f = Frame::solid(&ledger, Rect::new(0, 0, 1, 1), [0, 0, 255, 128]).unwrap();
+    let g = transform::filtered(&f, transform::Filter::Grayscale).unwrap();
+    assert_eq!(g.pixels(), &[54, 54, 54, 128]);
+    let i = transform::filtered(&f, transform::Filter::Invert).unwrap();
+    assert_eq!(i.pixels(), &[255, 255, 0, 128]);
+    assert!(transform::filtered(&f, transform::Filter::None).is_none());
+}

@@ -399,6 +399,16 @@ pub struct PinSetArgs {
     /// Let mouse clicks pass through the pin: on or off
     #[arg(long, value_parser = ["on", "off"])]
     pub click_through: Option<String>,
+    /// How the pin shows its colours (the view only; copy and save keep them): none, grayscale
+    /// or invert (#99)
+    #[arg(long, value_parser = ["none", "grayscale", "invert"])]
+    pub filter: Option<String>,
+    /// Sharp pixels when zoomed out (the nearest pixel, not the average): on or off (#99)
+    #[arg(long, value_parser = ["on", "off"])]
+    pub sharp: Option<String>,
+    /// Above other windows (the default) or in the normal z-order: on or off (#99)
+    #[arg(long, value_parser = ["on", "off"])]
+    pub topmost: Option<String>,
     /// Move the pins to this group
     #[arg(long, value_name = "NAME")]
     pub move_to_group: Option<String>,
