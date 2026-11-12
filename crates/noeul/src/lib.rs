@@ -60,6 +60,7 @@ pub mod pins;
 pub mod prefs;
 pub mod selection;
 pub mod settings;
+pub mod startup;
 pub mod store;
 pub mod transform;
 pub mod tray;

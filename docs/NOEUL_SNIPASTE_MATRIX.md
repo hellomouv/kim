@@ -239,7 +239,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `SET-01` | Preferences dialog with detailed options and explanations | F, H | Compact settings window with sections and reset per section Step 61: one compact window (`noeul settings`, tray "Settings…") with the shortcuts, the gestures, the tray icon, the disk history and the pin backup; missing: the other sections of NOEUL-FR-101 (start at sign-in, language, capture options, privacy, About) and per-section reset | partial | NOEUL-FR-101 | N5 | T, M | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs` |
 | `SET-02` | Change the global hotkeys | F, T | Hotkey contract: list, change, disable, reset, conflicts reported Step 61: the window records keys without running them, shows what a key shadows, explains a refusal and offers "Use anyway" (`--replace` / `--allow-conflict`); the CLI `noeul hotkeys` since Step 49 | implemented | NOEUL-FR-100, NOEUL-FR-101 | N5 | T, M | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs`; T: `crates/noeul/tests/instance.rs` |
-| `SET-03` | Run when the system starts | F | Opt-in start at sign-in (per-user, no service) | planned | NOEUL-FR-002 | N5 | T, M | — |
+| `SET-03` | Run when the system starts | F | Opt-in `noeul startup enable|disable|status` (off by default): one per-user Run value `mouv.noeul` that starts the windowless `noeulw.exe`, which runs `noeul start` without a console and ends (no service, no task) (#99). Missing: a real sign-in | partial | NOEUL-FR-002 | N5 | T, M | T: `crates/noeul/tests/cli.rs` startup_at_sign_in_is_opt_in_and_uses_a_private_test_key, `crates/noeul/src/startup.rs` tests; M: 2026-11-13 Windows 10 22H2, `noeulw.exe` started a sandboxed Noeul with no console window and exited |
 | `SET-04` | Theme color, interface font, tray icon options | H, P | Kim tokens, light theme, contrast themes Step 61: the settings window uses the system colours (High Contrast), a dark title bar and dark controls in dark mode, the system message font at the monitor's DPI; missing: the Kim tokens in the window | partial | NOEUL-FR-103 | N5 | M | T: `crates/noeul/tests/settings_window.rs`; T: `crates/noeul/src/prefs.rs` |
 | `SET-05` | Hide the tray icon | A | Setting; everything stays reachable. Step 49: `[general] tray_icon = false` and `noeul start --no-tray`; missing: the settings window (N5) and a manual check | partial | NOEUL-FR-004 | N1 | M | T: `crates/noeul/src/settings.rs` values_unknown_keys_and_fallbacks; T: `crates/noeul/tests/instance.rs` lifecycle_status_health_capture_checks_and_quit |
 | `SET-06` | Customize the tray icon's mouse actions (Pro) | P | `[general] tray_left_click` and `tray_middle_click`: capture (left, default), pin the clipboard (middle, default), open the settings, or nothing; the right click is the menu (#99). Missing: a double-click action and the manual check | partial | NOEUL-FR-004 | N1 | M | T: `crates/noeul/src/app/output_tests.rs` tray_clicks_follow_their_settings |
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 0 |
-| `partial` | 115 |
-| `planned` | 32 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 116 |
+| `planned` | 31 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -338,7 +338,7 @@ picture.
 | 7. Floating pins (`PIN`) | 23 | 5 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 5 | 0 | 1 | 6 |
-| 10. Settings (`SET`) | 9 | 7 | 6 | 22 |
+| 10. Settings (`SET`) | 10 | 6 | 6 | 22 |
 | 11. Command line (`CLI`) | 5 | 3 | 1 | 9 |
 | 12. Application (`APP`) | 1 | 3 | 3 | 7 |
 | 13. Noeul additions (`ADD`) | 2 | 5 | 0 | 7 |
@@ -370,3 +370,4 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

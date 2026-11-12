@@ -23,10 +23,10 @@ service, no hot corners).
 | Pins (`PIN`) | 30 | 2 | 23 | 3 | 2 |
 | Paste (F3) (`PASTE`) | 14 | 0 | 12 | 0 | 2 |
 | Displays and colour (`DISP`) | 6 | 0 | 5 | 0 | 1 |
-| Settings and shortcuts (`SET`) | 22 | 3 | 11 | 2 | 6 |
+| Settings and shortcuts (`SET`) | 22 | 3 | 12 | 1 | 6 |
 | Command line (`CLI`) | 9 | 2 | 6 | 0 | 1 |
 | Application (`APP`) | 7 | 0 | 3 | 1 | 3 |
-| **All** | **164** | **11** | **118** | **11** | **24** |
+| **All** | **164** | **11** | **119** | **10** | **24** |
 
 ## 2. The critical workflows
 
@@ -62,6 +62,5 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 - `PIN-08` Free-size thumbnail by right-dragging (Pro)
 - `PIN-15` Group manager window (Pro)
 - `PIN-28` Images on virtual desktops (Pro)
-- `SET-03` Run when the system starts
 - `SET-21` Interface translations
 - `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/hellomouv/kim/issues/69), done on the Linux server)

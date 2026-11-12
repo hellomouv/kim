@@ -46,7 +46,7 @@ const TOOLS: [Tool; 4] = [
     Tool {
         id: "noeul",
         crates: &["noeul"],
-        exes: &["noeul.exe"],
+        exes: &["noeul.exe", "noeulw.exe"],
         entrypoint: "noeul.exe",
         summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider)",
     },

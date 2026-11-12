@@ -37,6 +37,7 @@
 | 20 | #99: Settings → Clipboard → Sync across devices on; `F1`, select, `Ctrl+C` | the picture is not offered on another signed-in device |
 | 22 | #99: on a pin, the menu → Grayscale, Invert colours, Sharp pixels (zoomed out), Always on top off; copy it into Paint | the view changes each time; Paint gets the original colours; with Always on top off another window covers the pin |
 | 23 | #99: copy a picture in a browser; `Ctrl+V` on a pin | the pin shows the new picture at the same corner |
+| 24 | #99: `noeul startup enable`; sign out and in | Noeul is running after sign-in with no console window; `noeul startup disable` removes it (Settings → Apps → Startup shows it meanwhile) |
 | 21 | #99 (`SET-11`): with an elevated window (UAC yes) focused, press `F1` | note whether the overlay opens (Noeul never elevates; record the result in the matrix) |
 
 ## 2. Resources (compare with `docs/perf/noeul-baseline.json`)

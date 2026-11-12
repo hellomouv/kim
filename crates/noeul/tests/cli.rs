@@ -278,3 +278,51 @@ fn check_all_tools_reads_installed_manifests_only() {
         String::from_utf8_lossy(&sb.run(&["hotkeys", "check", "--all-tools"]).stdout).to_string();
     assert!(human.contains("fix:"), "{human}");
 }
+
+/// #99 (`SET-03`): `startup` is off by default; enable writes one value naming the windowless
+/// `noeulw.exe` (a dry run writes nothing), disable removes it. Only a private test key under
+/// `HKCU\Software\mouv-test\` is used (the debug build's `NOEUL_DEV_STARTUP_KEY`), deleted after.
+#[cfg(windows)]
+#[test]
+fn startup_at_sign_in_is_opt_in_and_uses_a_private_test_key() {
+    let mut sb = Sandbox::new("startup");
+    let key = format!(r"Software\mouv-test\noeul-cli-{}\Run", std::process::id());
+    sb.env.push(("NOEUL_DEV_STARTUP_KEY".into(), key.clone()));
+    let (code, v) = sb.json(&["startup", "status"]);
+    assert_eq!(code, 0, "{v:#}");
+    assert_eq!(v["data"]["enabled"], false, "off by default");
+    assert!(
+        v["data"]["location"]
+            .as_str()
+            .unwrap()
+            .contains("mouv-test"),
+        "{v:#}"
+    );
+    let (_, v) = sb.json(&["startup", "enable", "--dry-run"]);
+    assert_eq!(v["data"]["changed"], true, "{v:#}");
+    assert_eq!(sb.json(&["startup", "status"]).1["data"]["enabled"], false);
+    let (code, v) = sb.json(&["startup", "enable"]);
+    if code != 0 {
+        // noeulw.exe is built with the package; a lone `cargo test -p noeul` may not have it.
+        assert!(v.to_string().contains("noeulw.exe"), "{v:#}");
+    } else {
+        let st = sb.json(&["startup", "status"]).1;
+        assert_eq!(st["data"]["enabled"], true);
+        assert!(
+            st["data"]["command"]
+                .as_str()
+                .unwrap()
+                .contains("noeulw.exe\" --startup")
+        );
+        let (_, v) = sb.json(&["startup", "disable"]);
+        assert_eq!(v["data"]["changed"], true);
+    }
+    assert_eq!(sb.json(&["startup", "status"]).1["data"]["enabled"], false);
+    let _ = std::process::Command::new("reg")
+        .args([
+            "delete",
+            &format!(r"HKCU\{}", key.trim_end_matches(r"\Run")),
+            "/f",
+        ])
+        .output();
+}

@@ -16,6 +16,7 @@ mod instance;
 mod interop;
 mod keep_cmd;
 mod mcp;
+mod startup_cmd;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use noeul::error::{Code, NoeulError};
@@ -162,6 +163,10 @@ enum Command {
     /// Settings and paths: show them, change one (`config set`), reset them (`config reset`)
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Start at sign-in (off by default): show it, turn it on or off (one per-user Run value that
+    /// starts the windowless noeulw.exe; no service, no task)
+    #[command(subcommand)]
+    Startup(StartupCommand),
     /// Noeul's capabilities document: its commands and what each may change (read-only)
     Capabilities,
     /// Noeul's version and the contract, schema and IPC versions it speaks (read-only)
@@ -484,6 +489,16 @@ pub struct DryRun {
 }
 
 #[derive(Debug, Subcommand)]
+enum StartupCommand {
+    /// Whether Noeul starts when you sign in
+    Status,
+    /// Start Noeul when you sign in
+    Enable(DryRun),
+    /// No longer start Noeul when you sign in
+    Disable(DryRun),
+}
+
+#[derive(Debug, Subcommand)]
 enum ConfigCommand {
     /// Effective settings and the per-user paths
     Show,
@@ -624,6 +639,9 @@ fn main() -> ExitCode {
         }
         Command::Hotkeys(c) => hotkeys_cmd::run(c, &ctx),
         Command::Config(ConfigCommand::Show) => instance::config_show(),
+        Command::Startup(StartupCommand::Status) => startup_cmd::status(),
+        Command::Startup(StartupCommand::Enable(a)) => startup_cmd::change(true, a),
+        Command::Startup(StartupCommand::Disable(a)) => startup_cmd::change(false, a),
         Command::Config(ConfigCommand::Set(a)) => config_cmd::set(&ctx, a),
         Command::Config(ConfigCommand::Reset(a)) => config_cmd::reset(&ctx, a),
         Command::Capabilities => Ok(capabilities()),
@@ -668,6 +686,9 @@ fn command_name(c: &Command) -> &'static str {
         },
         Command::Hotkeys(c) => hotkeys_cmd::command_name(c),
         Command::Config(ConfigCommand::Show) => "config.show",
+        Command::Startup(StartupCommand::Status) => "startup.status",
+        Command::Startup(StartupCommand::Enable(_)) => "startup.enable",
+        Command::Startup(StartupCommand::Disable(_)) => "startup.disable",
         Command::Config(ConfigCommand::Set(_)) => "config.set",
         Command::Config(ConfigCommand::Reset(_)) => "config.reset",
         Command::Capabilities => "capabilities",

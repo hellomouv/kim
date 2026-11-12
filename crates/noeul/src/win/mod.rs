@@ -15,6 +15,7 @@ pub mod pipe;
 pub mod runtime;
 pub mod settings;
 pub mod spawn;
+pub mod startup;
 pub mod tray;
 pub mod typeset;
 

@@ -13,6 +13,11 @@ publish.workspace = true
 name = "noeul"
 path = "src/main.rs"
 
+# #99 (`SET-03`): the windowless sign-in starter.
+[[bin]]
+name = "noeulw"
+path = "src/bin/noeulw.rs"
+
 [lints]
 workspace = true
 
