@@ -10,12 +10,9 @@ Status: **current** (Step 14, issue #14) · Validates [ADR 0003](adr/0003-subak-
 `SUBAK-FR-002`, `SUBAK-FR-003`, `SUBAK-FR-004`, `SUBAK-FR-012`, `SUBAK-FR-013`, `SUBAK-FR-015`,
 `SUBAK-FR-016`, `SUBAK-FR-044`, `KIM-FR-012`, `KIM-NFR-001`, `KIM-SEC-012`
 
-> **Milestone A is not complete.** Its acceptance needs one manual run on a real desktop: a
-> Windows Terminal window is closed while a live Claude Code session runs in a Subak Terminal,
-> and a new client reattaches to that same process. Agents may not open windows or start an
-> interactive Claude Code session on the maintainer's machine, so that run is **pending**. The
-> exact procedure is §6 and its results table §6.4. Everything else of this document was
-> measured on real Windows, as stated row by row.
+> **Milestone A passed (2026-11-13).** Its acceptance run — a Windows Terminal window closed while
+> a live Claude Code session runs in a Subak Terminal, then a new client reattaching to that same
+> process — was done on the real desktop (ADR 0088); the results are in §6.4.
 
 ## 1. Result
 
@@ -318,7 +315,7 @@ documented.
 
 | Issue | Status | Where |
 | --- | --- | --- |
-| Real Windows Terminal close with a live Claude Code session (acceptance 1) | **pending manual run**; Milestone A not complete | §6 |
+| Real Windows Terminal close with a live Claude Code session (acceptance 1) | passed 2026-11-13 (all four phases) | §6.4 |
 | Windows Terminal tab close, conhost window close, VS Code terminal, SSH sessions | not verified (manual; VS Code and SSH need their environments) | §6.3, R-03 |
 | Sleep, hibernate, lock, RDP, logoff, restart | not verified (manual) | CONPTY_PROOF §7 |
 | A Host crash or a logoff ends every Terminal | by design until persistence and recovery (Steps 29–31) | R-05, SESSION_MODEL §6 |
