@@ -52,18 +52,23 @@ ignored by rules by design (`skipped_injected_input`), so a rule's *action* is c
 | 3 | **pass** after a fix | `rule run` typed exactly `감사합니다 👍` into Notepad; a WinForms password box first received the text — fixed in `1781540` (any `*EDIT*` class with `ES_PASSWORD`), then `skipped_password_field` with 0 characters |
 | 4 | **pass** | F22 (`injected: accept`) opened Notepad once (1 → 2 processes); paused and turned-off rules opened nothing |
 | 5 | **not run** | would open a tab in the maintainer's running browser |
-| 6 | **pass** (move) | `rule run` moved the pointer 2000,600 → 2200,600; click/drag not run |
+| 6 | **pass** after a fix (held button not run) | `rule run`: move 2000,600 → 2200,600; a click at 2000,520 moved Notepad's caret 0 → 70; a double click selected the word "5"; 3 notches scrolled the first visible line 4 → 16. A held button needs a physical key (an injected-accepting hold is refused by the recursion guard). The editor's screen map stretched a 5120 × 1440 monitor into a near square — fixed in `91a13d8` |
 | 7 | **pass** after a fix | F18 toggled `nav` and back; tray tooltip `Ddalgak: engine on · mode nav`, notched disc; a *hold* rule kept `nav` only while the chord was held (0 keys down after); `mode set` from the CLI. The editor's header kept showing the start-up mode — fixed in `82ae844` (refreshed every second) |
 | 8 | **pass** | pause → `skipped_paused`; rule off → nothing; rule on again → opens |
 | 9 | **pass** after fixes (Narrator not run) | editor with the mouse and keys: create (key capture, *Type text*, Korean text, simulation, consent with Cancel focused) → `rule run` typed `안녕하세요 GUI`; rename; turn off/on (detail pane and row checkbox); duplicate (Ctrl+D, named "… (사본)", off); reorder by Alt+Up/Alt+Down and by dragging the handle; delete with confirmation (mouse and Delete/Tab/Enter) and Undo; Korean search; draft discard asks first. Fixed in `2b8804d`: English field problems, rule names and status lines in the Korean UI, 놀이터 → 연습장, "on 1 lines", a stale Undo toast that undid a later change |
 | 10 | **pass** after a fix (held-key release on switch not run; `.ahk` import not run here, flows test) | new profile, switch with the per-key diff (engine follows), duplicate, export to a chosen path (99 rules, all off), delete, import (inactive, 0 of 99 on, engine unchanged), history: side-by-side compare and restore of r105. Fixed in `2b8804d`: the profile-per-program rows did not follow added/deleted profiles |
 | 11 | **pass** (shortcuts); conflict report **not run** | `engine.toggle` on `Ctrl+Alt+Shift+F13` and `engine.pause` on `F14` registered; each press switched off/on and paused/resumed with origin `shortcut:engine.*`. The cross-tool conflict report needs installed tools (sandbox has none) |
 | 12 | **pass** | simulate: `typ 실행됨 (시뮬레이션)`, nothing typed; Live (after the acknowledgement) typed only into the page's field, Notepad unchanged; the program rule opened nothing until *확인하고 열기*, then exactly one Notepad (closed again); reset kept the engine and its bindings |
-| 13 | **not run** | the trigger needs a physical key; macro steps are covered by worker tests |
+| 13 | **pass** (started by `rule run`; the key itself needs a physical press) | hello, Enter, 1 s → 2 s wait, world: `hello⏎world` in order; `ddalgak pause` during the wait: only `hello⏎`, outcome `cancelled`, 0 keys held. A macro built in the editor (typed step, recorded keys, a step removed, repeat 2) typed exactly `abcxyabcxy` |
 | 14 | **not run** | the emergency chord is read from physical key state; injected chord correctly ignored |
 | 15 | **pass** (no key held) | killed `ddalgak-gui.exe` with the engine on: 0 keys down; next start `off_reason: unclean_exit`, engine off |
 | 16 | **not run** | starting an elevated Notepad needs a UAC prompt, which the agent does not trigger |
 | 17 | **pass** after a fix (60 s idle, not the full 10 minutes) | 99–100 rules, engine on: idle CPU 0 ms over 60 s; Task Manager memory was 26.9 MB (each sub-schema validator kept a copy of the schema's `$defs`) — fixed in `1781540`: **3.4 MB** (private bytes 4.4 MB), 4 MB after the editor session; editor **55–69 MB** (< 80 MB) |
 | 18 | not run in this pass | one monitor only (second monitor: hardware missing) |
-| 19–24 | not run in this pass | |
+| 19 | not run in this pass | |
+| 20 | not run in this pass | needs the Kim install path |
+| 21 | **pass** after a fix (commands and sleep not run) | a `notify` rule showed its toast from `ddalgak-gui.exe`; a 3 s `timer` started its notify rule 3 s later with the toast; a timer aimed at a mode rule was accepted and did nothing — refused since `77f0271`; an `every_minutes: 1` schedule fired while running and did not run for a time that passed while paused |
+| 22 | not run in this pass | |
+| 23 | **pass** (keys; mouse recording needs physical input) | *Record keys*: red banner with an explicit stop, the review list with ↑ ↓ edit ✕ before saving; *Record mouse* keeps physical input only (injected clicks: 0 kept, by design) |
+| 24 | **pass** (conditions; profile-by-program switching not run) | one chord, two rules: in Notepad `ctx-np` (app condition) won, elsewhere `ctx-any`; `explain` and the Playground show winner, `lower_precedence` and `condition_false` |
 

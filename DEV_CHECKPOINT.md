@@ -9,7 +9,7 @@ checkpoint."*
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
 - Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100 delivered and closed; #99 in progress (9 planned rows left); then #98 and #97
-- Real-UI checks (ADR 0088, user 2026-11-13: full real desktop testing with save/restore of settings and clipboard; never the user's open windows): driver and keep-awake helper in the session scratchpad. Closed with real evidence: #55, #56, #58, #14, #15, #16, #18, #19, #20, #57, #61, #62, #64, #66, #68; open with exact blockers: #8, #31 (sleep/sign-out/reboot), #63 (second monitor, HDR). Fixed on the way: Ctrl+click selection, snapping edges, zoom drift, pin quick-save format (Noeul); term_bench lone Alt, tray double toggle, clipboard open retry, mark-mode wide steps, question width (Subak); smoke scripts (tab process, glued rows). Next: Ddalgak (DDALGAK_ACCEPTANCE Results 2026-11-13: rows 1,3,4,6,7,8,9,10,11,12,15,17 pass on the real desktop; 2,13,14 need physical keys; 5 would use the maintainer's browser; 16 needs UAC) — close #79/#80/#81, then real checks for #76 clicks, #82 contexts, #84 window/clipboard/timers, then #99, #98, #97
+- Real-UI checks (ADR 0088, user 2026-11-13: full real desktop testing with save/restore of settings and clipboard; never the user's open windows): driver and keep-awake helper in the session scratchpad. Closed with real evidence: #55, #56, #58, #14, #15, #16, #18, #19, #20, #57, #61, #62, #64, #66, #68, #77, #79, #80, #81, #82, #83; open with exact blockers: #8, #31 (sleep/sign-out/reboot), #63 (second monitor, HDR). Fixed on the way: Ctrl+click selection, snapping edges, zoom drift, pin quick-save format (Noeul); term_bench lone Alt, tray double toggle, clipboard open retry, mark-mode wide steps, question width (Subak); smoke scripts (tab process, glued rows). Next: Ddalgak issues still open only for physical-input or environment blockers (reported on each issue): #71/#78 emergency chord (+ reboot), #73 remaps, #74 hotstrings, #75 website in the maintainer's browser, #76 held button + 2nd monitor, #84 elevated window + sleep; #87 waits on those. Then #99, #98, #97 (parity follow-ups), #44 Windows part
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
@@ -18,6 +18,8 @@ checkpoint."*
   repos/madebymouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-13: Ddalgak real-desktop pass 2 (modes, contexts, macros, window/clipboard/timers, text, launches); fixes 82ae844 (live header, mode row), 77f0271 (timer target), 91a13d8 (screen map ratio), 9aaab54 (clipboard restore after paste); `cargo xtask ci` EXIT 0 each.
 
 - 2026-11-13: Ddalgak editor on the real desktop (CRUD, profiles, playground, own shortcuts); fixes 2b8804d (Korean UI strings, stale Undo toast, profile-per-program rows); results in DDALGAK_ACCEPTANCE; `cargo xtask ci` EXIT 0.
 
