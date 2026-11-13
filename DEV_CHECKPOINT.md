@@ -9,7 +9,7 @@ checkpoint."*
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
 - Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100 delivered and closed; #99 in progress (9 planned rows left); then #98 and #97
-- Real-UI checks (ADR 0088, user 2026-11-13: full real desktop testing with save/restore of settings and clipboard; never the user's open windows): driver and keep-awake helper in the session scratchpad. Closed with real evidence: #55, #56, #58, #14, #15, #16, #18, #19, #20, #57, #61, #62, #64, #66, #68; open with exact blockers: #8, #31 (sleep/sign-out/reboot), #63 (second monitor, HDR). Fixed on the way: Ctrl+click selection, snapping edges, zoom drift, pin quick-save format (Noeul); term_bench lone Alt, tray double toggle, clipboard open retry, mark-mode wide steps, question width (Subak); smoke scripts (tab process, glued rows). Next: Ddalgak #71/#73-#84/#87 (DDALGAK_ACCEPTANCE: rows 1,3,4,6,7,8,15,17 done on the real desktop with a sandboxed APPDATA; rows needing physical keys — remap, emergency chord — are blocked; editor rows 9,10,12,13,21-24 next), then #99, #98, #97
+- Real-UI checks (ADR 0088, user 2026-11-13: full real desktop testing with save/restore of settings and clipboard; never the user's open windows): driver and keep-awake helper in the session scratchpad. Closed with real evidence: #55, #56, #58, #14, #15, #16, #18, #19, #20, #57, #61, #62, #64, #66, #68; open with exact blockers: #8, #31 (sleep/sign-out/reboot), #63 (second monitor, HDR). Fixed on the way: Ctrl+click selection, snapping edges, zoom drift, pin quick-save format (Noeul); term_bench lone Alt, tray double toggle, clipboard open retry, mark-mode wide steps, question width (Subak); smoke scripts (tab process, glued rows). Next: Ddalgak (DDALGAK_ACCEPTANCE Results 2026-11-13: rows 1,3,4,6,7,8,9,10,11,12,15,17 pass on the real desktop; 2,13,14 need physical keys; 5 would use the maintainer's browser; 16 needs UAC) — close #79/#80/#81, then real checks for #76 clicks, #82 contexts, #84 window/clipboard/timers, then #99, #98, #97
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
@@ -18,6 +18,8 @@ checkpoint."*
   repos/madebymouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-13: Ddalgak editor on the real desktop (CRUD, profiles, playground, own shortcuts); fixes 2b8804d (Korean UI strings, stale Undo toast, profile-per-program rows); results in DDALGAK_ACCEPTANCE; `cargo xtask ci` EXIT 0.
 
 - 2026-11-13: Noeul #66/#68 and Ddalgak checks on the real desktop; fixes 3df6de9 (settings theme), 1781540 (Ddalgak password field, schema memory 26.9 -> 3.4 MB); `cargo xtask ci` EXIT 0.
 

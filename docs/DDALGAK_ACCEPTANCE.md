@@ -19,7 +19,7 @@ programs, the visible windows and the screen reader.
 | 8 | Enable/disable | `ddalgak pause`/`resume`, the tray's Pause, a rule's *Turn off*, a profile disabled — each stops exactly what it says | e2e step73 |
 | 9 | GUI CRUD | In the editor: create, edit, duplicate, reorder (drag and Alt+Up), delete with Undo, search and filter; Korean labels; keyboard only; Narrator reads captured keys | flows j2–j7 |
 | 10 | Profiles | Save a version, switch profiles with the diff (a held CapsLock is released on the switch), roll back, export, import (also an `.ahk` file) | e2e step75, step80 |
-| 11 | Shortcuts | Ddalgak's own shortcuts (`Ctrl+Alt+Shift+F13`–`F15` by default) work and can be changed in the hotkeys file; a conflict with another Kim tool is reported | shortcuts tests, step74 e2e |
+| 11 | Shortcuts | Ddalgak's own shortcuts (no defaults ship, HOTKEY_CONTRACT §7.5; bind e.g. `Ctrl+Alt+Shift+F13`/`F14` in `%APPDATA%\mouv\ddalgak\hotkeys.json`) work; a conflict with another Kim tool is reported | shortcuts tests, step74 e2e |
 | 12 | Test playground | Simulate a key in a chosen profile, mode and program — nothing is typed; Live types only into the page's field; a website opens only after *Confirm and open* | playground flows, e2e step76 |
 | 13 | Macro chain | Macro: open Notepad, wait 1 s, type `hello`, Enter, type `world`; it runs in order; the emergency chord during the wait stops it with no key held | worker macro tests, e2e step78 |
 | 14 | Emergency disable | With remaps active and a key held, `Ctrl+Alt+Shift+Esc` turns the engine off and releases every held key; it cannot be remapped | safety tests, e2e step73 |
@@ -33,3 +33,37 @@ programs, the visible windows and the screen reader.
 | 22 | Pickers (#102) | *Running programs ▾* lists the open programs (no titles) and fills the field; with Kim and Noeul installed *Find installed capabilities* lists `pin.list`, `image.pin`, `screen.capture-file`; both work with the keyboard and Narrator | `running_programs_…`, e2e step81 |
 | 23 | Macro blocks and mouse recording (#101) | Build a macro with *Repeat block* and *If block* (in Notepad / otherwise) with the keyboard; in Notepad and elsewhere it takes the right branch. *Record mouse*: click twice in Notepad and turn the wheel, then *Stop recording*: the list shows a double click at the point, a delay and a scroll; clicks on the editor and on an elevated window were not kept. `ddalgak rule run <id>` runs it without its keys | `blocks_unroll_…`, `variables_and_branches_…`, `mouse_events_become_steps`, e2e issue101 |
 | 24 | Conditions and profiles by program (#100) | A rule with *Window class* `Chrome_WidgetWin_1` works in Chrome or VS Code only; a rule *only 09:00–17:00 on weekdays* is quiet on Saturday. *Switch profiles by program* with `notepad.exe` → a second profile: focusing Notepad switches (tray tooltip says so), another program switches back, an elevated Notepad never switches; turning it off returns to the saved profile; rules.json still names the saved profile | `window_class_and_time_conditions`, `app_profiles_choose_…`, e2e issue100 |
+
+## Results
+
+### 2026-11-13 — Windows 10 Pro 19045, one monitor at 100 %, release build from `main`
+
+Run by the agent on the real desktop (ADR 0088) with real windows, real `SendInput` keys and
+mouse clicks, in a sandboxed profile (`APPDATA`/`LOCALAPPDATA` redirected to a scratch folder,
+test-started Notepad only; the maintainer's programs were not touched). Injected keys are
+ignored by rules by design (`skipped_injected_input`), so a rule's *action* is checked through
+`ddalgak rule run <id>` or a rule with `injected: accept`; what needs a physical key press is
+**not run** below.
+
+| # | Result | Evidence |
+| --- | --- | --- |
+| 1 | **pass** (without the Kim install) | fresh profile: engine off, no rules, `startup status` disabled; the editor's empty state |
+| 2 | **not run** | needs a physical CapsLock press (injected keys never trigger a remap) |
+| 3 | **pass** after a fix | `rule run` typed exactly `감사합니다 👍` into Notepad; a WinForms password box first received the text — fixed in `1781540` (any `*EDIT*` class with `ES_PASSWORD`), then `skipped_password_field` with 0 characters |
+| 4 | **pass** | F22 (`injected: accept`) opened Notepad once (1 → 2 processes); paused and turned-off rules opened nothing |
+| 5 | **not run** | would open a tab in the maintainer's running browser |
+| 6 | **pass** (move) | `rule run` moved the pointer 2000,600 → 2200,600; click/drag not run |
+| 7 | **pass** | F18 toggled `nav` and back; tray tooltip `Ddalgak: engine on · mode nav`, notched disc |
+| 8 | **pass** | pause → `skipped_paused`; rule off → nothing; rule on again → opens |
+| 9 | **pass** after fixes (Narrator not run) | editor with the mouse and keys: create (key capture, *Type text*, Korean text, simulation, consent with Cancel focused) → `rule run` typed `안녕하세요 GUI`; rename; turn off/on (detail pane and row checkbox); duplicate (Ctrl+D, named "… (사본)", off); reorder by Alt+Up/Alt+Down and by dragging the handle; delete with confirmation (mouse and Delete/Tab/Enter) and Undo; Korean search; draft discard asks first. Fixed in `2b8804d`: English field problems, rule names and status lines in the Korean UI, 놀이터 → 연습장, "on 1 lines", a stale Undo toast that undid a later change |
+| 10 | **pass** after a fix (held-key release on switch not run; `.ahk` import not run here, flows test) | new profile, switch with the per-key diff (engine follows), duplicate, export to a chosen path (99 rules, all off), delete, import (inactive, 0 of 99 on, engine unchanged), history: side-by-side compare and restore of r105. Fixed in `2b8804d`: the profile-per-program rows did not follow added/deleted profiles |
+| 11 | **pass** (shortcuts); conflict report **not run** | `engine.toggle` on `Ctrl+Alt+Shift+F13` and `engine.pause` on `F14` registered; each press switched off/on and paused/resumed with origin `shortcut:engine.*`. The cross-tool conflict report needs installed tools (sandbox has none) |
+| 12 | **pass** | simulate: `typ 실행됨 (시뮬레이션)`, nothing typed; Live (after the acknowledgement) typed only into the page's field, Notepad unchanged; the program rule opened nothing until *확인하고 열기*, then exactly one Notepad (closed again); reset kept the engine and its bindings |
+| 13 | **not run** | the trigger needs a physical key; macro steps are covered by worker tests |
+| 14 | **not run** | the emergency chord is read from physical key state; injected chord correctly ignored |
+| 15 | **pass** (no key held) | killed `ddalgak-gui.exe` with the engine on: 0 keys down; next start `off_reason: unclean_exit`, engine off |
+| 16 | **not run** | starting an elevated Notepad needs a UAC prompt, which the agent does not trigger |
+| 17 | **pass** after a fix (60 s idle, not the full 10 minutes) | 99–100 rules, engine on: idle CPU 0 ms over 60 s; Task Manager memory was 26.9 MB (each sub-schema validator kept a copy of the schema's `$defs`) — fixed in `1781540`: **3.4 MB** (private bytes 4.4 MB), 4 MB after the editor session; editor **55–69 MB** (< 80 MB) |
+| 18 | not run in this pass | one monitor only (second monitor: hardware missing) |
+| 19–24 | not run in this pass | |
+
