@@ -373,6 +373,34 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
     assert_eq!(rule(&d, "thanks")["enabled"], true);
 }
 
+/// #79 (seen in the real editor): the Undo toast of a delete stayed after a later change, and its
+/// Undo then undid that later change instead of the delete. A newer change removes the toast.
+#[test]
+fn a_later_change_retires_the_undo_toast_of_a_delete() {
+    let sb = Sandbox::new("stale-undo");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "Ctrl+Shift+F2  →  Types 6 characters on 1 line");
+    click(&mut h, "Delete");
+    click_last_button(&mut h, "Delete (1)");
+    assert!(h.query_by_label_contains("Deleted 1 rule(s)").is_some());
+    let before = ids(&sb.rules()).len();
+    // Another change: duplicate the remaining first rule.
+    click(
+        &mut h,
+        "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
+    );
+    click(&mut h, "Duplicate");
+    settle(&mut h);
+    assert_eq!(ids(&sb.rules()).len(), before + 1);
+    assert!(
+        h.query_by_label_contains("Deleted 1 rule(s)").is_none(),
+        "the delete's Undo toast is gone once a newer change exists"
+    );
+    assert!(!ids(&sb.rules()).contains(&"thanks".to_string()));
+}
+
 /// Every effect tile opens its own form, and its problems are shown in words with Save blocked
 /// until the form is valid.
 #[test]
@@ -1011,6 +1039,42 @@ fn profile_ids(d: &Value) -> Vec<String> {
         .iter()
         .map(|p| p["id"].as_str().unwrap().to_string())
         .collect()
+}
+
+/// #79 (seen in the real editor): the "profile per program" rows were built once, so a new
+/// profile had no row and a deleted one kept its row until the editor restarted.
+#[test]
+fn the_profile_per_program_rows_follow_added_and_deleted_profiles() {
+    let sb = Sandbox::new("by-app-rows");
+    sb.write_rules(&two_profiles());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "Profiles");
+    assert!(h.query_by_label("gaming").is_some());
+    h.get_by_label("New profile name")
+        .set_text_value_accesskit("Travel");
+    h.run();
+    click(&mut h, "+ New profile");
+    settle(&mut h);
+    assert!(profile_ids(&sb.rules()).contains(&"travel".to_string()));
+    assert!(
+        h.query_by_label("travel").is_some(),
+        "the new profile has its row"
+    );
+    // Delete Gaming: its row goes.
+    let n = h.get_all_by_label("Delete profile").count();
+    h.get_all_by_label("Delete profile")
+        .nth(n - 2)
+        .unwrap()
+        .click();
+    h.run();
+    click_last_button(&mut h, "Delete profile");
+    settle(&mut h);
+    assert!(!profile_ids(&sb.rules()).contains(&"gaming".to_string()));
+    assert!(
+        h.query_by_label("gaming").is_none(),
+        "the deleted profile's row is gone"
+    );
 }
 
 /// J6: the profile browser (search, sort), a switch only after its side-by-side diff (Cancel

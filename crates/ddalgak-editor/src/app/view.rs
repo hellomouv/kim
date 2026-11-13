@@ -931,6 +931,10 @@ impl EditorApp {
                     } else {
                         c.text_secondary
                     };
+                    let l = match l.strip_prefix("✕ ") {
+                        Some(r) => format!("✕ {}", lang.problem(r)),
+                        None => l.clone(),
+                    };
                     ui.label(egui::RichText::new(l).color(color));
                 }
                 if let Some(t) = &sim.typed {
@@ -1113,7 +1117,9 @@ impl EditorApp {
             Self::simulation_ui(ui, lang, sim, &self.layout);
         }
         for p in problems {
-            ui.label(egui::RichText::new(format!("✕ {}", p.message)).color(c.danger));
+            ui.label(
+                egui::RichText::new(format!("✕ {}", lang.problem(&p.message))).color(c.danger),
+            );
         }
         for p in &doc_problems {
             let color = if p.severity == ddalgak::validate::Severity::Error {
@@ -1606,9 +1612,11 @@ impl EditorApp {
     fn import(&mut self, plan: &ImportPlan) {
         let p = plan.clone();
         let n = p.rules.len();
-        if let Some(c) = self.commit(format!("Imported {n} rule(s)"), "rule.import", move |d| {
-            transfer::apply_import(d, &p)
-        }) {
+        if let Some(c) = self.commit(
+            self.lang.rules_done("toast.imported", n),
+            "rule.import",
+            move |d| transfer::apply_import(d, &p),
+        ) {
             self.selected = c.change.rules;
             self.dialog = None;
             self.filter = Filter::default();
@@ -1794,13 +1802,18 @@ fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
     }
 }
 
-fn problems_for(ui: &mut egui::Ui, problems: &[ddalgak::text::FieldProblem], prefix: &[&str]) {
+fn problems_for(
+    ui: &mut egui::Ui,
+    lang: Lang,
+    problems: &[ddalgak::text::FieldProblem],
+    prefix: &[&str],
+) {
     let c = Colors::get();
     for p in problems
         .iter()
         .filter(|p| prefix.iter().any(|x| p.path.starts_with(x)))
     {
-        ui.label(egui::RichText::new(format!("✕ {}", p.message)).color(c.danger));
+        ui.label(egui::RichText::new(format!("✕ {}", lang.problem(&p.message))).color(c.danger));
     }
 }
 
@@ -1917,7 +1930,7 @@ fn keys_stage(
         }
         ui.checkbox(&mut t.catch_up, lang.t("form.schedule_catch_up"));
         ui.label(small(lang.t("form.schedule_note"), c.text_muted));
-        problems_for(ui, problems, &["trigger"]);
+        problems_for(ui, lang, problems, &["trigger"]);
         return;
     }
     if t.hotstring {
@@ -1928,7 +1941,7 @@ fn keys_stage(
                 .desired_width(160.0),
         )
         .labelled_by(lbl.id);
-        problems_for(ui, problems, &["trigger"]);
+        problems_for(ui, lang, problems, &["trigger"]);
         return;
     }
     key_field(
@@ -1969,7 +1982,7 @@ fn keys_stage(
         }
     });
     ui.checkbox(&mut t.pass_through, lang.t("form.pass_through"));
-    problems_for(ui, problems, &["trigger"]);
+    problems_for(ui, lang, problems, &["trigger"]);
 }
 
 fn effect_stage(ui: &mut egui::Ui, lang: Lang, f: &mut RuleForm, profile: Option<&Profile>) {
@@ -1994,7 +2007,7 @@ fn effect_stage(ui: &mut egui::Ui, lang: Lang, f: &mut RuleForm, profile: Option
                     .accessible_name(title);
                 if b.clicked() {
                     f.fields.effect = Some(e);
-                    f.refresh_title(profile);
+                    f.refresh_title(profile, lang);
                     f.stage = Stage::Details;
                 }
                 if i % 4 == 3 {
@@ -2012,7 +2025,7 @@ fn effect_stage(ui: &mut egui::Ui, lang: Lang, f: &mut RuleForm, profile: Option
                 .clicked()
             {
                 f.fields.effect = Some(e);
-                f.refresh_title(profile);
+                f.refresh_title(profile, lang);
                 f.stage = Stage::Details;
             }
         }
@@ -2056,7 +2069,7 @@ fn details_stage(
     if name.changed() {
         f.fields.title_auto = false;
     }
-    problems_for(ui, problems, &["title"]);
+    problems_for(ui, lang, problems, &["title"]);
     ui.add_space(4.0);
     let fl = &mut f.fields;
     match effect {
@@ -2103,6 +2116,7 @@ fn details_stage(
             }
             problems_for(
                 ui,
+                lang,
                 problems,
                 &["steps[0].to", "steps[0].tap", "trigger.pass_through"],
             );
@@ -2129,7 +2143,7 @@ fn details_stage(
                     .range(0..=1000)
                     .suffix(" ms"),
             );
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::TypeText => {
             let lbl = ui.label(egui::RichText::new(lang.t("field.text")).strong());
@@ -2158,7 +2172,7 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             );
             ui.label(small(lang.t("form.plain_note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::OpenProgram => {
             let lbl = ui.label(egui::RichText::new(lang.t("field.program")).strong());
@@ -2217,7 +2231,7 @@ fn details_stage(
                 ));
             }
             ui.label(small(lang.t("form.program_note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::OpenUrl => {
             let lbl = ui.label(egui::RichText::new(lang.t("field.url")).strong());
@@ -2234,7 +2248,7 @@ fn details_stage(
                 _ => {}
             }
             ui.label(small(lang.t("form.program_note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Mouse => mouse_form(ui, lang, f, problems, layout, cursor),
         Effect::Mode => {
@@ -2308,7 +2322,7 @@ fn details_stage(
                     acts.push(Act::NewMode(new_mode.clone()));
                 }
             });
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Engine => {
             for (op, word) in [
@@ -2365,7 +2379,7 @@ fn details_stage(
                 ui.checkbox(&mut fl.window.on, lang.t("field.win.on"));
             }
             ui.label(small(lang.t("field.win.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Clipboard => {
             use ddalgak::model::{ClipTransform as T, ClipboardOp as C};
@@ -2403,7 +2417,7 @@ fn details_stage(
                 C::Clear => {}
             }
             ui.label(small(lang.t("field.clip.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         // #102.
         Effect::Command => {
@@ -2436,7 +2450,7 @@ fn details_stage(
                 .accessible_name(lang.t("field.cmd.timeout"));
             });
             ui.label(small(lang.t("field.cmd.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Timer => {
             ui.horizontal_wrapped(|ui| {
@@ -2470,7 +2484,7 @@ fn details_stage(
                 .accessible_name(lang.t("field.timer.after"));
             });
             ui.label(small(lang.t("field.timer.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Tool => {
             labeled(
@@ -2489,7 +2503,7 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             );
             ui.label(small(lang.t("field.tool.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
         Effect::Notify => {
             labeled(
@@ -2505,7 +2519,7 @@ fn details_stage(
                     .desired_width(f32::INFINITY),
             );
             ui.label(small(lang.t("field.notify.note"), c.text_muted));
-            problems_for(ui, problems, &["steps[0]"]);
+            problems_for(ui, lang, problems, &["steps[0]"]);
         }
     }
     ui.add_space(4.0);
@@ -2606,7 +2620,12 @@ fn details_stage(
                 lang.t("form.priority"),
                 egui::DragValue::new(&mut fl.priority).range(-1000..=1000),
             );
-            problems_for(ui, problems, &["modes", "when", "priority", "description"]);
+            problems_for(
+                ui,
+                lang,
+                problems,
+                &["modes", "when", "priority", "description"],
+            );
         });
 }
 
@@ -2795,5 +2814,5 @@ fn mouse_form(
     if map.clamped {
         ui.label(small(lang.t("form.clamped"), c.warning));
     }
-    problems_for(ui, problems, &["steps[0]"]);
+    problems_for(ui, lang, problems, &["steps[0]"]);
 }

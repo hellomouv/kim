@@ -139,12 +139,29 @@ impl EditorApp {
         let Some(doc) = self.doc() else {
             return;
         };
-        if self.app_map.is_none() {
+        // The rows follow the profiles: one added, deleted or imported since the rows were
+        // built is shown or dropped, while unsaved text of the others is kept (#79: a new
+        // profile was missing and a deleted one still listed until the editor restarted).
+        let same_profiles = self.app_map.as_ref().is_some_and(|(_, rows)| {
+            rows.len() == doc.profiles.len()
+                && rows
+                    .iter()
+                    .zip(&doc.profiles)
+                    .all(|((id, _), p)| *id == p.id)
+        });
+        if !same_profiles {
             let ap = doc.settings.as_ref().and_then(|s| s.app_profiles.as_ref());
+            let typed = self.app_map.clone();
             let rows = doc
                 .profiles
                 .iter()
                 .map(|p| {
+                    if let Some((_, apps)) = typed
+                        .as_ref()
+                        .and_then(|(_, rows)| rows.iter().find(|(id, _)| *id == p.id))
+                    {
+                        return (p.id.clone(), apps.clone());
+                    }
                     let apps: Vec<String> = ap
                         .into_iter()
                         .flat_map(|a| a.map.iter())
@@ -154,7 +171,11 @@ impl EditorApp {
                     (p.id.clone(), apps.join(", "))
                 })
                 .collect();
-            self.app_map = Some((ap.is_some_and(|a| a.enabled), rows));
+            let enabled = match &typed {
+                Some((on, _)) => *on,
+                None => ap.is_some_and(|a| a.enabled),
+            };
+            self.app_map = Some((enabled, rows));
         }
         ui.add_space(8.0);
         ui.label(egui::RichText::new(lang.t("profiles.by_app")).strong());
@@ -820,7 +841,7 @@ impl EditorApp {
     pub(super) fn apply_profile_act(&mut self, act: Act) {
         match act {
             Act::ProfileAdd(name) => {
-                let label = format!("Added profile {name}");
+                let label = self.lang.profile_done("added", &name, "");
                 if self
                     .commit(label, "profile.add", move |d| {
                         profile::add(d, None, &name, None)
@@ -835,7 +856,7 @@ impl EditorApp {
                 self.dialog_focus = true;
             }
             Act::ApplyProfile(to) => {
-                let label = format!("Switched to profile {to}");
+                let label = self.lang.profile_done("switched", &to, "");
                 let id = to.clone();
                 if self
                     .commit(label, "profile.apply", move |d| profile::apply(d, &id))
@@ -847,10 +868,13 @@ impl EditorApp {
                 }
             }
             Act::DuplicateProfile(id) => {
+                let title = self
+                    .profile(&id)
+                    .and_then(|p| self.lang.copy_title(&p.title));
                 self.commit(
-                    format!("Duplicated profile {id}"),
+                    self.lang.profile_done("duplicated", &id, ""),
                     "profile.duplicate",
-                    move |d| profile::duplicate(d, &id, None, None),
+                    move |d| profile::duplicate(d, &id, None, title.as_deref()),
                 );
             }
             Act::OpenEditProfile(id) => {
@@ -873,9 +897,11 @@ impl EditorApp {
                     description: Some(Some(description).filter(|d| !d.trim().is_empty())),
                 };
                 if self
-                    .commit(format!("Renamed profile {id}"), "profile.edit", move |d| {
-                        profile::edit(d, &id, &f)
-                    })
+                    .commit(
+                        self.lang.profile_done("renamed", &id, ""),
+                        "profile.edit",
+                        move |d| profile::edit(d, &id, &f),
+                    )
                     .is_some()
                 {
                     self.dialog = None;
@@ -891,7 +917,7 @@ impl EditorApp {
                 }
             }
             Act::DeleteProfile(id) => {
-                let label = format!("{} profile {id}", self.t("toast.deleted"));
+                let label = self.lang.profile_done("deleted", &id, "");
                 if self
                     .commit(label.clone(), "profile.delete", move |d| {
                         profile::delete(d, &id)
@@ -930,7 +956,7 @@ impl EditorApp {
                 }
             }
             Act::RestoreProfile(version, name) => {
-                let label = format!("Restored profile {} from {name}", version.id);
+                let label = self.lang.profile_done("restored", &version.id, &name);
                 let v = *version;
                 if self
                     .commit(label, "profile.restore", move |d| profile::restore(d, &v))
@@ -968,7 +994,11 @@ impl EditorApp {
             Act::ImportProfiles(plan) => match self.repo.commit_profile_import(&plan) {
                 Ok(c) => {
                     self.banner = None;
-                    self.after_commit(format!("Imported {} profile(s)", plan.profiles.len()), &c);
+                    self.after_commit(
+                        self.lang
+                            .profile_done("imported", &plan.profiles.len().to_string(), ""),
+                        &c,
+                    );
                     self.dialog = None;
                 }
                 Err(e) => self.fail(&e),

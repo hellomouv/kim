@@ -439,7 +439,7 @@ fn gui_consent_names_the_exact_targets_and_records_via_gui() {
 #[test]
 fn starters_are_drafts_with_sensible_defaults() {
     for e in [Effect::Remap, Effect::TypeText, Effect::OpenProgram] {
-        let f = RuleForm::starter("default", e);
+        let f = RuleForm::starter("default", e, Lang::En);
         assert!(f.dirty(), "a starter is an unsaved draft");
         assert!(f.problems(None).is_empty(), "{e:?}: {:?}", f.problems(None));
         assert!(!f.fields.title.is_empty());
@@ -769,4 +769,39 @@ fn class_and_time_conditions_round_trip() {
     assert_eq!(back.fields.time_days, f.fields.time_days);
     f.fields.time_to = "25:00".into();
     assert!(paths(&f).contains(&"when.time"));
+}
+
+/// #79: the simulation of a one-line text said "on 1 lines" (seen in the real editor).
+#[test]
+fn the_text_simulation_counts_in_the_singular_and_plural() {
+    let mut f = with(Effect::TypeText, "Ctrl+Alt+Shift+F20");
+    f.fields.text.text = "안녕하세요 GUI".into();
+    let sim = f.simulate(None, &Layout::single(800, 600), Point::new(1, 1));
+    assert!(
+        sim.lines
+            .contains(&"Would type 9 characters on 1 line into the focused field".to_string()),
+        "{:?}",
+        sim.lines
+    );
+    f.fields.text.text = "a
+b"
+    .into();
+    let sim = f.simulate(None, &Layout::single(800, 600), Point::new(1, 1));
+    assert!(
+        sim.lines
+            .contains(&"Would type 3 characters on 2 lines into the focused field".to_string()),
+        "{:?}",
+        sim.lines
+    );
+}
+
+/// #79: the name the form gives a new rule follows the UI language.
+#[test]
+fn the_automatic_rule_name_follows_the_language() {
+    let f = RuleForm::starter("default", Effect::TypeText, Lang::Ko);
+    assert_eq!(f.fields.title, "문구 입력");
+    let f = RuleForm::starter("default", Effect::TypeText, Lang::En);
+    assert_eq!(f.fields.title, "Type a phrase");
+    let f = RuleForm::starter("default", Effect::OpenProgram, Lang::Ko);
+    assert_eq!(f.fields.title, "notepad.exe 열기");
 }

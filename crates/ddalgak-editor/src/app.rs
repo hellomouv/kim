@@ -607,6 +607,11 @@ impl EditorApp {
 
     fn after_commit(&mut self, label: String, c: &Committed) {
         if c.changed {
+            // An Undo toast offers to undo the change it names; a newer change would be undone
+            // instead, so it goes (#79: Undo on "profile deleted" undid a later restore).
+            if self.toast.as_ref().is_some_and(|t| t.undo) {
+                self.toast = None;
+            }
             self.undo.push(UndoEntry {
                 label,
                 before: c.before.clone(),
@@ -699,7 +704,7 @@ impl EditorApp {
                     .and_then(|id| self.rows.iter().find(|r| &r.id == id))
                     .map_or_else(|| self.active_profile_id(), |r| r.profile.clone());
                 self.form = Some(match effect {
-                    Some(e) => RuleForm::starter(&p, e),
+                    Some(e) => RuleForm::starter(&p, e, self.lang),
                     None => RuleForm::new(&p),
                 });
                 self.external_change = false;
@@ -742,12 +747,22 @@ impl EditorApp {
             }
             Act::Duplicate(ids) => {
                 let n = ids.len();
-                let label = format!("Duplicated {n} rule(s)");
+                let label = self.lang.rules_done("toast.duplicated", n);
+                let lang = self.lang;
+                let titles: Vec<Option<String>> = ids
+                    .iter()
+                    .map(|id| {
+                        self.rows
+                            .iter()
+                            .find(|r| &r.id == id)
+                            .and_then(|r| lang.copy_title(&r.title))
+                    })
+                    .collect();
                 let ids2 = ids;
                 let c = self.commit(label, "rule.duplicate", move |d| {
                     let mut all = Change::default();
-                    for id in &ids2 {
-                        let c = edit::duplicate(d, id, None, None, None)?;
+                    for (id, title) in ids2.iter().zip(titles) {
+                        let c = edit::duplicate(d, id, None, title, None)?;
                         all.rules.extend(c.rules);
                         all.created = c.created;
                         all.changed |= c.changed;
@@ -769,7 +784,7 @@ impl EditorApp {
             }
             Act::Delete(ids) => {
                 let n = ids.len();
-                let label = format!("{} {n} rule(s)", self.t("toast.deleted"));
+                let label = self.lang.rules_done("toast.deleted", n);
                 let titles = self.titles(&ids);
                 let ids2 = ids.clone();
                 if self
@@ -807,10 +822,13 @@ impl EditorApp {
                         return;
                     }
                 }
-                let label = format!(
-                    "{} {} rule(s)",
-                    if on { "Enabled" } else { "Disabled" },
-                    ids.len()
+                let label = self.lang.rules_done(
+                    if on {
+                        "toast.enabled"
+                    } else {
+                        "toast.disabled"
+                    },
+                    ids.len(),
                 );
                 self.commit(
                     label,
@@ -926,7 +944,7 @@ impl EditorApp {
                 match then {
                     ConsentThen::SaveForm => self.save_form(&perms),
                     ConsentThen::Enable(ids) => {
-                        let label = format!("Enabled {} rule(s)", ids.len());
+                        let label = self.lang.rules_done("toast.enabled", ids.len());
                         self.commit(label, "rule.enable", move |d| {
                             repo::enable_with_consent(d, &ids, true, &perms)
                         });

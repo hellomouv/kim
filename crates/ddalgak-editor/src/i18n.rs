@@ -3,7 +3,7 @@
 //! Every label of the editor's chrome exists in both languages; the table is checked by a test
 //! (unique keys, both texts present, the journeys' glossary words used). Sentences built by the
 //! engine's data models (the rule summaries of Steps 68–72) are English for now; the Korean UI
-//! shows them unchanged (DDALGAK_GUI_JOURNEYS §7).
+//! shows them unchanged (DDALGAK_GUI_JOURNEYS §5); field problems are translated ([`PROBLEMS`]).
 
 /// The UI language.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -57,7 +57,7 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ("nav.rules", "Rules", "규칙"),
     ("nav.modes", "Modes", "모드"),
     ("nav.profiles", "Profiles", "프로필"),
-    ("nav.playground", "Playground", "놀이터"),
+    ("nav.playground", "Playground", "연습장"),
     (
         "macro.title",
         "Several steps (a macro)",
@@ -95,7 +95,7 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "If a step fails, go on with the next",
         "단계가 실패해도 다음 단계를 계속",
     ),
-    ("play.title", "Test playground", "테스트 놀이터"),
+    ("play.title", "Test playground", "테스트 연습장"),
     (
         "play.intro",
         "Try what a key would do with the saved rules — or with the rule you are editing — before it touches anything. Simulate changes nothing; Live types only into the test field below.",
@@ -1034,6 +1034,10 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "아직 저장된 것이 없음: 딸깍에 규칙이 없습니다",
     ),
     ("toast.deleted", "Deleted", "삭제됨"),
+    ("toast.duplicated", "Duplicated", "복제됨"),
+    ("toast.enabled", "Enabled", "켜짐"),
+    ("toast.disabled", "Disabled", "꺼짐"),
+    ("toast.imported", "Imported", "가져옴"),
     ("toast.undone", "Undone", "실행 취소됨"),
     ("help.f1", "F1: shortcuts and help", "F1: 단축키와 도움말"),
     (
@@ -1151,6 +1155,151 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Field problems the form and the text draft report, `(English, 한국어)`: the Korean UI shows
+/// them translated (found by the real-desktop check of #79: a Korean form said "press the keys,
+/// or type them"). A message with a value in it is matched by its fixed parts in
+/// [`Lang::problem`]. Messages not listed (details of the program, mouse and mode drafts, and
+/// the schema's own) stay English, as the rule summaries do (docs/DDALGAK_GUI_JOURNEYS.md §5).
+pub const PROBLEMS: &[(&str, &str)] = &[
+    ("choose what the rule does", "규칙이 할 일을 고르세요"),
+    ("100–1000 ms", "100–1000 ms 사이로 정하세요"),
+    ("0–1000 ms", "0–1000 ms 사이로 정하세요"),
+    ("200–5000 ms", "200–5000 ms 사이로 정하세요"),
+    ("100–600000 ms", "100–600000 ms 사이로 정하세요"),
+    ("choose a mode", "모드를 고르세요"),
+    (
+        "that mode is not in the profile",
+        "그 모드는 이 프로필에 없습니다",
+    ),
+    ("choose at least two modes", "모드를 두 개 이상 고르세요"),
+    ("1–20000 characters", "1–20000자로 쓰세요"),
+    ("at most 32 arguments", "인수는 32개까지입니다"),
+    (
+        "choose a rule of this profile",
+        "이 프로필의 규칙을 고르세요",
+    ),
+    ("1 s – 24 h", "1초에서 24시간 사이로 정하세요"),
+    (
+        "a capability like pin.list",
+        "pin.list 같은 기능 이름을 쓰세요",
+    ),
+    ("a title of 1–63 characters", "제목은 1–63자입니다"),
+    ("at most 255 characters", "255자까지입니다"),
+    (
+        "this rule cannot be edited in the form",
+        "이 규칙은 양식에서 편집할 수 없습니다",
+    ),
+    ("the name needs 1–80 characters", "이름은 1–80자입니다"),
+    ("at most 500 characters", "500자까지입니다"),
+    ("choose at least one day", "요일을 하나 이상 고르세요"),
+    (
+        "1–40 characters without spaces (btw, ;sig)",
+        "공백 없이 1–40자 (btw, ;sig)",
+    ),
+    (
+        "an abbreviation can only type text or press a shortcut",
+        "줄임말로는 글자 입력이나 단축키 누르기만 할 수 있습니다",
+    ),
+    (
+        "press the keys, or type them",
+        "키를 누르거나 직접 입력하세요",
+    ),
+    ("at most 200 characters", "200자까지입니다"),
+    ("−1000…1000", "−1000…1000 사이로 정하세요"),
+    ("0–200 ms between characters", "글자 사이 0–200 ms"),
+    (
+        "a whole number of milliseconds, 1000–3600000",
+        "1000–3600000 사이의 밀리초 정수",
+    ),
+    (
+        "nothing changed since the last save",
+        "마지막 저장 뒤로 바뀐 것이 없습니다",
+    ),
+    (
+        "the rule name needs 1–80 characters",
+        "규칙 이름은 1–80자입니다",
+    ),
+    (
+        "the snippet name needs 1–80 characters",
+        "조각 이름은 1–80자입니다",
+    ),
+    ("type or paste", "입력하거나 붙여넣으세요"),
+    ("the text needs 1–4096 characters", "글자는 1–4096자입니다"),
+];
+
+impl Lang {
+    /// The status line after a profile change (#79: the Korean status line said
+    /// "삭제됨 profile default-2"). `kind`: added, switched, duplicated, renamed, deleted,
+    /// restored (`extra` = the version's name) or imported (`id` = the count).
+    pub fn profile_done(self, kind: &str, id: &str, extra: &str) -> String {
+        match (self, kind) {
+            (Lang::En, "added") => format!("Added profile {id}"),
+            (Lang::En, "switched") => format!("Switched to profile {id}"),
+            (Lang::En, "duplicated") => format!("Duplicated profile {id}"),
+            (Lang::En, "renamed") => format!("Renamed profile {id}"),
+            (Lang::En, "deleted") => format!("Deleted profile {id}"),
+            (Lang::En, "restored") => format!("Restored profile {id} from {extra}"),
+            (Lang::En, "imported") => format!("Imported {id} profile(s)"),
+            (Lang::Ko, "added") => format!("프로필 추가됨: {id}"),
+            (Lang::Ko, "switched") => format!("프로필 전환됨: {id}"),
+            (Lang::Ko, "duplicated") => format!("프로필 복제됨: {id}"),
+            (Lang::Ko, "renamed") => format!("프로필 이름 바뀜: {id}"),
+            (Lang::Ko, "deleted") => format!("프로필 삭제됨: {id}"),
+            (Lang::Ko, "restored") => format!("프로필 복원됨: {id} ({extra})"),
+            (Lang::Ko, "imported") => format!("프로필 {id}개 가져옴"),
+            (_, other) => format!("{other} {id}"),
+        }
+    }
+
+    /// The name of a copy (rule or profile, at most 80 characters): `None` keeps the engine's
+    /// English "… (copy)"; the Korean UI names it "… (사본)" (#79: a Korean user's copy was
+    /// called "Default (copy)").
+    pub fn copy_title(self, source: &str) -> Option<String> {
+        match self {
+            Lang::En => None,
+            Lang::Ko => {
+                let t = format!("{source} (사본)");
+                Some(if t.chars().count() > 80 {
+                    source.chars().take(80).collect()
+                } else {
+                    t
+                })
+            }
+        }
+    }
+
+    /// What a change did to `n` rules, for the status line: "Deleted 2 rule(s)" or
+    /// "규칙 2개 삭제됨" (`what` is a `toast.*` key). #79: the Korean status line said
+    /// "삭제됨 1 rule(s)".
+    pub fn rules_done(self, what: &str, n: usize) -> String {
+        match self {
+            Lang::En => format!("{} {n} rule(s)", self.t(what)),
+            Lang::Ko => format!("규칙 {n}개 {}", self.t(what)),
+        }
+    }
+
+    /// A field problem in this language: the English text unchanged, or its Korean translation
+    /// when one is known.
+    pub fn problem(self, message: &str) -> String {
+        if self == Lang::En {
+            return message.to_string();
+        }
+        if let Some((_, ko)) = PROBLEMS.iter().find(|(en, _)| *en == message) {
+            return (*ko).to_string();
+        }
+        if let Some(m) = message
+            .strip_prefix("no mode `")
+            .and_then(|r| r.strip_suffix("` in the profile"))
+        {
+            return format!("이 프로필에 `{m}` 모드가 없습니다");
+        }
+        if let Some(r) = message.strip_prefix("Not ready: ") {
+            return format!("아직 준비 안 됨: {}", self.problem(r));
+        }
+        message.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1184,6 +1333,8 @@ mod tests {
             ("form.simulate", "Simulate", "시뮬레이션"),
             ("header.profile", "Profile", "프로필"),
             ("nav.rules", "Rules", "규칙"),
+            // #79: the page was labelled "놀이터" against the glossary's "연습장".
+            ("nav.playground", "Playground", "연습장"),
         ] {
             assert_eq!(Lang::En.t(key), en);
             assert_eq!(Lang::Ko.t(key), ko);
@@ -1243,5 +1394,47 @@ mod tests {
         assert_eq!(Lang::parse("EN"), Some(Lang::En));
         assert_eq!(Lang::parse("fr"), None);
         assert_eq!(Lang::Ko.other(), Lang::En);
+    }
+
+    #[test]
+    fn the_form_problems_have_korean_texts() {
+        // Every message the form writes as a fixed text has a translation (#79).
+        let form = include_str!("form.rs");
+        let mut missing = Vec::new();
+        let mut checked = 0;
+        for (i, _) in form.match_indices("problem(\"") {
+            let rest = &form[i..];
+            let Some(start) = rest.find("\", \"") else {
+                continue;
+            };
+            let msg = &rest[start + 4..];
+            let Some(end) = msg.find("\")") else { continue };
+            let msg = &msg[..end];
+            checked += 1;
+            if !msg.contains('{') && Lang::Ko.problem(msg) == msg {
+                missing.push(msg.to_string());
+            }
+        }
+        assert!(checked >= 20, "only {checked} messages found in form.rs");
+        assert!(missing.is_empty(), "untranslated: {missing:?}");
+        assert_eq!(
+            Lang::Ko.problem("press the keys, or type them"),
+            "키를 누르거나 직접 입력하세요"
+        );
+        assert_eq!(
+            Lang::En.problem("press the keys, or type them"),
+            "press the keys, or type them"
+        );
+        assert_eq!(
+            Lang::Ko.problem("no mode `nav` in the profile"),
+            "이 프로필에 `nav` 모드가 없습니다"
+        );
+        let text = format!("the text needs 1–{} characters", ddalgak::text::MAX_TEXT);
+        assert_ne!(Lang::Ko.problem(&text), text);
+        let mut seen = std::collections::HashSet::new();
+        assert!(
+            PROBLEMS.iter().all(|(en, _)| seen.insert(*en)),
+            "duplicate keys"
+        );
     }
 }

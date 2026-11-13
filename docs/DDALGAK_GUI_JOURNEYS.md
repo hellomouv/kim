@@ -461,6 +461,13 @@ All of them except the fixed ones are rebindable in Settings → Keyboard shortc
 | Profile | Profile | 프로필 |
 | Emergency off | Emergency off | 긴급 끄기 |
 
+Field problems written by the form and the text draft are shown in Korean in the Korean UI
+(`i18n::PROBLEMS`, checked against every fixed message of `form.rs`). Sentences built by the
+engine's data models — rule summaries, the detailed problems of the program, mouse and mode
+drafts, schema messages and the screen-reader reading of a captured chord — are English in both
+languages for now (a known gap, not hidden). Found by the real-desktop check of #79, which also
+corrected the Playground page label from "놀이터" to the glossary's "연습장".
+
 ## 6. What Step 74–76 must prove
 
 A person who has never used Ddalgak, using only the keyboard or only the mouse, completes J1–J8

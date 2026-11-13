@@ -13,6 +13,7 @@
 //! the playground's simulate mode (the mouse on a simulated pointer); it never sends a key,
 //! types, opens a program or website, or moves the pointer.
 
+use crate::i18n::Lang;
 use ddalgak::edit::{canonical_output, canonical_trigger};
 use ddalgak::inject::Button;
 use ddalgak::launch::{ProgramDraft, UrlDraft};
@@ -744,7 +745,7 @@ impl RuleForm {
     }
 
     /// A new rule from a starter suggestion (J1): pre-filled, still a draft until saved.
-    pub fn starter(profile: &str, effect: Effect) -> RuleForm {
+    pub fn starter(profile: &str, effect: Effect, lang: Lang) -> RuleForm {
         let mut f = RuleForm::new(profile);
         f.fields.effect = Some(effect);
         match effect {
@@ -764,7 +765,7 @@ impl RuleForm {
             _ => {}
         }
         f.stage = Stage::Details;
-        f.refresh_title(None);
+        f.refresh_title(None, lang);
         f
     }
 
@@ -1550,18 +1551,21 @@ impl RuleForm {
         Ok(rule)
     }
 
-    /// Sets the title from the summary while the user has not typed one.
-    pub fn refresh_title(&mut self, profile: Option<&Profile>) {
+    /// Sets the title from the summary while the user has not typed one, in the UI's language
+    /// where the editor writes it (#79: a Korean form named the rule "Type a phrase").
+    pub fn refresh_title(&mut self, profile: Option<&Profile>, lang: Lang) {
         if !self.fields.title_auto {
             return;
         }
         let s = match self.fields.effect {
-            Some(Effect::TypeText) => "Type a phrase".to_string(),
+            Some(Effect::TypeText) => lang.t("list.starter_text").to_string(),
             Some(Effect::OpenProgram) => {
                 let d = self.program_draft();
                 let p = d.preview(&ddalgak::launch::process_var);
                 if p.program.is_empty() {
-                    "Open a program".into()
+                    lang.t("list.starter_program").to_string()
+                } else if lang == Lang::Ko {
+                    format!("{} 열기", p.program)
                 } else {
                     format!("Open {}", p.program)
                 }
@@ -1902,9 +1906,13 @@ impl RuleForm {
                 let d = self.text_draft();
                 let now = local_now();
                 let pv = d.preview(&now);
+                let n = |k: usize, one: &str, many: &str| {
+                    format!("{k} {}", if k == 1 { one } else { many })
+                };
                 sim.lines.push(format!(
-                    "Would type {} characters on {} lines into the focused field",
-                    pv.characters, pv.lines
+                    "Would type {} on {} into the focused field",
+                    n(pv.characters, "character", "characters"),
+                    n(pv.lines, "line", "lines")
                 ));
                 sim.typed = Some(pv.rendered);
             }
