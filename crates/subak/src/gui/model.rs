@@ -91,6 +91,8 @@ pub struct Slot {
     pub rows: u16,
     /// False while another pane of the window is zoomed.
     pub visible: bool,
+    /// #98 T1 (`CORE-32`): its index and program (`1 cmd.exe`), for the pane labels.
+    pub label: String,
 }
 
 impl Slot {
@@ -128,6 +130,8 @@ impl WinLayout {
             .iter()
             .map(|p| {
                 let r = &p["rect"];
+                let program = p["command"]["program"].as_str().unwrap_or("");
+                let program = program.rsplit(['\\', '/']).next().unwrap_or(program);
                 Some(Slot {
                     id: p["id"].as_str()?.to_string(),
                     x: n(&r["x"])?,
@@ -135,6 +139,9 @@ impl WinLayout {
                     cols: n(&r["cols"])?,
                     rows: n(&r["rows"])?,
                     visible: p["visible"] != false,
+                    label: format!("{} {program}", p["index"].as_u64().unwrap_or(0))
+                        .trim()
+                        .to_string(),
                 })
             })
             .collect::<Option<Vec<_>>>()?;

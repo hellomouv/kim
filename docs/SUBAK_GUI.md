@@ -208,6 +208,8 @@ Keys go to the program, in the order of ADR 0009:
    that run it now), every Terminal of the window (hidden ones too) and every shell profile;
    typing filters it (fuzzy: the letters in order, word starts and runs first), Up/Down choose,
    Enter runs the entry as its keys would, Esc closes it without running anything.
+   With `terminal.pane_labels`, a split window labels each pane at its top right with its index
+   and program (`1 cmd.exe`), in the tab bar's font and colours.
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
@@ -976,6 +978,7 @@ bell = "off"             # #98 T3: off | visual (flash; taskbar too when not in 
 notify_command_seconds = 0   # #98 T3: notify when a command (OSC 133) that ran this long ends; 0: off
 notify_exit = false      # #98 T3: notify when a Terminal's program ends
 focus_follows_mouse = false  # #98 T1: pointing at another pane of a split makes it active
+pane_labels = false      # #98 T1: label each pane of a split with its index and program
 
 [tabs]                   # #98 T1
 close_buttons = true     # each tab has its × (hide) button; pinned tabs never do

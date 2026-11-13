@@ -102,7 +102,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `CORE-29` Move panes between tabs | S `explode-tab`, `combine-tabs` | Host-side break-pane and join-pane. Processes move and are never restarted. *Step 32 audit (2026-11-11):* *Partial:* `break-pane`/`join-pane` keep the process, within one Terminal (not between Terminals). | partial | Step 24 | T: `crates/subak/tests/tmux_commands.rs::command_lines_split_move_send_and_list_with_tmux_semantics` (Step 32 audit) |
 | `CORE-30` Focus follows mouse | S `focusFollowsMouse` | Optional, off by default *Step 32 audit (2026-11-11):* not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `[terminal] focus_follows_mouse` (off by default): pointing at another pane of a split makes it the active one (once per pane). | implemented | #98 T1 | T: `crates/subak/src/config.rs::tests::tab_bar_options_and_focus_follows_mouse`; T: `crates/subak/tests/gui_window.rs::drops_pins_last_tab_fullscreen_and_focus_follows_mouse`; real desktop (#98 T1): moving the real pointer over the left pane made it active |
 | `CORE-31` Broadcast input to all panes or tabs | S `pane-focus-all`, `focus-all-tabs` | The Host copies input to several panes (tmux `synchronize-panes`). A visible indicator stays on the whole time. Off by default. *Step 32 audit (2026-11-11):* *Partial:* `setw synchronize-panes` within a window (off by default); not across tabs, and no always-visible indicator yet (Step 36). | partial | Step 25 | T: `crates/subak/tests/tmux_advanced.rs::layouts_sync_tokens_and_formats_act_on_real_panes` (Step 32 audit) |
-| `CORE-32` Pane title labels | S `splitTabPaneLabel` | Optional pane borders showing names *Step 32 audit (2026-11-11):* not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. | planned | #98 T1 | — |
+| `CORE-32` Pane title labels | S `splitTabPaneLabel` | Optional pane borders showing names *Step 32 audit (2026-11-11):* not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `[terminal] pane_labels` (off by default): a split window labels each pane at its top right with its index and program, in the tab bar's font and colours. | implemented | #98 T1 | T: `crates/subak/tests/gui_window.rs::split_panes_show_their_labels_when_asked`; real desktop (#98 T1): `0 cmd.exe` and `1 cmd.exe` at the panes' top right in a screenshot |
 
 ### 1.4 Remembering tabs and panes
 
@@ -450,16 +450,16 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 56 |
+| `planned` | 55 |
 | `partial` | 90 |
-| `implemented` | 32 |
+| `implemented` | 33 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 8 | 49 | 21 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 7 | 49 | 22 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 14 | 7 | 3 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -493,3 +493,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Duplicate and restart: `CORE-12` `implemented`; `CORE-17` `partial` (one-pane Terminals; no environment values). No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Titles, density, new windows, on exit: `CORE-23`, `CORE-48` `implemented`; `CORE-20` (reconnect remains), `CORE-21` (per-window sets remain) `partial`. No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | The command palette: `CORE-63` `implemented`. No Tabby re-fetch. |
+| 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Pane labels: `CORE-32` `implemented`. No Tabby re-fetch. |

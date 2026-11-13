@@ -435,6 +435,8 @@ struct App {
     global_status: Vec<(String, String, String)>,
     /// #98 T3: the window was hidden by `gui.show` (or the dropdown lost the focus).
     toggled_hidden: bool,
+    /// #98 T1 (`CORE-32`): draws the pane labels (made when first needed).
+    label_renderer: Option<Renderer>,
     /// #98 T1 (`CORE-63`): the command palette, while it is open.
     palette: Option<PaletteUi>,
     /// #98 T1 (`CORE-25`): fullscreen, with the style and place to go back to.
@@ -960,12 +962,50 @@ impl App {
             return;
         }
         self.frames += 1;
-        self.split_frame = self.compose_split();
+        let labels = self.pane_labels();
+        self.split_frame = self.compose_split(&labels);
         self.invalidate_all();
         self.place_ime();
     }
 
-    fn compose_split(&self) -> Option<Frame> {
+    /// #98 T1 (`CORE-32`, `terminal.pane_labels`): each visible pane's label (` 1 cmd.exe `)
+    /// drawn in the tab bar's font and colours, for `compose_split` to place at the pane's top
+    /// right; none when the setting is off.
+    fn pane_labels(&mut self) -> Vec<(String, Frame)> {
+        if !self.settings.terminal.pane_labels {
+            return Vec::new();
+        }
+        let Some(l) = self.model.layout().cloned() else {
+            return Vec::new();
+        };
+        let scale = self.scale();
+        let theme = self.bar_theme();
+        let mut r = match self.label_renderer.take() {
+            Some(r) if (r.options().scale - scale).abs() < f32::EPSILON => r,
+            _ => make_renderer(theme.clone(), BAR_FONT, scale, 0.0),
+        };
+        r.set_theme(theme);
+        let mut out = Vec::new();
+        for s in l.slots.iter().filter(|s| s.visible && !s.label.is_empty()) {
+            let text: String = s
+                .label
+                .chars()
+                .take(usize::from(s.cols.saturating_sub(2)))
+                .collect();
+            if text.is_empty() {
+                continue;
+            }
+            let w = u16::try_from(text.chars().count() + 2).unwrap_or(u16::MAX);
+            let mut v = TermView::new(w, 1, 0);
+            v.feed(format!("\x1b[?25l {text} ").as_bytes());
+            r.render(&v);
+            out.push((s.id.clone(), r.frame().clone()));
+        }
+        self.label_renderer = Some(r);
+        out
+    }
+
+    fn compose_split(&self, labels: &[(String, Frame)]) -> Option<Frame> {
         let l = self.model.layout()?;
         let active = self.model.active_slot()?.id.clone();
         let c = self.cells();
@@ -1035,6 +1075,19 @@ impl App {
         }
         if let Some(s) = l.slot(&active) {
             draw(s, chrome.accent, &mut out);
+        }
+        // #98 T1 (`CORE-32`): the labels, at each pane's top right (over its first row).
+        for (id, f) in labels {
+            let Some(s) = l.slot(id) else { continue };
+            let (x0, y0) = at(s.x, s.y);
+            let (x1, _) = at(s.x + s.cols, s.y);
+            let x = x1.saturating_sub(f.width).max(x0);
+            for row in 0..f.height.min(fh.saturating_sub(y0)) {
+                let n = f.width.min(fw.saturating_sub(x)) as usize;
+                let so = (row * f.width) as usize;
+                let to = ((y0 + row) * fw + x) as usize;
+                out.pixels[to..to + n].copy_from_slice(&f.pixels[so..so + n]);
+            }
         }
         Some(out)
     }
@@ -2484,6 +2537,10 @@ impl App {
         self.model.set_wrap(self.settings.tabs.cycle);
         self.model
             .set_close_on_exit(self.settings.tabs.close_on_exit);
+        if old.terminal.pane_labels != self.settings.terminal.pane_labels {
+            self.split_frame = None;
+            self.redraw();
+        }
         if old.tabs != self.settings.tabs
             || old.appearance.compact != self.settings.appearance.compact
         {
@@ -5823,6 +5880,18 @@ impl App {
         dump["fullscreen"] = json!(self.fullscreen.is_some());
         dump["mru"] = json!(self.model.mru());
         dump["pinned"] = json!(self.model.pinned_ids());
+        dump["pane_labels"] = json!(
+            self.model
+                .layout()
+                .filter(|_| self.settings.terminal.pane_labels)
+                .map(|l| {
+                    l.slots
+                        .iter()
+                        .filter(|s| s.visible)
+                        .map(|s| s.label.clone())
+                        .collect::<Vec<_>>()
+                })
+        );
         dump["dropdown"] = json!(self.opts.dropdown);
         dump["bell_flash"] = json!(self.bell_flash);
         dump["side"] = Value::Object(
@@ -7341,6 +7410,7 @@ pub fn run(o: Options) -> ExitCode {
         fullscreen: None,
         hover_pane: None,
         palette: None,
+        label_renderer: None,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,

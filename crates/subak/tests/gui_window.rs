@@ -3620,3 +3620,63 @@ fn the_command_palette_filters_and_runs_actions_and_terminals() {
         "EVIDENCE command palette: `split` → Split pane left/right (Esc ran nothing, Enter split), `terminal: two` showed two"
     );
 }
+
+/// #98 T1 (`CORE-32`): with `terminal.pane_labels` a split window labels each pane with its
+/// index and program (none without the setting).
+#[test]
+fn split_panes_show_their_labels_when_asked() {
+    let host = Host::start("gui-labels", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "work");
+    let appdata = sandbox("labels");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let gui = Gui::start(&ep, Some("work"), &appdata);
+    gui.state("attached");
+    let (code, doc) = sub(
+        &ep,
+        &[
+            "--json",
+            "pane",
+            "split",
+            "work",
+            "--horizontal",
+            "--",
+            "cmd.exe",
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    let d = gui.until("split", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+    });
+    assert!(d["pane_labels"].is_null(), "off by default");
+    std::thread::sleep(Duration::from_millis(500));
+    let shot = |name: &str| {
+        let path = appdata.join(name);
+        gui.cmd(&json!({"cmd": "shot", "path": path.to_str().unwrap()}))["hash"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let without = shot("without.bmp");
+    let (code, doc) = run_env(&["config", "set", "terminal.pane_labels", "true"], &env);
+    assert_eq!(code, 0, "{doc}");
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    let d = gui.until("labels", |d| d["pane_labels"].is_array());
+    let labels: Vec<String> = d["pane_labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap().to_lowercase())
+        .collect();
+    assert_eq!(labels.len(), 2, "{labels:?}");
+    assert!(labels.iter().all(|l| l.ends_with("cmd.exe")), "{labels:?}");
+    assert_ne!(labels[0], labels[1], "each with its index: {labels:?}");
+    // Drawn: the window's picture changed (only the labels did).
+    std::thread::sleep(Duration::from_millis(300));
+    let with = shot("with.bmp");
+    assert_ne!(with, without, "the labels are drawn");
+    println!("EVIDENCE pane labels: {labels:?}");
+}

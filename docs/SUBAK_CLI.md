@@ -361,7 +361,7 @@ window, and never change a running Terminal. The window's Settings menu changes 
 `terminal.backspace` (`del`, `ctrl-h`, `delete`; #98 T2), `terminal.bell` (`off`, `visual`,
 `audible`; #98 T3), `terminal.notify_command_seconds` (0–86400, 0: off) and `terminal.notify_exit`
 (#98 T3), `dropdown.height` (20–100) and `dropdown.hide_on_blur` (#98 T3, `subak-gui --dropdown`),
-`terminal.focus_follows_mouse`, `tabs.close_buttons`, `tabs.cycle`, `tabs.title`, `tabs.on_exit`
+`terminal.focus_follows_mouse`, `terminal.pane_labels`, `tabs.close_buttons`, `tabs.cycle`, `tabs.title`, `tabs.on_exit`
 (`keep`, `close`) and `appearance.density` (`regular`, `compact`) (#98 T1), `terminal.claude_indicators` (Step 28),
 `terminal.claude_animation` (Step 44),
 `terminal.right_click` (`copy-paste`,

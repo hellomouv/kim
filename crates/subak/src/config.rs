@@ -281,6 +281,9 @@ pub struct TerminalPrefs {
     /// #98 T3 (`CORE-79`): a notification when a Terminal's program ends while its tab is not
     /// shown or the window is not in front (off by default).
     pub notify_exit: bool,
+    /// #98 T1 (`CORE-32`): a split window labels each pane with its index and program (off by
+    /// default).
+    pub pane_labels: bool,
     /// #98 T1 (`CORE-30`): pointing at another pane of a split window makes it the active one
     /// (off by default; a click always does).
     pub focus_follows_mouse: bool,
@@ -410,6 +413,7 @@ impl Default for Settings {
                 notify_command_seconds: 0,
                 notify_exit: false,
                 focus_follows_mouse: false,
+                pane_labels: false,
                 claude_indicators: true,
                 claude_animation: true,
                 detect_shells: true,
@@ -524,6 +528,7 @@ impl Settings {
             ("tabs", "on_exit") => json!(if tb.close_on_exit { "close" } else { "keep" }),
             ("appearance", "density") => json!(if a.compact { "compact" } else { "regular" }),
             ("terminal", "focus_follows_mouse") => json!(self.terminal.focus_follows_mouse),
+            ("terminal", "pane_labels") => json!(self.terminal.pane_labels),
             ("dropdown", "height") => json!(d.height),
             ("dropdown", "hide_on_blur") => json!(d.hide_on_blur),
             ("appearance", "theme") => json!(a.theme.as_str()),
@@ -831,6 +836,12 @@ pub const KEYS: &[Key] = &[
         kind: Kind::Bool,
     },
     Key {
+        section: "terminal",
+        name: "pane_labels",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
         section: "tabs",
         name: "close_buttons",
         takes: "true or false",
@@ -964,6 +975,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
             };
         }
         ("terminal", "focus_follows_mouse") => t.focus_follows_mouse = flag()?,
+        ("terminal", "pane_labels") => t.pane_labels = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
