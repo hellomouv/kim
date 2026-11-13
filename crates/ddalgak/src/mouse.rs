@@ -1662,16 +1662,20 @@ pub struct ScreenMap {
     pub clamped: bool,
 }
 
+/// One scale for both axes, centred: the map keeps the desktop's proportions (#76, found on
+/// the real desktop: a 5120 × 1440 monitor was drawn nearly square, so a move to the right looked
+/// shorter than it is).
 fn scale_into(p: Point, b: Rect, w: i32, h: i32) -> Point {
-    let sx = |v: i32| -> i32 {
-        i32::try_from(i64::from(v - b.left) * i64::from(w) / i64::from(b.width().max(1)))
-            .unwrap_or(0)
+    let (bw, bh) = (i64::from(b.width().max(1)), i64::from(b.height().max(1)));
+    let (w, h) = (i64::from(w), i64::from(h));
+    // The scale is num/den: w/bw when the width limits it, else h/bh.
+    let (num, den) = if w * bh <= h * bw { (w, bw) } else { (h, bh) };
+    let off_x = (w - bw * num / den) / 2;
+    let off_y = (h - bh * num / den) / 2;
+    let at = |v: i32, origin: i32, off: i64| -> i32 {
+        i32::try_from(off + i64::from(v - origin) * num / den).unwrap_or(0)
     };
-    let sy = |v: i32| -> i32 {
-        i32::try_from(i64::from(v - b.top) * i64::from(h) / i64::from(b.height().max(1)))
-            .unwrap_or(0)
-    };
-    Point::new(sx(p.x), sy(p.y))
+    Point::new(at(p.x, b.left, off_x), at(p.y, b.top, off_y))
 }
 
 /// The screen map of `layout` scaled into `width` × `height` with the pointer at `from` and the

@@ -990,7 +990,27 @@ fn the_editor_draft_saves_valid_canonical_steps() {
         MouseAction::MoveTo(spec(-30_000, 0, Anchor::VirtualScreen)),
     );
     let map = far.screen_map(&three(), Point::new(500, 500), None, 240, 80);
-    assert!(map.clamped && map.to == Some(Point::new(0, 14)), "{map:?}");
+    // The desktop is 7360 × 1980: 240 wide on the map, 64 high, centred (8 above and below);
+    // y = 0 is 360 below the top, 11 on the map.
+    assert!(map.clamped && map.to == Some(Point::new(0, 19)), "{map:?}");
+}
+
+/// #76 (found on the real desktop): the map keeps the desktop's proportions; a 5120 × 1440
+/// monitor is a wide band in the middle of a 220 × 110 map, not a near-square box.
+#[test]
+fn the_screen_map_keeps_the_desktops_proportions() {
+    let wide = Layout::single(5120, 1440);
+    let map = screen_map(&wide, Point::new(2560, 720), None, 220, 110);
+    let r = map.monitors[0].rect;
+    assert_eq!((r.left, r.right), (0, 220), "{r:?}");
+    assert_eq!(r.bottom - r.top, 61, "1440 × 220 / 5120: {r:?}");
+    assert_eq!(r.top, 24, "centred: {r:?}");
+    assert_eq!(map.from, Point::new(110, 54), "the centre stays the centre");
+    // A tall layout is limited by the height and centred across.
+    let tall = Layout::single(1080, 1920);
+    let r = screen_map(&tall, Point::new(0, 0), None, 220, 110).monitors[0].rect;
+    assert_eq!((r.top, r.bottom), (0, 110), "{r:?}");
+    assert_eq!(r.right - r.left, 61, "{r:?}");
 }
 
 #[test]
