@@ -73,6 +73,21 @@
       },
       "additionalProperties": true
     },
+    "quick_commands": {
+      "description": "#98 T4: saved snippets the window sends as input (palette: to this tab or to every tab).",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["name", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "enter": { "description": "Enter after the text (default true).", "type": "boolean" }
+        }
+      }
+    },
     "profiles": {
       "description": "Basic local shell profiles ([[profiles]] in the file). SSH and other profile kinds are Step 33.",
       "type": "array",

@@ -1214,6 +1214,31 @@ impl Model {
         )]
     }
 
+    /// #98 T4 (`PLUG-07`): `text` as input to every running tab of this window (the Host's
+    /// `pane.send_keys`, literal, to each Terminal's active pane).
+    pub fn send_to_tabs(&mut self, text: &str) -> Vec<Effect> {
+        if !self.connected {
+            return vec![Effect::Notice(
+                "Not connected to the Subak Host; nothing was sent".into(),
+            )];
+        }
+        let ids: Vec<String> = self
+            .tabs
+            .iter()
+            .filter(|t| t.running())
+            .map(|t| t.id.clone())
+            .collect();
+        ids.into_iter()
+            .map(|id| {
+                self.request(
+                    "pane.send_keys",
+                    json!({"target": id, "keys": [text], "literal": true}),
+                    Pending::PaneOp("pane.send_keys", id),
+                )
+            })
+            .collect()
+    }
+
     /// The user confirmed ending the busy Terminal `id`: `terminal.kill` with `force`, by id.
     pub fn confirm_close(&mut self, id: &str) -> Vec<Effect> {
         let Some(t) = self.tabs.iter().find(|t| t.id == id).cloned() else {

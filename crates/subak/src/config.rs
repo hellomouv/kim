@@ -349,6 +349,8 @@ pub struct Settings {
     pub dropdown: DropdownPrefs,
     /// #98 T1 (`CORE-10`): the tab bar.
     pub tabs: TabsPrefs,
+    /// #98 T4 (`PLUG-07`): saved snippets the window sends as input (`[[quick_commands]]`).
+    pub quick_commands: Vec<QuickCommand>,
     pub profiles: Vec<Profile>,
 }
 
@@ -360,6 +362,20 @@ pub struct DropdownPrefs {
     /// It hides when another window gets the focus (it keeps running; `gui.show` brings it).
     pub hide_on_blur: bool,
 }
+
+/// #98 T4 (`PLUG-07`): one `[[quick_commands]]` table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuickCommand {
+    /// What the palette shows (1–64 characters).
+    pub name: String,
+    /// The text sent as input (at most 4096 characters, no NUL).
+    pub text: String,
+    /// Enter after it (the default), so the command runs.
+    pub enter: bool,
+}
+
+/// The most quick commands used.
+pub const MAX_QUICK_COMMANDS: usize = 64;
 
 /// #98 T1: `[tabs]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -433,6 +449,7 @@ impl Default for Settings {
                 height: DROPDOWN_HEIGHT.2,
                 hide_on_blur: true,
             },
+            quick_commands: Vec::new(),
             tabs: TabsPrefs {
                 close_buttons: true,
                 cycle: true,
@@ -1267,6 +1284,7 @@ pub fn parse(text: &str) -> Parsed {
         match top.as_str() {
             "config_version" => {}
             "profiles" => parse_profiles(text, v, &mut out),
+            "quick_commands" => parse_quick_commands(v, &mut out),
             s if SECTIONS.contains(&s) => {
                 let Some(t) = v.as_table() else {
                     out.problems.push(Problem {
@@ -1334,6 +1352,72 @@ fn toml_error_line(msg: &str) -> Option<usize> {
         .take_while(char::is_ascii_digit)
         .collect();
     digits.parse().ok()
+}
+
+/// #98 T4 (`PLUG-07`): `[[quick_commands]]`: `name`, `text` and `enter`; a bad one is left out
+/// with a problem naming it.
+fn parse_quick_commands(v: &toml::Value, out: &mut Parsed) {
+    let Some(list) = v.as_array() else {
+        out.problems.push(Problem {
+            key: "quick_commands".into(),
+            line: None,
+            severity: Severity::Error,
+            message: "`quick_commands` must be an array of tables ([[quick_commands]])".into(),
+        });
+        return;
+    };
+    for (i, item) in list.iter().enumerate() {
+        let problem = |m: String| Problem {
+            key: format!("quick_commands[{i}]"),
+            line: None,
+            severity: Severity::Error,
+            message: m,
+        };
+        if out.settings.quick_commands.len() >= MAX_QUICK_COMMANDS {
+            out.problems.push(problem(format!(
+                "at most {MAX_QUICK_COMMANDS} quick commands are used; this one is left out"
+            )));
+            continue;
+        }
+        let Some(t) = item.as_table() else {
+            out.problems
+                .push(problem("a quick command is a table".into()));
+            continue;
+        };
+        if let Some(bad) = t
+            .keys()
+            .find(|k| !["name", "text", "enter"].contains(&k.as_str()))
+        {
+            out.problems.push(problem(format!(
+                "`{bad}` is not a quick command field (name, text, enter); it is left out"
+            )));
+            continue;
+        }
+        let name = t.get("name").and_then(toml::Value::as_str).map(str::trim);
+        let text = t.get("text").and_then(toml::Value::as_str);
+        let enter = match t.get("enter") {
+            None => Some(true),
+            Some(v) => v.as_bool(),
+        };
+        match (name, text, enter) {
+            (Some(n), Some(x), Some(enter))
+                if (1..=64).contains(&n.chars().count())
+                    && !x.is_empty()
+                    && x.chars().count() <= 4096
+                    && !x.contains('\0') =>
+            {
+                out.settings.quick_commands.push(QuickCommand {
+                    name: n.to_string(),
+                    text: x.to_string(),
+                    enter,
+                });
+            }
+            _ => out.problems.push(problem(
+                "a quick command needs `name` (1-64 characters) and `text` (1-4096 characters); `enter` is true or false; it is left out"
+                    .into(),
+            )),
+        }
+    }
 }
 
 fn parse_profiles(text: &str, v: &toml::Value, out: &mut Parsed) {
@@ -3089,5 +3173,36 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         assert_eq!(s.appearance.minimum_contrast, 1.0);
         assert!(set_value(&mut s, "appearance.minimum_contrast", "0.5").is_err());
         assert!(set_value(&mut s, "appearance.minimum_contrast", "22").is_err());
+    }
+
+    /// #98 T4 (`PLUG-07`): quick commands are read from `[[quick_commands]]`; a bad one is left
+    /// out with a problem, the good ones stay.
+    #[test]
+    fn quick_commands_are_read_and_checked() {
+        let d = sandbox("quick");
+        std::fs::write(
+            d.join(FILE),
+            "config_version = 1\n\n[[quick_commands]]\nname = \"build\"\ntext = \"cargo build\"\n\n[[quick_commands]]\nname = \"ls\"\ntext = \"dir \"\nenter = false\n\n[[quick_commands]]\nname = \"\"\ntext = \"x\"\n\n[[quick_commands]]\nname = \"bad\"\ntext = \"y\"\nshell = \"pwsh\"\n",
+        )
+        .unwrap();
+        let l = load(&d);
+        let q = &l.settings().quick_commands;
+        assert_eq!(
+            q,
+            &[
+                QuickCommand {
+                    name: "build".into(),
+                    text: "cargo build".into(),
+                    enter: true
+                },
+                QuickCommand {
+                    name: "ls".into(),
+                    text: "dir ".into(),
+                    enter: false
+                },
+            ]
+        );
+        let problems: Vec<String> = l.parsed.problems.iter().map(|p| p.key.clone()).collect();
+        assert_eq!(problems, ["quick_commands[2]", "quick_commands[3]"]);
     }
 }

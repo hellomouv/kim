@@ -98,6 +98,11 @@ middle_click = "none"         # none | paste
 word_separators = "…"         # ≤ 128 characters; default: Windows Terminal's set
 repeat_time_ms = 500          # 0–2000; tmux repeat-time for Ctrl+B Ctrl+Arrow (Step 23); 0: off
 
+[[quick_commands]]            # #98 T4: ≤ 64 snippets the window sends as input
+name = "build"                # 1-64 characters
+text = "cargo build"          # 1-4096 characters
+enter = true                  # Enter after it (default)
+
 [[profiles]]                  # ≤ 64; names unique ignoring case
 name = "PowerShell"           # 1–64 characters, required
 program = "powershell.exe"    # required; a path or a name on the pane's PATH

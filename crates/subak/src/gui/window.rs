@@ -3043,6 +3043,25 @@ impl App {
                 keys: String::new(),
             });
         }
+        // #98 T4 (`PLUG-07`): each quick command, to this tab or to every tab.
+        for (k, q) in self.settings.quick_commands.iter().enumerate() {
+            entries.push(Entry {
+                target: Target::Quick {
+                    index: k,
+                    all: false,
+                },
+                label: format!("Quick command: {}", q.name),
+                keys: String::new(),
+            });
+            entries.push(Entry {
+                target: Target::Quick {
+                    index: k,
+                    all: true,
+                },
+                label: format!("Quick command to every tab: {}", q.name),
+                keys: String::new(),
+            });
+        }
         self.palette = Some(PaletteUi {
             entries,
             ..PaletteUi::default()
@@ -3171,6 +3190,29 @@ impl App {
                 }
             }
             Target::Profile(k) => self.new_terminal(Some(k)),
+            Target::Quick { index, all } => self.quick_command(index, all),
+        }
+    }
+
+    /// #98 T4 (`PLUG-07`): sends a quick command's text (and Enter, unless it says otherwise)
+    /// to the shown Terminal, or to every running tab of the window.
+    fn quick_command(&mut self, index: usize, all: bool) {
+        let Some(q) = self.settings.quick_commands.get(index).cloned() else {
+            return;
+        };
+        let text = if q.enter {
+            format!("{}\r", q.text)
+        } else {
+            q.text.clone()
+        };
+        self.event(&json!({"event": "quick_command", "name": q.name, "all": all}));
+        if all {
+            let fx = self.model.send_to_tabs(&text);
+            self.apply(fx);
+        } else if matches!(self.model.phase, Phase::Attached { .. }) {
+            self.pane.scroll_to_bottom();
+            self.input(text.as_bytes());
+            self.redraw();
         }
     }
 

@@ -219,6 +219,10 @@ Keys go to the program, in the order of ADR 0009:
    busy); profiles with a `group` are a submenu of the New Terminal list ("New Terminal: Work",
    "New Terminal: Detected"); `clipboard.copy-path` (no default) copies the folder the pane's
    shell reported last (OSC 7 or 9;9, else the folder it started in), or says none is known.
+   `[[quick_commands]]` in `config.toml` (`name`, `text`, `enter` default true) are palette
+   entries: "Quick command: build" sends the text (and Enter) to the shown Terminal, "Quick
+   command to every tab: build" to each running tab of the window (the Host's
+   `pane.send_keys`).
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,

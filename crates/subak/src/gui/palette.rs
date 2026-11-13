@@ -11,6 +11,8 @@ pub enum Target {
     Terminal(String),
     /// A new Terminal from the `k`-th profile (`Settings::all_profiles`).
     Profile(usize),
+    /// #98 T4 (`PLUG-07`): the `k`-th quick command, to the shown Terminal or to every tab.
+    Quick { index: usize, all: bool },
 }
 
 /// One line of the palette.

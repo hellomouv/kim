@@ -3797,3 +3797,52 @@ fn copy_path_switch_profile_and_profile_groups() {
         dir.display()
     );
 }
+
+/// #98 T4 (`PLUG-07`): quick commands from `config.toml` are in the palette: to this tab (the
+/// text and Enter reach its program) and to every tab (the Host sends it to each).
+#[test]
+fn quick_commands_go_to_one_tab_or_all() {
+    let host = Host::start("gui-quick", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "one");
+    new_standin(&ep, "two");
+    let appdata = sandbox("quick");
+    let cfg = appdata.join("mouv").join("subak");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("config.toml"),
+        "config_version = 1\n\n[[quick_commands]]\nname = \"hello\"\ntext = \"hi\"\n",
+    )
+    .unwrap();
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    let seen = |q: &str| {
+        gui.history()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| v["event"] == "palette" && v["query"] == q)
+            .count()
+    };
+    let palette = |q: &str| {
+        let before = seen(q);
+        gui.cmd(&json!({"cmd": "key", "vk": u32::from(b'P'), "ctrl": true, "shift": true}));
+        gui.type_text(q);
+        gui.until("filtered", |_| seen(q) > before);
+        gui.cmd(&json!({"cmd": "key", "vk": VK_RETURN}));
+    };
+    // To this tab: `one` gets `hi` and Enter.
+    palette("quick command: hello");
+    wait_for("one got hi", || {
+        capture(&ep, "one").contains("standin-got-6869")
+    });
+    assert!(
+        !capture(&ep, "two").contains("standin-got-6869"),
+        "only this tab"
+    );
+    // To every tab: `two` gets it too.
+    palette("quick command to every tab: hello");
+    wait_for("two got hi", || {
+        capture(&ep, "two").contains("standin-got-6869")
+    });
+    println!("EVIDENCE quick commands: `hello` reached one, then every tab (two too)");
+}
