@@ -819,6 +819,22 @@ date in the Step report and the matrix Evidence column):
 11. Keyboard only: `F1`, `Ctrl+A`, `Tab` four times (the rectangle tool has the focus ring),
     `Enter`, `Space`, `W A S D`, `Space`, `Enter`: a pin with a rectangle.
 
+**Result (2026-11-13, real desktop, ADR 0088; Windows 10 22H2, Microsoft Korean IME; the toolbar
+driven by keyboard, `Tab` from the canvas):** steps 2–9 and 11 pass and step 10's stroke width:
+a red 3-pixel rectangle, a circle and a 0° line with `Shift`, a pen stroke and a translucent marker
+over text; three undos and two redos restore exactly; `[`, `]` and the wheel change the width, `N`
+selects, `]` widens the selected object, the arrows move it, `Delete` and `Ctrl+Z`; a label
+`Hello` plus 한글 composed inline with the Hanja list at the caret, a second line clipped at the
+selection's edge as designed, a double-clicked word replaced; with no label edited the overlay has
+no input method and `E`, `M`, `D` work; a double-click pins with the annotations and the pin's copy
+holds them; the overlay's `Ctrl+C` is exactly the 401×301 selection with its annotation and nothing
+of the toolbar, a quick save holds it too; the pin editor (`Space` on a pin, `mode pin_edit`) adds a
+stroke with `Enter`, discards with `Esc`, crops to 301×251 at the same place, and keeps the work
+when another window took the focus meanwhile; keyboard only — `Ctrl+A`, four `Tab`s (the rectangle
+tool focused), `Enter`, `Space`, `D`/`S`, `Space`, `Enter` — pins a rectangle; at 150 % the 3-pixel
+outline is 5 device pixels. The clipboard was saved and restored; Paint was replaced by reading the
+copied picture's pixels. Not run: an emoji from `Win+.`, two monitors.
+
 ### 4.10 Step 57: the privacy tools, their rules and the manual check
 
 Step 57 ships mosaic, blur, the eraser and the solid redaction in the overlay and on pins
