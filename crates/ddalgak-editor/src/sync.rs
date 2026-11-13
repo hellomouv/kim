@@ -367,6 +367,8 @@ pub struct FakeState {
     pub calls: Vec<String>,
     /// Delay before answering a reload (the engine's reload acknowledgement arrives later).
     pub delay_ms: u64,
+    /// The active mode the app reports, when a test switched it (else the profile's default).
+    pub mode: Option<String>,
 }
 
 impl FakeEngine {
@@ -432,7 +434,7 @@ impl Engine for FakeEngine {
                 _ => serde_json::json!({
                     "engine": engine,
                     "rules": { "active_set": active },
-                    "profile": { "id": loaded.profile, "mode": loaded.mode },
+                    "profile": { "id": loaded.profile, "mode": s.mode.clone().unwrap_or(loaded.mode) },
                 }),
             })
         })

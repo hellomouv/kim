@@ -126,7 +126,7 @@ impl EditorApp {
             pointer: p.pointer,
             confirmed,
         };
-        let t = std::time::Instant::now();
+        let t = Instant::now();
         let r = simulate::simulate(&doc, &input);
         self.play.elapsed_us = t.elapsed().as_micros();
         match r {

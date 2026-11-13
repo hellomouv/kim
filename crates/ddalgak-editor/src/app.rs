@@ -29,7 +29,7 @@ use eframe::egui;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod macros;
 mod playground;
@@ -275,6 +275,11 @@ pub struct EditorApp {
     toast: Option<Toast>,
     undo: Vec<UndoEntry>,
     engine: EngineView,
+    /// When the engine's state was last asked for, and whether that answer is still out: the
+    /// header follows a change made elsewhere (a shortcut, the tray, a mode key, the CLI) within
+    /// about a second (#77: it kept showing "Mode: Base" after a key switched to `nav`).
+    status_asked: Option<Instant>,
+    status_pending: bool,
     save: SaveState,
     banner: Option<Banner>,
     shortcuts: Shortcuts,
@@ -357,6 +362,8 @@ impl EditorApp {
             toast: None,
             undo: Vec::new(),
             engine: EngineView::Unknown,
+            status_asked: None,
+            status_pending: false,
             save: SaveState::Idle,
             banner: None,
             shortcuts,
@@ -385,7 +392,7 @@ impl EditorApp {
             app_map: None,
         };
         app.start_watch();
-        app.link.send(Job::Status);
+        app.ask_status();
         if app.loaded.state.usable() {
             let r = app.loaded.revision();
             app.save = SaveState::Waiting { revision: r };
@@ -538,6 +545,24 @@ impl EditorApp {
             .map_or_else(|| "default".into(), |d| d.active_profile.clone())
     }
 
+    /// Asks the engine for its state (one request at a time).
+    fn ask_status(&mut self) {
+        if !self.status_pending {
+            self.status_pending = true;
+            self.status_asked = Some(Instant::now());
+            self.link.send(Job::Status);
+        }
+    }
+
+    /// Every second while the window is open: the header shows the engine's live state and mode.
+    pub(crate) fn refresh_status(&mut self, ctx: &egui::Context) {
+        const EVERY: Duration = Duration::from_secs(1);
+        if self.status_asked.is_none_or(|t| t.elapsed() >= EVERY) {
+            self.ask_status();
+        }
+        ctx.request_repaint_after(EVERY);
+    }
+
     fn poll(&mut self) {
         for r in self.link.poll() {
             self.engine = EngineView::from_reply(&self.engine, &r.job, &r.result);
@@ -568,7 +593,7 @@ impl EditorApp {
                         self.link.send(Job::Reload { revision: rev });
                     }
                 }
-                Job::Status => {}
+                Job::Status => self.status_pending = false,
             }
         }
         if self.changed.swap(false, Ordering::SeqCst) {

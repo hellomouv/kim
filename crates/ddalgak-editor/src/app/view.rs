@@ -60,6 +60,7 @@ impl EditorApp {
             }
         }
         self.poll();
+        self.refresh_status(&ctx);
         // Step 78: while recording, keys go to the recorder only (before any shortcut).
         self.record_events(&ctx);
         if ctx.input(|i| i.viewport().close_requested()) && !self.close_now && !self.request_close()
@@ -1271,7 +1272,11 @@ impl EditorApp {
                 if !on {
                     notes.push(lang.t("state.disabled").to_string());
                 }
-                ui.label(small(notes.join(" · "), c.text_muted));
+                // An empty label here drew the next one over the mode's name (#77: "nav" under
+                // "94 rules" in the real editor).
+                if !notes.is_empty() {
+                    ui.label(small(notes.join(" · "), c.text_muted));
+                }
                 let rules = ddalgak::mode_edit::rules_of(&p, &m.id).len();
                 ui.label(small(
                     format!("{rules} {}", lang.t("status.rules")),

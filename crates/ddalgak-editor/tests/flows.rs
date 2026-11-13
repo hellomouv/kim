@@ -1041,6 +1041,48 @@ fn profile_ids(d: &Value) -> Vec<String> {
         .collect()
 }
 
+/// #77 (seen in the real editor): the header showed the engine's state and mode from the start
+/// only; a mode key, a shortcut or the CLI changed them without the header following.
+#[test]
+fn the_header_follows_engine_changes_made_elsewhere() {
+    let sb = Sandbox::new("live-header");
+    sb.write_rules(&three_rules());
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake.clone()));
+    settle(&mut h);
+    assert!(h.query_by_label("Mode: base").is_some());
+    fake.with(|s| {
+        s.engine = "paused".into();
+        s.mode = Some("nav".into());
+    });
+    std::thread::sleep(Duration::from_millis(1100));
+    settle(&mut h);
+    assert!(
+        h.query_by_label("Mode: nav").is_some(),
+        "the new mode is shown"
+    );
+    assert!(
+        h.query_by_label_contains("Paused").is_some(),
+        "the new state is shown"
+    );
+}
+
+/// #77 (seen in the real editor): a mode without notes drew its rule count over its name.
+#[test]
+fn a_mode_row_does_not_draw_its_count_over_its_name() {
+    let sb = Sandbox::new("mode-row");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "Modes");
+    let name = h.get_by_label("Navigation").rect();
+    let count = h.get_all_by_label("1 rules").last().unwrap().rect();
+    assert!(
+        count.left() >= name.right(),
+        "the count starts after the name: name {name:?}, count {count:?}"
+    );
+}
+
 /// #79 (seen in the real editor): the "profile per program" rows were built once, so a new
 /// profile had no row and a deleted one kept its row until the editor restarted.
 #[test]
