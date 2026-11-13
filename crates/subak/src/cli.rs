@@ -490,7 +490,8 @@ impl Cmd {
             | Self::ConfigExport
             | Self::ProfileList
             | Self::ProfileShow => &[],
-            Self::ConfigSet | Self::ConfigImport => &["--dry-run"],
+            Self::ConfigSet => &["--dry-run"],
+            Self::ConfigImport => &["--dry-run", "--merge"],
             Self::ConfigReset => &["--all", "--yes", "--dry-run"],
             Self::WindowNew | Self::PaneNew => &[
                 "--endpoint",
@@ -674,6 +675,8 @@ pub struct Args {
     pub kill_terminals: bool,
     /// `rm`: also end a Terminal that still runs.
     pub force: bool,
+    /// #98 T4 (`CFG-06`): `config import --merge`: merge into the current file.
+    pub merge: bool,
     /// `new`: working directory of the pane.
     pub cwd: Option<String>,
     /// `new --env` / `--unset-env`, in the order given.
@@ -1549,6 +1552,10 @@ pub fn parse(raw: &[String]) -> Result<(Cmd, Args), (String, CliError)> {
             "--force" => {
                 a.force = true;
                 opts.push("--force");
+            }
+            "--merge" => {
+                a.merge = true;
+                opts.push("--merge");
             }
             "--remain-on-exit" => {
                 a.remain_on_exit = true;

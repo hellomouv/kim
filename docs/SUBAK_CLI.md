@@ -349,7 +349,7 @@ window, and never change a running Terminal. The window's Settings menu changes 
 | `subak config set <key> <value>` (or `<key>=<value>`) | write (`--dry-run`) | Change one setting by editing its line in place; comments and unknown keys stay; an invalid value is refused (`usage`) and nothing is written |
 | `subak config reset <key>\|<section>\|--all [--yes]` | write; `--all` destructive (asks or `--yes`) | Remove the keys so their defaults apply; profiles and unknown keys stay; `--all` keeps a backup and also replaces an invalid file |
 | `subak config export` | read | The file (or, without one, a header with the defaults) with every secret-looking value replaced by `***` |
-| `subak config import <file> [--dry-run]` | write | Replace the file with a checked one (valid, this version or older, no secrets); the current file is backed up first |
+| `subak config import <file> [--merge] [--dry-run]` | write | Replace the file with a checked one (valid, this version or older, no secrets); the current file is backed up first. #98 T4: `--merge` keeps the current file and its comments: the settings the imported file sets are edited in place, its profiles that do not exist yet are appended as written there, same-name profiles stay (`kept_profiles`); `--dry-run` is the preview |
 | `subak profile list` | read | The profiles and which one is the default |
 | `subak profile show <name>` | read | One profile (names ignore case) |
 

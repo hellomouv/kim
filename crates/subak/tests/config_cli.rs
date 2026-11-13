@@ -560,3 +560,62 @@ fn a_profile_launches_its_exact_argv_cwd_and_env_and_settings_never_touch_runnin
         after["pid"]
     );
 }
+
+/// #98 T4 (`CFG-06`): `config import --merge` previews (dry run, nothing written) and then
+/// merges: the settings the file sets are edited in place (comments stay), its new profiles are
+/// appended as written, a profile that exists already is kept and named.
+#[test]
+fn import_merge_previews_then_merges_without_losing_the_current_file() {
+    let appdata = sandbox("merge");
+    let file = appdata.join("mouv").join("subak").join("config.toml");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let mine = "config_version = 1\n# my own note\n[appearance]\ntheme = \"kim-light\"\n\n[[profiles]]\nname = \"work\"\nprogram = \"cmd.exe\"\n";
+    std::fs::write(&file, mine).unwrap();
+    let other = appdata.join("other.toml");
+    std::fs::write(
+        &other,
+        "config_version = 1\n[appearance]\ntheme = \"high-contrast\"\nfont_size = 15\n\n[[profiles]]\nname = \"work\"\nprogram = \"pwsh.exe\"\n\n[[profiles]]\nname = \"build\"\nprogram = \"cmd.exe\"\nargs = [\"/k\", \"echo build\"]\n",
+    )
+    .unwrap();
+    let o = other.to_str().unwrap();
+    let (code, doc) = sub(&appdata, &["config", "import", o, "--merge", "--dry-run"]);
+    assert_eq!(code, 0, "{doc}");
+    let keys: Vec<&str> = doc["data"]["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        ["appearance.font_size", "appearance.theme", "profiles.build"],
+        "{doc}"
+    );
+    assert_eq!(doc["data"]["kept_profiles"], json!(["work"]));
+    assert_eq!(doc["data"]["written"], false);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        mine,
+        "a dry run writes nothing"
+    );
+    let (code, doc) = sub(&appdata, &["config", "import", o, "--merge"]);
+    assert_eq!(code, 0, "{doc}");
+    assert_eq!(doc["data"]["written"], true);
+    assert!(doc["data"]["backup"].is_string(), "{doc}");
+    let now = std::fs::read_to_string(&file).unwrap();
+    assert!(now.contains("# my own note"), "{now}");
+    assert!(
+        now.contains("theme = \"high-contrast\"") && now.contains("font_size = 15"),
+        "{now}"
+    );
+    assert!(
+        now.contains("name = \"build\"") && now.contains("echo build"),
+        "{now}"
+    );
+    assert!(
+        now.contains("program = \"cmd.exe\"\n") && !now.contains("pwsh.exe"),
+        "work kept: {now}"
+    );
+    let (code, doc) = sub(&appdata, &["config", "check"]);
+    assert_eq!(code, 0, "the merged file is valid: {doc}");
+}

@@ -209,3 +209,33 @@ fn issue98_detected_shells_exist_and_assume_nothing_more() {
         }
     }
 }
+
+/// #98 T4 (`CFG-06`): settings from another file merge into the current one: a dry run first
+/// (nothing written), then the merge keeps the current profiles and adds the new ones.
+#[test]
+fn issue98_settings_merge_from_another_file() {
+    let sb = TempDir::new("issue98-merge");
+    let (code, doc) = json(&sb, &["config", "set", "appearance.theme", "kim-light"]);
+    assert_eq!(code, 0, "{doc}");
+    let other = sb.path().join("other.toml");
+    std::fs::write(
+        &other,
+        "config_version = 1\n[appearance]\nfont_size = 15\n\n[[profiles]]\nname = \"build\"\nprogram = \"cmd.exe\"\n",
+    )
+    .unwrap();
+    let o = other.to_str().unwrap();
+    let (code, doc) = json(&sb, &["config", "import", o, "--merge", "--dry-run"]);
+    assert_eq!(code, 0, "{doc}");
+    assert_eq!(doc["data"]["written"], false);
+    let (code, doc) = json(&sb, &["config", "import", o, "--merge"]);
+    assert_eq!(code, 0, "{doc}");
+    let (_, show) = json(&sb, &["config", "show"]);
+    assert_eq!(
+        setting(&show, "appearance.theme")["value"],
+        "kim-light",
+        "kept"
+    );
+    assert_eq!(setting(&show, "appearance.font_size")["value"], 15.0);
+    let (_, list) = json(&sb, &["profile", "list"]);
+    assert!(list.to_string().contains("\"build\""), "{list}");
+}

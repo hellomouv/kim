@@ -4211,6 +4211,15 @@
         "from": {
           "description": "import: the file that was imported.",
           "type": "string"
+        },
+        "merge": {
+          "description": "#98 T4: import --merge: the settings the file sets were edited in place and its new profiles appended.",
+          "type": "boolean"
+        },
+        "kept_profiles": {
+          "description": "#98 T4: import --merge: profiles of the file that already exist here, kept as they are.",
+          "type": "array",
+          "items": {"type": "string"}
         }
       }
     },

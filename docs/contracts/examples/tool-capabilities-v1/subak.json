@@ -350,7 +350,7 @@
     },
     {
       "name": "config.import",
-      "usage": "subak config import <file> [--dry-run] [--json]",
+      "usage": "subak config import <file> [--merge] [--dry-run] [--json]",
       "summary": "Validate a settings file and replace config.toml with it (keeps a backup); secrets are refused (secret_in_config)",
       "effect": "write",
       "network": false,

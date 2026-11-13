@@ -501,6 +501,12 @@ fn import(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
             &EditError::NotEditable(State::Newer, Vec::new()),
         ));
     }
+    // #98 T4 (`CFG-06`): a merge keeps the current file and its comments: the settings the
+    // imported file sets are edited in place, its profiles that do not exist yet are appended
+    // as they are written there, and same-name profiles stay as they are (both reported).
+    if a.merge {
+        return merge(dir, &l, &incoming, &text, &from, a);
+    }
     let changes = config::differences(l.settings(), &incoming.settings);
     let edited = Edited {
         text: if text.ends_with('\n') {
@@ -533,6 +539,99 @@ fn import(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
     }
     let mut out = finish(&l, &edited, a, backup.as_deref(), "import")?;
     out.data["from"] = json!(path_text(&from));
+    Ok(out)
+}
+
+/// #98 T4 (`CFG-06`): `config import <file> --merge` (see `import`).
+fn merge(
+    dir: &Path,
+    l: &Loaded,
+    incoming: &config::Parsed,
+    text: &str,
+    from: &Path,
+    a: &Args,
+) -> Result<Outcome, CliError> {
+    // The settings the imported file sets, as the values `config set` takes.
+    let values: Vec<(String, String)> = incoming
+        .set_keys
+        .iter()
+        .filter_map(|id| {
+            let k = config::key(id)?;
+            let v = match incoming.settings.value(k) {
+                Value::String(s) => s,
+                Value::Null => return None,
+                other => other.to_string(),
+            };
+            let now = match l.settings().value(k) {
+                Value::String(s) => s,
+                other => other.to_string(),
+            };
+            (v != now).then(|| (id.clone(), v))
+        })
+        .collect();
+    let pairs: Vec<(&str, &str)> = values
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let mut edited = if pairs.is_empty() {
+        Edited {
+            text: l.text.clone().unwrap_or_default(),
+            changes: Vec::new(),
+        }
+    } else {
+        config::set(l, &pairs).map_err(|e| not_editable(l, &e))?
+    };
+    // Profiles: the new ones are appended as the imported file writes them.
+    let lines: Vec<&str> = text.lines().collect();
+    let mut kept = Vec::new();
+    for p in &incoming.settings.profiles {
+        let exists = l
+            .settings()
+            .profiles
+            .iter()
+            .any(|q| q.name.to_lowercase() == p.name.to_lowercase());
+        if exists {
+            kept.push(p.name.clone());
+            continue;
+        }
+        let Some(start) = p.line.map(|n| n.saturating_sub(1)) else {
+            continue;
+        };
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find(|(_, l)| l.trim_start().starts_with('['))
+            .map_or(lines.len(), |(i, _)| i);
+        let block = lines[start..end].join("\n");
+        if !edited.text.is_empty() && !edited.text.ends_with('\n') {
+            edited.text.push('\n');
+        }
+        edited.text.push('\n');
+        edited.text.push_str(block.trim_end());
+        edited.text.push('\n');
+        edited.changes.push(Change {
+            key: format!("profiles.{}", p.name),
+            before: None,
+            after: Some("(added)".into()),
+        });
+    }
+    let mut backup = None;
+    if !a.dry_run && !edited.changes.is_empty() {
+        backup = config::backup(dir, config::FILE, "").map_err(|e| {
+            CliError::new(
+                Code::Io,
+                format!(
+                    "cannot back up {}: {e}; nothing was changed",
+                    path_text(&l.path)
+                ),
+            )
+        })?;
+    }
+    let mut out = finish(l, &edited, a, backup.as_deref(), "import")?;
+    out.data["from"] = json!(path_text(from));
+    out.data["merge"] = json!(true);
+    out.data["kept_profiles"] = json!(kept);
     Ok(out)
 }
 

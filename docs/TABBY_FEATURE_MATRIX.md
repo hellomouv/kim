@@ -315,7 +315,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `CFG-03` Config schema version | S `version: 1` | A versioned schema with migrations (KIM-NFR-014) *Partial (Step 20):* `config_version = 1` (a newer one is read-only); the window's `gui.json` moved to version 2 with a one-time, backed-up migration of its text size and theme into `config.toml` | partial | Step 20 | T: `crates/subak/tests/gui_settings.rs::preferences_survive_restart_migrate_from_version_1_and_never_touch_running_terminals`, `crates/subak/src/gui/prefs.rs` unit tests (Step 20) |
 | `CFG-04` Cloud config sync | S `configSyncSettingsTab`; K sync through a Tabby Web account | Excluded: no accounts and no cloud service (KIM-SEC-010) | excluded | — | — |
 | `CFG-05` Sync to Gist or Gitee | R plugin: "sync-config - sync the config to Gist or Gitee" | Excluded: relies on a third-party cloud. Users can keep `config.toml` in a folder they sync themselves (local-only). | excluded | — | — |
-| `CFG-06` Local export and import of settings | K open or copy the config from Settings | Export and import from the CLI, without secrets, with a merge preview *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
+| `CFG-06` Local export and import of settings | K open or copy the config from Settings | Export and import from the CLI, without secrets, with a merge preview *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-14):* `subak config export` (secret-looking values as `***`) and `subak config import <file>` (checked; refuses secrets; `--dry-run` previews the changes) were already there; `--merge` now merges instead of replacing: the settings the file sets are edited in place (comments stay), its new profiles are appended as written, same-name profiles are kept and named. | implemented | #98 T4 | T: `crates/subak/tests/config_cli.rs::import_merge_previews_then_merges_without_losing_the_current_file`; T: `crates/subak/tests/config_cli.rs::config_commands_edit_validate_back_up_and_never_start_a_host` |
 | `CFG-07` Import from Tabby | K Tabby `config.yaml` (profiles, color schemes, hotkeys) | A one-shot, read-only importer that reports what it skipped *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 | `CFG-08` Workspace profiles | R plugin: "workspace-manager - allows creating custom workspace profiles…" | Named layouts (Terminals, panes, profiles, cwd) that launch together, with an explicit launch command per pane *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 
@@ -450,9 +450,9 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 44 |
+| `planned` | 43 |
 | `partial` | 92 |
-| `implemented` | 42 |
+| `implemented` | 43 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
@@ -466,7 +466,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 5. Serial (`SER`) | 14 | 0 | 0 | 0 | 0 | 14 |
 | 6. Telnet (`TEL`) | 4 | 0 | 0 | 0 | 0 | 4 |
 | 7. Secrets (`VAULT`) | 4 | 0 | 0 | 4 | 0 | 8 |
-| 8. Configuration and sync (`CFG`) | 3 | 3 | 0 | 2 | 0 | 8 |
+| 8. Configuration and sync (`CFG`) | 2 | 3 | 1 | 2 | 0 | 8 |
 | 9. Plugins and themes (`PLUG`) | 2 | 1 | 1 | 5 | 0 | 9 |
 | 10. Web app (`WEB`) | 0 | 0 | 0 | 3 | 0 | 3 |
 | 11. Application and platforms (`APP`) | 5 | 3 | 0 | 6 | 1 | 15 |
@@ -500,3 +500,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | The minimum contrast: `CORE-39` `implemented`. No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Quick commands: `PLUG-07` `partial` (the window; a CLI runner remains). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Keyword highlighting: `PLUG-08` `implemented`. No Tabby re-fetch. |
+| 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Settings export and import: `CFG-06` `implemented` (`config import --merge`). No Tabby re-fetch. |

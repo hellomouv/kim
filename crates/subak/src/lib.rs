@@ -143,7 +143,7 @@ USAGE:
     subak config show|check|export [--json]
     subak config set <key> <value> [--dry-run] [--json]      (also <key>=<value>)
     subak config reset (<key> | <section> | --all [--yes]) [--dry-run] [--json]
-    subak config import <file> [--dry-run] [--json]
+    subak config import <file> [--merge] [--dry-run] [--json]
     subak profile list [--json]  |  subak profile show <name> [--json]
     subak capabilities [--json]
     Every command except `hotkeys`, `config` and `profile` also takes --endpoint <name>. `subak terminal new|list|info|rename|attach|
