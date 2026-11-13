@@ -163,7 +163,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `ANN-11` | Re-edit, clone and delete finished annotations (Pro) | P | Annotations stay editable objects until export. Step 56: pick, move, resize, recolour, re-width, reorder and delete objects in the overlay and on pins, by mouse and keyboard; missing: clone | partial | NOEUL-FR-081 | N3 | T | T: `crates/noeul/src/annotation/tests.rs` objects_are_selected_moved_resized_reordered_and_deleted_with_undo, keyboard_editing_selects_nudges_grows_and_shrinks; T: `crates/noeul/src/app.rs` a_pin_keeps_its_annotations_editable_and_edits_commit_crop_or_cancel |
 | `ANN-12` | Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro) | P | #99: the **double arrow** tool (`annotate.double-arrow`, its toolbar button after the arrow, in the overlay and the pin editor): a head at both ends that share the length, moved and resized by its two ends, counted as its own kind in `status`. Missing: numbered markers, rounded rectangles, dashes, styled arrow heads, filled or outlined text and the magnifier shape | partial | NOEUL-FR-084 | N4 | T, M | T: `crates/noeul/src/annotation/tests.rs` a_double_arrow_has_a_head_at_both_ends; T: `crates/noeul/src/overlay.rs` tests::the_toolbar_sits_next_to_the_selection_and_never_over_the_chip; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, the toolbar's double-arrow button and a drag inside a 601 × 301 selection drew a red arrow with both heads |
 | `ANN-13` | Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro) | P | #99: **per-tool colours**: every tool keeps its own colour (the solid redaction starts black, the others red); choosing a tool shows its colour on the colour button, new objects take it, and with no tool active the button shows and changes the selected object's kind (else the tool used last). Missing: rotatable shapes, a separate width per pen, a shareable palette | partial | NOEUL-FR-084 | N4 | T, M | T: `crates/noeul/src/annotation/tests.rs` every_tool_keeps_its_own_colour; T: `crates/noeul/src/annotation/privacy_tests.rs` a_redaction_starts_black_its_colour_stays_opaque_and_the_chip_says_what_protects; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, rectangle set to blue (four clicks on the colour button) and drawn, the pen still red and drawn red, the rectangle tool showed blue again |
-| `ANN-14` | Right-click marks the detected element in rectangle, ellipse or fill modes | A | Annotation extra | planned | NOEUL-FR-084 | N4 | T | — |
+| `ANN-14` | Right-click marks the detected element in rectangle, ellipse or fill modes | A | With the rectangle, ellipse or a box privacy tool (mosaic, blur, solid redaction) a right-click inside the selection asks UI Automation for the element under it and marks it with that tool as one undoable step; without an element the window is marked when it is smaller than the selection; a mark that would be the whole selection adds nothing; with no window there the right-click leaves the tool as before (ANN-10) (#99). | supported | NOEUL-FR-084 | N4 | T, M | T: `crates/noeul/src/overlay.rs` tests::a_right_click_marks_the_detected_element_with_a_box_tool; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, a selection around Notepad: right-clicks with the rectangle tool marked the `편집` menu item and the status bar's `Ln 1, Col 1` part, with the ellipse tool the `100%` part |
 | `ANN-15` | Annotate an image window (`Space` shows the paint bar) | K, F | `pin.annotate` (`Space`). Step 56: `Space` and the pin menu open the pin editor (a layered window over the pin); `Enter`/Done commit, `Esc`/Cancel leave the pin unchanged; missing: the manual check on the visible desktop (UX spec §4.9) | partial | NOEUL-FR-080 | N3 | T, M | T: `crates/noeul/src/app.rs` a_pin_keeps_its_annotations_editable_and_edits_commit_crop_or_cancel; T: `crates/noeul/tests/annotation.rs` a_label_and_a_pin_edit_through_the_real_windows |
 | `ANN-16` | Crop an image window (Pro) | P | Crop on pins, and a size readout for measuring. Step 56: the pin editor crops by the selection's handles or keys (kept where it was shown, final after the commit); the size chip measures the object drawn or selected; missing: the manual check on the visible desktop (UX spec §4.9) | partial | NOEUL-FR-083 | N3 | T, M | T: `crates/noeul/src/overlay.rs` the_pin_editor_keeps_its_selection_crops_inside_the_pin_and_commits_with_enter; T: `crates/noeul/src/pins.rs` annotations_over_a_transparent_picture_and_crop_commits |
 | `ANN-17` | Double-click during annotation | — (Noeul rule) | ◆ A double-click while a tool is active never pins; `Enter` pins with the drawing. Step 56: FLOW-13, FLOW-14 (a word of a label is selected), FLOW-15 | partial | NOEUL-FR-021 | N3 | T (FLOW-13, FLOW-14) | T: `crates/noeul/src/overlay.rs` a_tool_draws_inside_never_pins_and_escape_leaves_it_with_the_drawing, text_labels_take_characters_and_the_ime_and_a_double_click_selects_a_word |
@@ -321,9 +321,9 @@ picture.
 
 | Status | Rows |
 | --- | --- |
-| `supported` | 8 |
+| `supported` | 9 |
 | `partial` | 113 |
-| `planned` | 26 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `planned` | 25 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -334,7 +334,7 @@ picture.
 | 3. Color picker (`COLOR`) | 0 | 7 | 0 | 0 | 7 |
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 1 | 9 | 1 | 1 | 12 |
-| 6. Annotation (`ANN`) | 0 | 16 | 1 | 0 | 17 |
+| 6. Annotation (`ANN`) | 1 | 16 | 0 | 0 | 17 |
 | 7. Floating pins (`PIN`) | 3 | 21 | 4 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 0 | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 0 | 5 | 0 | 1 | 6 |
@@ -373,6 +373,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-12` moves to `partial`: the double arrow tool. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-08` (free-size thumbnail by right-drag) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-13` moves to `partial`: per-tool colours. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-14` (a right-click marks the detected element) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

@@ -909,6 +909,9 @@ struct Detection {
     /// #99 (`DET-03`): how many steps the wheel went up from the element (0: the element;
     /// past the last parent: the window).
     level: usize,
+    /// #99 (`ANN-14`): a right-click asked for the element under it to mark it: the request's
+    /// number, the window's rectangle and the monitor's DPI.
+    mark: Option<(u64, Rect, u32)>,
     /// The last request issued (its window and point are not asked again).
     asked: Option<ElementRequest>,
     seq: u64,
@@ -1429,6 +1432,25 @@ impl Overlay {
     /// Takes UI Automation's answer: the current request's, or an older one whose element still
     /// holds the pointer inside the same window.
     fn element_answer(&mut self, request: ElementRequest, answer: ElementAnswer) {
+        // #99 (`ANN-14`): the answer to a right-click's mark: the element, else the window,
+        // clipped to the selection; nothing when that is the whole selection.
+        if let Some((seq, window, dpi)) = self.detect.mark
+            && seq == request.seq
+        {
+            self.detect.mark = None;
+            let found = match answer {
+                ElementAnswer::Found(r, _) => check_element(r, &request, &self.monitors),
+                _ => None,
+            }
+            .unwrap_or(window);
+            if let Some(s) = self.selection
+                && let Some(r) = intersection(found, s)
+                && r != s
+            {
+                self.ann.mark_box(r, dpi);
+            }
+            return;
+        }
         let current = self.detect.asked.is_some_and(|a| a.seq == request.seq);
         let window = self.hover_window().map(|w| w.token);
         match answer {
@@ -2109,6 +2131,27 @@ impl Overlay {
                 tool.then_some(Outcome::Stay)
             }
             Button::Right => {
+                // #99 (`ANN-14`): with a box tool, a right-click inside the selection marks the
+                // element under it (UI Automation is asked; the window when it has none).
+                let inside = self
+                    .selection
+                    .is_some_and(|s| s.contains(&Rect::new(at.0, at.1, 1, 1)));
+                if inside
+                    && self.ann.marks_boxes()
+                    && let Some(w) = self.detect.snapshot.window_at(at).copied()
+                    && !w.protected
+                {
+                    self.detect.seq += 1;
+                    let req = ElementRequest {
+                        seq: self.detect.seq,
+                        token: w.token,
+                        window: w.rect,
+                        at,
+                    };
+                    self.detect.mark = Some((req.seq, w.rect, self.monitor_at(at).dpi));
+                    self.detect.pending = Some(req);
+                    return Some(Outcome::Stay);
+                }
                 // A right-click ends a label, finishes a shape, else leaves the tool (ANN-10).
                 if self.ann.editing_text() {
                     self.ann.end_text();
@@ -6542,6 +6585,68 @@ mod tests {
             level: 0,
             dpi: 96,
         }
+    }
+
+    /// #99 (`ANN-14`): with a box tool, a right-click inside the selection asks UI Automation
+    /// for the element under it and marks it with that tool (one undoable step); without an
+    /// element the window is marked when it is smaller than the selection; a mark that would be
+    /// the whole selection adds nothing; with no window there, the right-click leaves the tool
+    /// as before (ANN-10).
+    #[test]
+    fn a_right_click_marks_the_detected_element_with_a_box_tool() {
+        let mut o = detecting(windows());
+        drag(&mut o, (50, 50), (499, 449));
+        let s = o.selection().unwrap();
+        tool(&mut o, Tool::Rectangle);
+        o.take_element_request();
+        assert_eq!(press(&mut o, Button::Right, 150, 150), Outcome::Stay);
+        release(&mut o, 150, 150);
+        let req = o.take_element_request().expect("UI Automation is asked");
+        assert_eq!((req.token, req.at), (1, (150, 150)));
+        assert_eq!(o.editor().tool(), Some(Tool::Rectangle), "the tool stays");
+        let button = Rect::new(120, 130, 80, 30);
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::Found(button, crate::detect::Parents::default()),
+        });
+        assert_eq!(o.annotations().len(), 1);
+        assert_eq!(
+            o.annotations()[0].shape,
+            Shape::Rectangle(Bounds::of_rect(button))
+        );
+        // No element: the window, clipped to the selection.
+        tool(&mut o, Tool::Ellipse);
+        press(&mut o, Button::Right, 390, 280);
+        release(&mut o, 390, 280);
+        let req = o.take_element_request().unwrap();
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::WindowOnly,
+        });
+        assert_eq!(o.annotations().len(), 2);
+        assert_eq!(
+            o.annotations()[1].shape,
+            Shape::Ellipse(Bounds::of_rect(Rect::new(100, 100, 300, 200)))
+        );
+        assert!(o.editor().doc().undo_steps() >= 2, "each mark is a step");
+        // The big window covers the whole selection there: nothing is added.
+        press(&mut o, Button::Right, 450, 420);
+        release(&mut o, 450, 420);
+        let req = o.take_element_request().unwrap();
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::WindowOnly,
+        });
+        assert_eq!(o.annotations().len(), 2);
+        assert_eq!(o.selection(), Some(s));
+        // No window under the point: the right-click leaves the tool (ANN-10).
+        let mut o = detecting(vec![WindowFacts::plain(1, Rect::new(100, 100, 300, 200))]);
+        drag(&mut o, (450, 300), (699, 549));
+        tool(&mut o, Tool::Rectangle);
+        press(&mut o, Button::Right, 500, 400);
+        release(&mut o, 500, 400);
+        assert_eq!(o.take_element_request(), None);
+        assert_eq!(o.editor().tool(), None);
     }
 
     #[test]

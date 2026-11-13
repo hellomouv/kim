@@ -1485,6 +1485,38 @@ impl Editor {
         true
     }
 
+    /// #99 (`ANN-14`): whether the current tool can mark a detected rectangle (a right-click):
+    /// the rectangle, the ellipse and the box forms of mosaic, blur and the solid redaction.
+    pub fn marks_boxes(&self) -> bool {
+        matches!(
+            self.tool,
+            Some(Tool::Rectangle | Tool::Ellipse | Tool::Mosaic | Tool::Blur | Tool::Redact)
+        ) && self.gesture.is_none()
+            && self.text.is_none()
+    }
+
+    /// #99 (`ANN-14`): draws the current tool's box around `r` as one undoable step (the
+    /// detected element a right-click marked). `false` when the tool cannot.
+    pub fn mark_box(&mut self, r: Rect, dpi: u32) -> bool {
+        if !self.marks_boxes() || r.is_empty() {
+            return false;
+        }
+        let b = Bounds::of_rect(r);
+        let shape = match self.tool {
+            Some(Tool::Rectangle) => Shape::Rectangle(b),
+            Some(Tool::Ellipse) => Shape::Ellipse(b),
+            Some(t) => match t.effect() {
+                Some(e) => Shape::Effect(e, Area::Box(b)),
+                None => return false,
+            },
+            None => return false,
+        };
+        let o = self.new_object(shape, dpi);
+        let id = self.doc.add(o);
+        self.mark_object(id);
+        true
+    }
+
     /// The handle of the selected object under `at`, if any (9 logical pixels around each).
     pub fn handle_at(&self, at: (i32, i32), dpi: u32) -> Option<(u32, Handle)> {
         let id = self.selected()?;
