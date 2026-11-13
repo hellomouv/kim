@@ -173,6 +173,11 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.action_id() == id)
     }
 
+    /// Its position in [`Tool::ALL`] (the per-tool colours, #99 `ANN-13`).
+    fn slot(self) -> usize {
+        Tool::ALL.iter().position(|t| *t == self).unwrap_or(0)
+    }
+
     /// Its name for people (toolbar tooltips and the docs).
     pub fn title(self) -> &'static str {
         match self {
@@ -966,10 +971,11 @@ struct TextEdit {
 pub struct Editor {
     doc: Doc,
     tool: Option<Tool>,
-    color: usize,
-    /// The solid redaction's own colour (black until the user picks another one with the
-    /// redaction tool active; Step 57).
-    redact_color: usize,
+    /// #99 (`ANN-13`): every tool keeps its own colour (an index into [`PALETTE`]); the solid
+    /// redaction starts black (Step 57), the others red.
+    colors: [usize; Tool::ALL.len()],
+    /// The tool used last: its colour is the one shown while no tool is active.
+    recent: Tool,
     level: u8,
     selected: Option<u32>,
     gesture: Option<Gesture>,
@@ -1009,8 +1015,12 @@ impl Editor {
         Editor {
             doc,
             tool: None,
-            color: 0,
-            redact_color: REDACT_COLOR,
+            colors: {
+                let mut c = [0; Tool::ALL.len()];
+                c[Tool::Redact.slot()] = REDACT_COLOR;
+                c
+            },
+            recent: Tool::Rectangle,
             level: DEFAULT_LEVEL,
             selected: None,
             gesture: None,
@@ -1043,11 +1053,19 @@ impl Editor {
     }
 
     fn color_index(&self) -> usize {
-        if self.tool == Some(Tool::Redact) {
-            self.redact_color
-        } else {
-            self.color
-        }
+        self.colors[self.color_tool().slot()]
+    }
+
+    /// Whose colour the colour button shows and changes: the active tool, else the selected
+    /// object's kind, else the tool used last (#99, `ANN-13`).
+    fn color_tool(&self) -> Tool {
+        self.tool
+            .or_else(|| {
+                self.selected()
+                    .and_then(|id| self.doc.get(id))
+                    .map(|o| o.shape.kind())
+            })
+            .unwrap_or(self.recent)
     }
 
     pub fn level(&self) -> u8 {
@@ -1114,6 +1132,9 @@ impl Editor {
     pub fn set_tool(&mut self, tool: Option<Tool>) {
         self.finish();
         self.tool = tool;
+        if let Some(t) = tool {
+            self.recent = t;
+        }
         if tool.is_none() {
             self.deselect();
         }
@@ -1164,11 +1185,8 @@ impl Editor {
     /// The colour as an index into [`PALETTE`]; applies to the selected object too.
     pub fn set_color(&mut self, index: usize) {
         let index = index % PALETTE.len();
-        if self.tool == Some(Tool::Redact) {
-            self.redact_color = index;
-        } else {
-            self.color = index;
-        }
+        let t = self.color_tool();
+        self.colors[t.slot()] = index;
         // Every palette colour is opaque, so a recoloured redaction stays solid.
         let c = PALETTE[index].1;
         if let Some(id) = self.selected().filter(|_| self.gesture.is_none()) {
@@ -1205,11 +1223,7 @@ impl Editor {
     }
 
     fn new_object(&self, shape: Shape, dpi: u32) -> Object {
-        let color = if shape.is_redaction() {
-            self.redact_color
-        } else {
-            self.color
-        };
+        let color = self.colors[shape.kind().slot()];
         Object {
             id: 0,
             shape,

@@ -766,3 +766,33 @@ fn a_double_arrow_has_a_head_at_both_ends() {
     );
     assert_eq!(e.objects()[0].shape.kind(), Tool::DoubleArrow);
 }
+
+/// #99 (`ANN-13`): every tool keeps its own colour; choosing a tool shows its colour, new
+/// objects take it, and without a tool the colour button follows the selected object's kind.
+#[test]
+fn every_tool_keeps_its_own_colour() {
+    let mut e = with_tool(Tool::Rectangle);
+    assert_eq!(e.color().0, "red");
+    e.set_color(4);
+    let blue = e.color();
+    e.set_tool(Some(Tool::Pen));
+    assert_eq!(e.color().0, "red", "the pen keeps its own");
+    e.set_color(3);
+    let pen = e.color();
+    e.set_tool(Some(Tool::Rectangle));
+    assert_eq!(e.color(), blue, "the rectangle's colour came back");
+    assert!(e.mark((10, 10), D100, false));
+    assert!(e.mark((30, 20), D100, false));
+    assert_eq!(e.objects()[0].color, blue.1);
+    e.set_tool(Some(Tool::Pen));
+    assert_eq!(e.color(), pen);
+    // No tool: the button shows (and changes) the selected rectangle's kind.
+    e.set_tool(None);
+    e.select_step(true);
+    assert_eq!(e.color(), blue);
+    e.set_color(6);
+    e.set_tool(Some(Tool::Rectangle));
+    assert_eq!(e.color().1, PALETTE[6].1, "the rectangle tool follows");
+    e.set_tool(Some(Tool::Pen));
+    assert_eq!(e.color(), pen, "the pen did not");
+}

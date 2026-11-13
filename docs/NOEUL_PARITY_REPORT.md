@@ -57,7 +57,7 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 (free-size thumbnail) to *supported*.
 
 - `ANN-12` (partial since #99: the double arrow) Numbered markers, rounded rectangles, dashes, styled arrows, filled or outlined text, magnifier shape (Pro)
-- `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
+- `ANN-13` (partial since #99: per-tool colours) Rotatable shapes; several pen sizes; shareable palette (Pro)
 - `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes
 - `PIN-15` Group manager window (Pro)
 - `PIN-28` Images on virtual desktops (Pro)
