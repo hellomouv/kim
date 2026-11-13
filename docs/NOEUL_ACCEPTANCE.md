@@ -52,3 +52,41 @@ Task Manager with Noeul idle in the tray and three pins: CPU 0 %, memory near th
 both after confirmation. SmartScreen with an unsigned and (when a certificate exists) a signed build.
 
 Any failure: a new issue with the row number, what happened and the build.
+
+## Results of the real-desktop run (2026-11-13, ADR 0088)
+
+Windows 10 Pro 22H2 (19045), one monitor 5120×1440 at 100 % (150 % via the system DPI override,
+restored), HDR off, Microsoft Korean IME; a sandboxed Noeul profile; the clipboard, the app mode,
+the double-click time and the scale saved and restored around each check. Evidence is in the
+issue reports (#55–#68) and in NOEUL_UX_SPEC §4.5–§4.14.
+
+| Row | Result |
+| --- | --- |
+| 1 | pass: the real default `F1` (free on this PC) opens the frozen overlay; first frame p50 111 ms, p95 115 ms (release) |
+| 2 | pass: drag + double-click pins exactly the region at once; the clipboard is untouched |
+| 3 | pass: drag, wheel zoom around the pointer, `1`–`4`, `Ctrl`+wheel and `Ctrl+Minus` fade with a 10 % floor |
+| 4 | pass: `Esc` closes; the tray's "Reopen closed pin" brings it back at the same place |
+| 5 | pass: `F3` pins a copied image at the pointer (colour and text cards too) |
+| 6 | pass: window and UI element detection, the magnifier, `E`, `M`, `C` |
+| 7 | pass: rectangle, redaction and text copied; the redaction is solid in the copy and the PNG |
+| 8 | pass: a private (`P`) copy is not in the history; a normal one is |
+| 9, 10 | pass: the settings window records keys (the overlay does not open while recording), `Esc` cancels; MSAA names and roles for every control |
+| 11 | dark mode and a live light/dark switch pass (fixed in #66); High Contrast not switched on the maintainer's desktop |
+| 12 | pass: `Ctrl+Shift+T` lets clicks through to the window below; the tray's "Make all pins clickable" brings the pin back |
+| 13 | not run: no second monitor to unplug (#63) |
+| 14 | not run: locking needs the maintainer to unlock (#31) |
+| 15 | pass: with `pins.backup on`, nothing returns after a restart until the tray's "Restore pins from last time"; both pins come back in place |
+| 16 | pass: a JPEG quick save (also from a pin, fixed in #99) |
+| 17 | pass: copy as file puts a PNG file on the clipboard next to the picture |
+| 18 | pass: auto-save writes non-private captures |
+| 19 | pass: `capture --interactive --delay 3` opens the overlay 3.2 s later |
+| 20 | pass: copies carry `CanUploadToCloudClipboard = 0` |
+| 21 | not run: an elevated test window needs a UAC prompt |
+| 22, 23 | pass: grayscale, invert, sharp, always-on-top off; `Ctrl+V` on a pin replaces the picture at the same corner |
+| 24 | `startup enable` and the windowless starter verified; signing out not run |
+
+Measurements: `F3` to a visible pin (10 runs each) — a 3840×2160 PNG p50 103 ms, p95 149 ms; a
+10 KB text card p50 63 ms, p95 68 ms (NOEUL-NFR-005: p95 ≤ 150 ms). Twenty 1920×1080 pins (172 MB):
+dragging one with the real mouse, 120 of 120 moves were followed within one 60 Hz frame (p50 5.7
+ms, p95 6.2 ms), 0 ms CPU in 10 s idle (NOEUL-NFR-007).
+
