@@ -984,6 +984,28 @@ fn the_tray_is_a_fake_in_tests_and_the_menu_switches_pin_and_presence_and_quits_
         &json!({"cmd": "tray", "code": 0x401, "x": -18100, "y": -18980}),
     );
     f.wait("manager", |v| v["open"] == true);
+    // A real left click on a version-4 tray icon sends WM_LBUTTONDOWN, WM_LBUTTONUP and then
+    // NIN_SELECT: the manager opens once and stays open (#18: it used to open and close again).
+    let d = f.until("manager shown", |d| d["manager"].is_object());
+    Gui::key(Gui::ctl(&d, "search"), VK_ESCAPE);
+    f.wait("manager", |v| v["open"] == false);
+    for code in [0x201, 0x202, 0x400] {
+        copydata(
+            f.hwnd,
+            COPYDATA_TEST,
+            &json!({"cmd": "tray", "code": code, "x": -18100, "y": -18980}),
+        );
+    }
+    f.until("manager open after one real click", |d| {
+        d["manager"].is_object()
+    });
+    // ...and is still open a moment later (the second toggle closed it asynchronously).
+    std::thread::sleep(Duration::from_millis(500));
+    let d = f.cmd(&json!({"cmd": "dump"}));
+    assert!(
+        d["manager"].is_object(),
+        "one click leaves the manager open: {d}"
+    );
     // The menu says what is on.
     copydata(f.hwnd, COPYDATA_TEST, &json!({"cmd": "menu"}));
     let m = f.wait("menu", |_| true);

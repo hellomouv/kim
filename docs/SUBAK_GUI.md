@@ -586,12 +586,12 @@ private endpoint: `set E=--endpoint subak-manual-18`.
 
 | Manual check | Result |
 | --- | --- |
-| Visible icon, no focus stealing, no-Host state, New Terminal with a Host started on demand (steps 1–3) | **pending — maintainer** |
-| Search with the Korean IME, open in an existing window with the foreground handed on, hidden tabs (steps 4–5) | automated off-screen (§11.10; IME not); visible run **pending — maintainer** |
-| Rename and the guarded delete (steps 6–7) | automated off-screen; visible run **pending — maintainer** |
-| Real drags, snapping, saved place, real monitors and DPI, unplugging (step 8) | automated with window messages on synthetic layouts; real hardware **pending — maintainer** |
-| Always on top, the real tray icon and its keyboard selection (step 9) | the tray is a fake in tests; **pending — maintainer** |
-| Narrator (step 10) | the accessibility tree read with MSAA from the off-screen manager (ADR 0045 evidence); Narrator **pending — maintainer** |
+| Visible icon, no focus stealing, no-Host state, New Terminal with a Host started on demand (steps 1–3) | passed 2026-11-13 (real desktop, ADR 0088): 40 px icon with the ring badge, topmost tool window that never activates (the typing program kept the focus), the no-Host sentence, `Ctrl+N` started a Host and opened the Terminal in front; "3 Terminals, 3 running" |
+| Search with the Korean IME, open in an existing window with the foreground handed on, hidden tabs (steps 4–5) | passed 2026-11-13: `빌` typed with the Microsoft Korean IME leaves `빌드`; `Enter` shows it in the existing window, in front; a hidden tab comes back from the manager and stays hidden after a reopen |
+| Rename and the guarded delete (steps 6–7) | passed 2026-11-13: `F2` rename to `작업` with the IME; the delete question names `ping.exe` with Cancel focused, `Enter` keeps, `Delete`, `Tab`, `Enter` ends only it |
+| Real drags, snapping, saved place, real monitors and DPI, unplugging (step 8) | passed 2026-11-13 on one monitor: a real drag snaps to the work area's edge, the place survives a quit and restart, the icon is 60 px at 150 % (40 logical); a second monitor and unplugging are not available here |
+| Always on top, the real tray icon and its keyboard selection (step 9) | passed 2026-11-13 after a fix: "Always on top" toggles `WS_EX_TOPMOST`; a real click on the tray icon opened the manager and closed it again at once (version-4 icons send `WM_LBUTTONUP` and then `NIN_SELECT`; both toggled) — now only `NIN_SELECT`/`NIN_KEYSELECT` and `WM_CONTEXTMENU` count, with a regression test; one right click shows one menu |
+| Narrator (step 10) | MSAA read from the visible manager 2026-11-13: "Search" editable text, "Terminals" list, every button by name (what Narrator announces); Narrator's speech was not started on the maintainer's PC |
 | High Contrast (step 11) | **pending — maintainer** |
 
 ### 11.10 Tests

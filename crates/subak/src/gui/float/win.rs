@@ -1175,12 +1175,16 @@ impl Float {
             i32::from((wp >> 16) as u16 as i16),
         );
         self.event(&json!({"event": "tray_event", "code": event}));
+        // The icon uses NOTIFYICON_VERSION_4: one left click sends WM_LBUTTONDOWN, WM_LBUTTONUP
+        // and then NIN_SELECT, one right click WM_RBUTTONUP and then WM_CONTEXTMENU. Acting on
+        // the button-up as well opened the manager and closed it again at once (found by the
+        // real-desktop check of #18), so only the selection and context-menu notifications count.
         match event {
-            NIN_SELECT | NIN_KEYSELECT | WM_LBUTTONUP => {
+            NIN_SELECT | NIN_KEYSELECT => {
                 self.tray_anchor = Some(at);
                 self.toggle_manager(Some(at));
             }
-            WM_CONTEXTMENU | WM_RBUTTONUP => {
+            WM_CONTEXTMENU => {
                 self.tray_anchor = Some(at);
                 self.icon_menu(at);
             }
