@@ -273,6 +273,15 @@ Below, `smoke` stands for
 6. Repeat with closing only the **tab**, and with a Host started from the Start menu's
    "Command Prompt" (conhost window) closed with its X button.
 
+**Result (2026-11-13, Windows 10 Pro 22H2 19045, ADR 0088):** steps 1–6 pass. A Host prepared
+from inside a new Windows Terminal window (`job_breakaway: true`, not in a job) survived closing
+the whole window (Host 56988, shell 67496: same processes, counter live, then a clean explicit
+stop); a Host prepared in a second tab survived closing only that tab with `Ctrl+Shift+W` (Host
+99460, shell 127688); a Host prepared in a classic console window survived closing that window
+with its close button, which ended the console client (Host 125688, shell 40508). Only the
+test's own windows were closed (addressed by handle; Windows Terminal hosts every window in one
+process).
+
 ### 7.2 Sleep and hibernate
 
 1. `smoke -Phase Prepare -Endpoint subak-smoke-sleep` from any console.
@@ -291,6 +300,11 @@ Below, `smoke` stands for
    "legitimate OS termination"; the script still counts it as a failed check by design.
 4. Lock (Win+L) or fast user switching, then come back: **expected** that the Host survives
    (`-Phase Verify` passes).
+
+**Not run (2026-11-13):** sleep, hibernate, sign-out, restart and shutdown end the maintainer's
+work and this agent session on the same PC (and the session keeps the PC awake on purpose), so
+they wait for the maintainer. A lock check is prepared as `subak-smoke-lock` and verified after
+the next natural lock.
 
 ### 7.4 Claude Code in an interactive session (needs the user's consent)
 
