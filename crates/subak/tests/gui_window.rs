@@ -3304,3 +3304,114 @@ fn gui_show_is_registered_while_the_window_runs_and_toggles_it() {
         "EVIDENCE gui.show: registered Ctrl+Alt+Shift+F22, toggled hidden/shown, released when unbound; dropdown placed at {r:?}"
     );
 }
+
+/// #98 T1 (`CORE-75`, `CORE-14`, `CORE-15`, `CORE-25`, `CORE-30`): dropped files paste their
+/// quoted paths; a pinned tab comes first, has no `×` and asks before it ends; `tab.last` goes
+/// back; F11 toggles fullscreen; with `terminal.focus_follows_mouse` pointing at another pane
+/// of a split makes it active.
+#[test]
+fn drops_pins_last_tab_fullscreen_and_focus_follows_mouse() {
+    const WM_MOUSEMOVE: u32 = 0x0200;
+    let host = Host::start("gui-t1", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "one");
+    new_standin(&ep, "two");
+    let appdata = sandbox("t1");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    for (a, k) in [("tab.pin", "Ctrl+Shift+F8"), ("tab.last", "Ctrl+Shift+F7")] {
+        let (code, doc) = run_env(&["hotkeys", "set", a, k], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    let (code, doc) = run_env(
+        &["config", "set", "terminal.focus_follows_mouse", "true"],
+        &env,
+    );
+    assert_eq!(code, 0, "{doc}");
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    // Dropped files: their paths, quoted for the program (not a Windows shell: single quotes).
+    let d = gui.cmd(&json!({"cmd": "drop", "paths": [r"C:\Users\me\a b.txt", r"D:\x"]}));
+    assert_eq!(d["phase"], "attached");
+    let dropped = gui
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["event"] == "dropped")
+        .expect("a drop");
+    assert_eq!(dropped["text"], "'C:/Users/me/a b.txt' 'D:/x'");
+    gui.type_text("\r");
+    wait_for("the stand-in got the paths", || {
+        capture(&ep, "one").contains(&format!(
+            "standin-got-{}",
+            hex("'C:/Users/me/a b.txt' 'D:/x'")
+        ))
+    });
+    // Pin `two`: first, with the pin mark and no ×; Ctrl+W asks; Esc keeps it.
+    gui.press(VK_TAB, true, false);
+    gui.until("two shown", |d| {
+        d["phase"] == "attached" && shown(d) == "two"
+    });
+    gui.cmd(&json!({"cmd": "key", "vk": 0x77, "ctrl": true, "shift": true}));
+    let d = gui.until("two pinned", |d| {
+        d["pinned"].as_array().is_some_and(|p| p.len() == 1)
+    });
+    let bar = d["bar"]["text"].as_str().unwrap().to_string();
+    assert!(bar.starts_with(" ● \u{25c6} two"), "{bar}");
+    gui.press(u64::from(b'W'), true, false);
+    let d = gui.until("the question", |d| !d["confirm"].is_null());
+    assert!(d["confirm"].to_string().contains("two"), "{}", d["confirm"]);
+    gui.press(VK_ESCAPE, false, false);
+    assert_eq!(terminals(&ep).len(), 2, "nothing ended");
+    // tab.last: back to `one`.
+    gui.cmd(&json!({"cmd": "key", "vk": 0x76, "ctrl": true, "shift": true}));
+    gui.until("one again", |d| {
+        d["phase"] == "attached" && shown(d) == "one"
+    });
+    // F11: fullscreen on and off (the test window only reports it).
+    let d = gui.cmd(&json!({"cmd": "key", "vk": 0x7A}));
+    assert_eq!(d["fullscreen"], true);
+    let d = gui.cmd(&json!({"cmd": "key", "vk": 0x7A}));
+    assert_eq!(d["fullscreen"], false);
+    // Focus follows mouse: split `one`; pointing at the left pane makes it active.
+    let (code, doc) = sub(
+        &ep,
+        &[
+            "--json",
+            "pane",
+            "split",
+            "one",
+            "--horizontal",
+            "--",
+            "cmd.exe",
+            "/k",
+            "echo",
+            "right",
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    let right = doc["data"]["pane_id"].as_str().unwrap().to_string();
+    let d = gui.until("split shown", |d| {
+        d["active_slot"] == right.as_str()
+            && d["layout"]["slots"]
+                .as_array()
+                .is_some_and(|s| s.len() == 2)
+    });
+    let left = d["layout"]["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] != right.as_str())
+        .unwrap()
+        .clone();
+    let (x, y) = (
+        left["x"].as_u64().unwrap() as usize + 1,
+        left["y"].as_u64().unwrap() as usize + 1,
+    );
+    gui.post(WM_MOUSEMOVE, 0, cell_lparam(&d, x, y));
+    gui.until("left active by pointing", |d| {
+        d["active_slot"] == left["id"]
+    });
+    println!(
+        "EVIDENCE T1: dropped paths pasted quoted, `two` pinned first with a question on close, tab.last went back, F11 toggled fullscreen, pointing at the left pane made it active"
+    );
+}

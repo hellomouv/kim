@@ -571,6 +571,7 @@ fn profile(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
         },
         appearance: s.appearance.clone(),
         dropdown: s.dropdown.clone(),
+        tabs: s.tabs.clone(),
     };
     Ok(Outcome {
         data: json!({"path": path_text(&l.path), "profile": p.to_json(default)}),

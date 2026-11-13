@@ -170,6 +170,27 @@
         "value": 500
       },
       {
+        "default": false,
+        "key": "terminal.focus_follows_mouse",
+        "source": "default",
+        "takes": "true or false",
+        "value": false
+      },
+      {
+        "default": true,
+        "key": "tabs.close_buttons",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
+      },
+      {
+        "default": true,
+        "key": "tabs.cycle",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
+      },
+      {
         "default": 40,
         "key": "dropdown.height",
         "source": "default",

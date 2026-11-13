@@ -144,4 +144,17 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     assert_eq!(code, 0, "{doc}");
     let (_, list) = json(&sb, &["hotkeys", "list"]);
     assert_eq!(keys_of(&list, "gui.show"), ["Ctrl+Alt+Shift+F22"]);
+    // #98 T1: fullscreen on F11, the MRU and pin actions without keys; the tab bar settings.
+    assert_eq!(keys_of(&list, "view.fullscreen"), ["F11"]);
+    for id in ["tab.next-mru", "tab.previous-mru", "tab.last", "tab.pin"] {
+        assert!(keys_of(&list, id).is_empty(), "{id}");
+    }
+    assert_eq!(setting(&show, "tabs.close_buttons")["value"], true);
+    assert_eq!(setting(&show, "tabs.cycle")["value"], true);
+    assert_eq!(
+        setting(&show, "terminal.focus_follows_mouse")["value"],
+        false
+    );
+    let (code, doc) = json(&sb, &["config", "set", "tabs.cycle", "false"]);
+    assert_eq!(code, 0, "{doc}");
 }

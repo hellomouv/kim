@@ -323,6 +323,8 @@ pub struct Confirm {
     pub processes: u64,
     /// Step 22: the busy pane to end (`pane.kill` with `force`) instead of the whole Terminal.
     pub pane: Option<String>,
+    /// #98 T1 (`CORE-14`): asked because the tab is pinned.
+    pub pinned: bool,
 }
 
 /// What the window must do after the model handled something.
@@ -467,6 +469,14 @@ pub struct Model {
     alerts: HashMap<String, Alert>,
     /// #98 T3 (`CORE-78`): the progress each Terminal's program reports (OSC 9;4).
     progress: HashMap<String, subak_term::screen::Progress>,
+    /// #98 T1 (`CORE-15`): Terminals in the order this window last showed them (newest first).
+    mru: Vec<String>,
+    /// #98 T1 (`CORE-14`): pinned Terminals (ids): first in the bar, closing one asks.
+    pinned: Vec<String>,
+    /// #98 T1 (`CORE-10`): the next/previous tab keys wrap around (`tabs.cycle`).
+    wrap: bool,
+    /// #98 T1: the tab now shown came from a walk through the MRU order (it is not moved).
+    mru_walk: bool,
 }
 
 /// #98 T3: what happened in a Terminal that is not shown.
@@ -500,7 +510,116 @@ impl Model {
             views: Vec::new(),
             alerts: HashMap::new(),
             progress: HashMap::new(),
+            mru: Vec::new(),
+            pinned: Vec::new(),
+            wrap: true,
+            mru_walk: false,
         }
+    }
+
+    /// #98 T1: the pinned Terminals of the last run (`gui.json`).
+    pub fn with_pinned(mut self, ids: Vec<String>) -> Self {
+        self.pinned = ids;
+        self
+    }
+
+    /// #98 T1: whether Terminal `id` is pinned.
+    pub fn pinned(&self, id: &str) -> bool {
+        self.pinned.iter().any(|p| p == id)
+    }
+
+    /// #98 T1: the pinned ids that are still tabs (what `gui.json` keeps).
+    pub fn pinned_ids(&self) -> Vec<String> {
+        self.pinned
+            .iter()
+            .filter(|p| {
+                self.tabs
+                    .iter()
+                    .chain(self.hidden.iter())
+                    .any(|t| &t.id == *p)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// #98 T1 (`tabs.cycle`): whether next/previous wrap around.
+    pub fn set_wrap(&mut self, on: bool) {
+        self.wrap = on;
+    }
+
+    /// #98 T1 (`CORE-14`): pins or unpins the shown tab; pinned tabs come first (in the order
+    /// they were pinned), the others keep their order.
+    pub fn toggle_pin(&mut self) -> Vec<Effect> {
+        let Some(id) = self.terminal().map(|t| t.id.clone()) else {
+            return Vec::new();
+        };
+        if self.pinned(&id) {
+            self.pinned.retain(|p| *p != id);
+        } else {
+            self.pinned.push(id);
+        }
+        self.sort_pinned();
+        vec![Effect::Tabs]
+    }
+
+    /// Pinned tabs first, by pin order; the rest keep their order.
+    fn sort_pinned(&mut self) {
+        let pin = |id: &str| self.pinned.iter().position(|p| p == id);
+        let mut tabs = std::mem::take(&mut self.tabs);
+        tabs.sort_by_key(|t| pin(&t.id).unwrap_or(usize::MAX));
+        self.tabs = tabs;
+    }
+
+    /// #98 T1 (`CORE-15`): `delta` 1 shows the most recently shown other tab (`tab.next-mru`
+    /// pressed again goes further back), -1 goes the other way (`tab.previous-mru`).
+    pub fn cycle_mru(&mut self, delta: isize) -> Vec<Effect> {
+        let order: Vec<String> = self
+            .mru
+            .iter()
+            .filter(|id| self.tabs.iter().any(|t| &t.id == *id))
+            .cloned()
+            .chain(
+                self.tabs
+                    .iter()
+                    .filter(|t| !self.mru.contains(&t.id))
+                    .map(|t| t.id.clone()),
+            )
+            .collect();
+        let n = order.len();
+        if n < 2 || !self.connected {
+            return Vec::new();
+        }
+        let cur = self
+            .terminal()
+            .and_then(|t| order.iter().position(|o| *o == t.id))
+            .unwrap_or(0);
+        let next = (cur.cast_signed() + delta).rem_euclid(n.cast_signed()) as usize;
+        let id = order[next].clone();
+        // Walking the order must not reorder it until the user settles (`settle_mru`).
+        self.mru_walk = true;
+        match self.tabs.iter().position(|t| t.id == id) {
+            Some(i) => self.select(i),
+            None => Vec::new(),
+        }
+    }
+
+    /// #98 T1 (`CORE-15`): `tab.last`: the tab shown before this one.
+    pub fn last_tab(&mut self) -> Vec<Effect> {
+        let cur = self.terminal().map(|t| t.id.clone());
+        let prev = self
+            .mru
+            .iter()
+            .find(|id| Some(*id) != cur.as_ref() && self.tabs.iter().any(|t| &t.id == *id))
+            .cloned();
+        match prev.and_then(|id| self.tabs.iter().position(|t| t.id == id)) {
+            Some(i) => self.select(i),
+            None => Vec::new(),
+        }
+    }
+
+    /// #98 T1: the MRU order as shown (tests, the dump).
+    pub fn mru(&self) -> &[String] {
+        &self.mru
     }
 
     /// #98 T3: the progress Terminal `id` reports, if any.
@@ -817,7 +936,12 @@ impl Model {
             return Vec::new();
         }
         let cur = self.active().unwrap_or(0).cast_signed();
-        let next = (cur + delta).rem_euclid(n.cast_signed()) as usize;
+        let to = cur + delta;
+        // #98 T1 (`tabs.cycle` off): the ends stop instead of wrapping around.
+        if !self.wrap && !(0..n.cast_signed()).contains(&to) {
+            return Vec::new();
+        }
+        let next = to.rem_euclid(n.cast_signed()) as usize;
         self.select(next)
     }
 
@@ -946,6 +1070,16 @@ impl Model {
         let mut out = Vec::new();
         if t.gone() {
             self.close_tab(&t.id, &mut out);
+        } else if self.pinned(&t.id) && !t.stored() {
+            // #98 T1 (`CORE-14`): a pinned Terminal asks before it ends.
+            out.push(Effect::Confirm(Confirm {
+                id: t.id.clone(),
+                name: t.name.clone(),
+                program: t.program.clone(),
+                processes: 0,
+                pane: None,
+                pinned: true,
+            }));
         } else if t.stored() {
             self.closing.push(t.id.clone());
             out.push(self.request(
@@ -1223,6 +1357,7 @@ impl Model {
                     .filter_map(TermInfo::from_full)
                     .collect();
                 self.merge(&list);
+                self.sort_pinned();
                 self.decide(&mut out);
                 self.follow(&mut out);
                 out.push(Effect::Tabs);
@@ -1293,6 +1428,12 @@ impl Model {
                     id: term.id.clone(),
                     name: term.name.clone(),
                 };
+                // #98 T1 (`CORE-15`): the most recently shown first (a walk through the order
+                // keeps it as it is).
+                if !std::mem::take(&mut self.mru_walk) {
+                    self.mru.retain(|m| *m != term.id);
+                    self.mru.insert(0, term.id.clone());
+                }
                 out.push(Effect::Remember(Box::new(term.clone())));
                 // The snapshot frames follow; until then the view starts fresh at their size.
                 let (cols, rows) = match (size["cols"].as_u64(), size["rows"].as_u64()) {
@@ -1417,6 +1558,7 @@ impl Model {
                         program: e["details"]["program"].as_str().unwrap_or("").to_string(),
                         processes: e["details"]["processes"].as_u64().unwrap_or(0),
                         pane: None,
+                        pinned: false,
                     })),
                     // Already gone: its tab goes.
                     "target_not_found" => self.close_tab(&id, &mut out),
@@ -1460,6 +1602,7 @@ impl Model {
                     program: pane["program"].as_str().unwrap_or("").to_string(),
                     processes: e["details"]["processes"].as_u64().unwrap_or(0),
                     pane: Some(target),
+                    pinned: false,
                 }));
             }
             Pending::Query(method) => {
@@ -2450,6 +2593,7 @@ mod tests {
                 program: "claude.exe".into(),
                 processes: 3,
                 pane: None,
+                pinned: false,
             })]
         );
         assert_eq!(names(&m), ["claude", "other"]);
@@ -2924,6 +3068,79 @@ mod tests {
         assert!(
             matches!(&fx[..], [Effect::Finished(f)] if !f.command && f.exit_code == Some(0) && f.name == "build"),
             "{fx:?}"
+        );
+    }
+
+    /// The id of the shown Terminal.
+    fn shown_id(m: &Model) -> String {
+        m.terminal().unwrap().id.clone()
+    }
+
+    /// #98 T1 (`CORE-15`, `CORE-10`, `CORE-14`): the MRU order follows what was shown, a walk
+    /// through it does not reorder it, `tab.last` goes back; `tabs.cycle` off stops at the
+    /// ends; pinned tabs come first and closing one asks.
+    #[test]
+    fn mru_switching_wrap_and_pinned_tabs() {
+        let mut m = Model::new(Want::Any, (80, 24));
+        let fx = connect_with(
+            &mut m,
+            json!([
+                term("t-a", "a", "running", 10),
+                term("t-b", "b", "running", 11),
+                term("t-c", "c", "running", 12)
+            ]),
+        );
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-a");
+        let fx = m.select(2);
+        attach_from(&mut m, &fx);
+        let fx = m.select(1);
+        attach_from(&mut m, &fx);
+        assert_eq!(m.mru(), ["t-b", "t-c", "t-a"]);
+        let fx = m.last_tab();
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-c", "the one before");
+        assert_eq!(m.mru(), ["t-c", "t-b", "t-a"]);
+        let fx = m.cycle_mru(1);
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-b");
+        let fx = m.cycle_mru(1);
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-a", "further back");
+        assert_eq!(m.mru(), ["t-c", "t-b", "t-a"], "a walk keeps the order");
+        let fx = m.cycle_mru(-1);
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-b");
+        // Wrap off: the ends stop.
+        m.set_wrap(false);
+        let fx = m.select(2);
+        attach_from(&mut m, &fx);
+        assert!(m.cycle(1).is_empty(), "no wrap at the end");
+        assert_eq!(shown_id(&m), "t-c");
+        m.set_wrap(true);
+        let fx = m.cycle(1);
+        attach_from(&mut m, &fx);
+        assert_eq!(shown_id(&m), "t-a", "wraps");
+        let fx = m.select(2);
+        attach_from(&mut m, &fx);
+        // Pin the third tab: it comes first; closing it asks.
+        m.select(2);
+        m.toggle_pin();
+        assert_eq!(m.tabs()[0].id, "t-c");
+        assert!(m.pinned("t-c"));
+        assert_eq!(m.pinned_ids(), ["t-c"]);
+        let fx = m.close_active();
+        assert!(
+            matches!(&fx[..], [Effect::Confirm(c)] if c.pinned && c.id == "t-c"),
+            "{fx:?}"
+        );
+        m.toggle_pin();
+        assert!(!m.pinned("t-c"));
+        let fx = m.close_active();
+        assert_eq!(
+            methods(&fx),
+            ["terminal.kill"],
+            "unpinned: closes as before"
         );
     }
 }

@@ -279,6 +279,9 @@ pub struct TerminalPrefs {
     /// #98 T3 (`CORE-79`): a notification when a Terminal's program ends while its tab is not
     /// shown or the window is not in front (off by default).
     pub notify_exit: bool,
+    /// #98 T1 (`CORE-30`): pointing at another pane of a split window makes it the active one
+    /// (off by default; a click always does).
+    pub focus_follows_mouse: bool,
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
@@ -336,6 +339,8 @@ pub struct Settings {
     pub terminal: TerminalPrefs,
     /// #98 T3 (`CORE-82`): the dropdown window (`subak-gui --dropdown`).
     pub dropdown: DropdownPrefs,
+    /// #98 T1 (`CORE-10`): the tab bar.
+    pub tabs: TabsPrefs,
     pub profiles: Vec<Profile>,
 }
 
@@ -346,6 +351,15 @@ pub struct DropdownPrefs {
     pub height: u32,
     /// It hides when another window gets the focus (it keeps running; `gui.show` brings it).
     pub hide_on_blur: bool,
+}
+
+/// #98 T1: `[tabs]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabsPrefs {
+    /// Each tab has its `×` (hide) button (pinned tabs never do).
+    pub close_buttons: bool,
+    /// The next/previous tab keys wrap around at the ends.
+    pub cycle: bool,
 }
 
 /// `dropdown.height` bounds and default, percent.
@@ -386,6 +400,7 @@ impl Default for Settings {
                 bell: Bell::Off,
                 notify_command_seconds: 0,
                 notify_exit: false,
+                focus_follows_mouse: false,
                 claude_indicators: true,
                 claude_animation: true,
                 detect_shells: true,
@@ -397,6 +412,10 @@ impl Default for Settings {
             dropdown: DropdownPrefs {
                 height: DROPDOWN_HEIGHT.2,
                 hide_on_blur: true,
+            },
+            tabs: TabsPrefs {
+                close_buttons: true,
+                cycle: true,
             },
             profiles: Vec::new(),
         }
@@ -486,7 +505,11 @@ impl Settings {
         let a = &self.appearance;
         let t = &self.terminal;
         let d = &self.dropdown;
+        let tb = &self.tabs;
         match (k.section, k.name) {
+            ("tabs", "close_buttons") => json!(tb.close_buttons),
+            ("tabs", "cycle") => json!(tb.cycle),
+            ("terminal", "focus_follows_mouse") => json!(self.terminal.focus_follows_mouse),
             ("dropdown", "height") => json!(d.height),
             ("dropdown", "hide_on_blur") => json!(d.hide_on_blur),
             ("appearance", "theme") => json!(a.theme.as_str()),
@@ -645,7 +668,7 @@ impl Key {
 }
 
 /// The sections of keys, in file order.
-pub const SECTIONS: &[&str] = &["appearance", "terminal", "dropdown"];
+pub const SECTIONS: &[&str] = &["appearance", "terminal", "tabs", "dropdown"];
 
 /// Every key, in file order.
 pub const KEYS: &[Key] = &[
@@ -788,6 +811,24 @@ pub const KEYS: &[Key] = &[
         kind: Kind::Integer,
     },
     Key {
+        section: "terminal",
+        name: "focus_follows_mouse",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "tabs",
+        name: "close_buttons",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "tabs",
+        name: "cycle",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
         section: "dropdown",
         name: "height",
         takes: "a whole number from 20 to 100 (percent of the screen)",
@@ -829,6 +870,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
     let a = &mut s.appearance;
     let t = &mut s.terminal;
     let d = &mut s.dropdown;
+    let tb = &mut s.tabs;
     let text = || v.as_str().ok_or(());
     let num = |lo: f64, hi: f64| as_number(v).filter(|n| (lo..=hi).contains(n)).ok_or(());
     let int = |lo: u32, hi: u32| match v {
@@ -868,6 +910,9 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("terminal", "notify_exit") => t.notify_exit = flag()?,
         ("dropdown", "height") => d.height = int(DROPDOWN_HEIGHT.0, DROPDOWN_HEIGHT.1)?,
         ("dropdown", "hide_on_blur") => d.hide_on_blur = flag()?,
+        ("tabs", "close_buttons") => tb.close_buttons = flag()?,
+        ("tabs", "cycle") => tb.cycle = flag()?,
+        ("terminal", "focus_follows_mouse") => t.focus_follows_mouse = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
@@ -2923,5 +2968,24 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         );
         assert!(set_value(&mut s, "dropdown.height", "10").is_err());
         assert!(set_value(&mut s, "dropdown.height", "101").is_err());
+    }
+
+    /// #98 T1 (`CORE-10`, `CORE-30`): tab bar options and focus follows mouse.
+    #[test]
+    fn tab_bar_options_and_focus_follows_mouse() {
+        let mut s = Settings::default();
+        assert!(s.tabs.close_buttons && s.tabs.cycle);
+        assert!(!s.terminal.focus_follows_mouse);
+        set_value(&mut s, "tabs.close_buttons", "false").unwrap();
+        set_value(&mut s, "tabs.cycle", "false").unwrap();
+        set_value(&mut s, "terminal.focus_follows_mouse", "true").unwrap();
+        assert_eq!(
+            s.tabs,
+            TabsPrefs {
+                close_buttons: false,
+                cycle: false
+            }
+        );
+        assert!(s.terminal.focus_follows_mouse);
     }
 }

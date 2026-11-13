@@ -139,11 +139,21 @@ pub enum Action {
     LineDeletePreviousWord,
     /// #98 T2.
     LineDeleteLine,
+    /// #98 T1.
+    ViewFullscreen,
+    /// #98 T1.
+    TabNextMru,
+    /// #98 T1.
+    TabPreviousMru,
+    /// #98 T1.
+    TabLast,
+    /// #98 T1.
+    TabPin,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 103] = [
+    pub const ALL: [(Action, &'static str); 108] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -253,6 +263,11 @@ impl Action {
         (Action::LineNextWord, "line.next-word"),
         (Action::LineDeletePreviousWord, "line.delete-previous-word"),
         (Action::LineDeleteLine, "line.delete-line"),
+        (Action::ViewFullscreen, "view.fullscreen"),
+        (Action::TabNextMru, "tab.next-mru"),
+        (Action::TabPreviousMru, "tab.previous-mru"),
+        (Action::TabLast, "tab.last"),
+        (Action::TabPin, "tab.pin"),
     ];
 
     pub fn from_id(id: &str) -> Option<Action> {

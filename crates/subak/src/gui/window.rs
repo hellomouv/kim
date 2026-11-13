@@ -114,11 +114,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SPI_GETHIGHCONTRAST, SW_RESTORE, SW_SHOWMAXIMIZED, SW_SHOWNOACTIVATE, SW_SHOWNORMAL,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetCursor, SetForegroundWindow, SetTimer,
     SetWindowPos, SetWindowTextW, ShowWindow, SystemParametersInfoW, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TrackPopupMenuEx, TranslateMessage, WM_APP, WM_CHAR, WM_CLOSE, WM_COPYDATA,
-    WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
-    WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION,
-    WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCCREATE, WM_PAINT,
+    TPM_RIGHTBUTTON, TrackPopupMenuEx, TranslateMessage, WINDOWPLACEMENT, WM_APP, WM_CHAR,
+    WM_CLOSE, WM_COPYDATA, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_EXITSIZEMOVE,
+    WM_GETMINMAXINFO, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT,
+    WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCCREATE, WM_PAINT,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE, WM_SYSCHAR,
     WM_SYSCOLORCHANGE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_THEMECHANGED, WM_TIMER,
     WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW,
@@ -323,6 +323,9 @@ enum After {
     Shown(bool, Option<(i32, i32, i32, i32)>),
     /// #98 T3: the test window takes the dropdown's size, off-screen and never activated.
     TestSize(i32, i32),
+    /// #98 T1 (`CORE-25`): enter fullscreen (`None`) or leave it, back to this style and
+    /// placement.
+    Fullscreen(Option<(isize, Placed)>),
     Title(String),
     Destroy,
     /// Come to the front for the user's choice in the Terminal manager (it granted this process
@@ -430,6 +433,10 @@ struct App {
     global_status: Vec<(String, String, String)>,
     /// #98 T3: the window was hidden by `gui.show` (or the dropdown lost the focus).
     toggled_hidden: bool,
+    /// #98 T1 (`CORE-25`): fullscreen, with the style and place to go back to.
+    fullscreen: Option<(isize, Placed)>,
+    /// #98 T1 (`CORE-30`): the pane focus-follows-mouse last asked for (no repeats).
+    hover_pane: Option<String>,
     /// #98 T3: the taskbar list (not in the test window), and the progress it shows.
     taskbar: Option<super::taskbar::Taskbar>,
     taskbar_shown: Option<subak_term::screen::Progress>,
@@ -688,7 +695,38 @@ fn ex_style(test: bool, dropdown: bool) -> u32 {
     }
 }
 
+/// #98 T1: a saved `WINDOWPLACEMENT` (fullscreen goes back to it exactly).
+#[derive(Clone, Copy, Default)]
+struct Placed(WINDOWPLACEMENT);
+
+impl std::fmt::Debug for Placed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let r = self.0.rcNormalPosition;
+        write!(
+            f,
+            "Placed({}, {}, {}, {})",
+            r.left, r.top, r.right, r.bottom
+        )
+    }
+}
+
 /// #98 T3: the work area of the monitor under the pointer (left, top, right, bottom).
+/// #98 T1 (`CORE-75`): dropped paths as one line for the pane's program: `"C:\a b"` for
+/// Windows shells (a `"` inside is impossible in a Windows path), `'C:/a b'` for the others
+/// (a `'` inside becomes `'\''`).
+pub(crate) fn quote_paths(paths: &[String], style: subak_term::input::LineStyle) -> String {
+    paths
+        .iter()
+        .map(|p| match style {
+            subak_term::input::LineStyle::Windows => format!("\"{p}\""),
+            subak_term::input::LineStyle::Readline => {
+                format!("'{}'", p.replace('\\', "/").replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn pointer_work_area() -> (i32, i32, i32, i32) {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
@@ -1704,6 +1742,8 @@ impl App {
                 } else {
                     None
                 },
+                pinned: self.model.pinned(&t.id),
+                closable: self.settings.tabs.close_buttons,
             })
             .zip(self.model.tabs())
             .map(|(mut it, t)| {
@@ -2406,6 +2446,10 @@ impl App {
         let old = std::mem::replace(&mut self.settings, new);
         self.matcher
             .set_repeat_time(u64::from(self.settings.terminal.repeat_time_ms));
+        self.model.set_wrap(self.settings.tabs.cycle);
+        if old.tabs != self.settings.tabs {
+            self.rebuild_bar();
+        }
         let (a, b) = (&old.appearance, &self.settings.appearance);
         self.motion.enabled = b.motion.animates(self.system_animations);
         if !self.motion.enabled {
@@ -2801,6 +2845,57 @@ impl App {
         }
     }
 
+    /// #98 T1 (`CORE-25`): fullscreen on the window's monitor (borderless), or back to the
+    /// style and place it had. The test window only reports it (it stays off-screen).
+    fn toggle_fullscreen(&mut self) {
+        let entering = self.fullscreen.is_none();
+        self.event(&json!({"event": "fullscreen", "on": entering}));
+        if self.opts.test {
+            self.fullscreen = if entering {
+                Some((0, Placed::default()))
+            } else {
+                None
+            };
+            return;
+        }
+        if entering {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{GWL_STYLE, GetWindowPlacement};
+            let mut wp = WINDOWPLACEMENT {
+                length: size_of::<WINDOWPLACEMENT>() as u32,
+                ..WINDOWPLACEMENT::default()
+            };
+            // SAFETY: reads our own window's style and placement.
+            let style = unsafe {
+                GetWindowPlacement(self.hwnd, &raw mut wp);
+                GetWindowLongPtrW(self.hwnd, GWL_STYLE)
+            };
+            self.fullscreen = Some((style, Placed(wp)));
+            self.after.push(After::Fullscreen(None));
+        } else if let Some(back) = self.fullscreen.take() {
+            self.after.push(After::Fullscreen(Some(back)));
+        }
+    }
+
+    /// #98 T1 (`CORE-75`): files dropped on the window paste their paths, quoted the way the
+    /// pane's program reads them (double quotes for Command Prompt and PowerShell, single
+    /// quotes with forward slashes for the others), separated by spaces, never with Enter.
+    fn drop_paths(&mut self, paths: &[String]) {
+        if paths.is_empty() || !matches!(self.model.phase, Phase::Attached { .. }) {
+            return;
+        }
+        let program = self
+            .model
+            .terminal()
+            .map(|t| t.program.clone())
+            .unwrap_or_default();
+        let style = subak_term::input::LineStyle::of_program(&program);
+        let text = quote_paths(paths, style);
+        self.event(&json!({"event": "dropped", "text": text}));
+        let bytes = self.pane.paste(&text);
+        self.input(&bytes);
+        self.redraw();
+    }
+
     /// #98 T3 (`CORE-83`): registers the enabled global bindings (`gui.show`) while this
     /// window runs (HOTKEY_CONTRACT §13.1: only while the GUI runs and the binding is enabled),
     /// releases what is no longer wanted, and reports each status. A chord another program owns
@@ -3066,8 +3161,10 @@ impl App {
         // Hidden tabs are kept across runs (Step 18), once the Host's list is known.
         if self.model.connected() {
             let hidden = self.model.hidden_ids();
-            if hidden != self.prefs.hidden_terminals {
+            let pinned = self.model.pinned_ids();
+            if hidden != self.prefs.hidden_terminals || pinned != self.prefs.pinned_terminals {
                 self.prefs.hidden_terminals = hidden;
+                self.prefs.pinned_terminals = pinned;
                 self.save_prefs();
             }
         }
@@ -4053,6 +4150,23 @@ impl App {
             }
             // #98 T3: `gui.show` is global (registered, not matched here); a menu could run it.
             Action::GuiShow => self.toggle_shown("action"),
+            // #98 T1.
+            Action::ViewFullscreen => self.toggle_fullscreen(),
+            Action::TabNextMru | Action::TabPreviousMru | Action::TabLast => {
+                if self.model.tabs().len() > 1 {
+                    self.leave_pane();
+                }
+                let fx = match a {
+                    Action::TabNextMru => self.model.cycle_mru(1),
+                    Action::TabPreviousMru => self.model.cycle_mru(-1),
+                    _ => self.model.last_tab(),
+                };
+                self.apply(fx);
+            }
+            Action::TabPin => {
+                let fx = self.model.toggle_pin();
+                self.apply(fx);
+            }
             // The Terminal manager's actions (context `manager`) are never active in a window.
             Action::ManagerOpen
             | Action::ManagerNew
@@ -5134,9 +5248,11 @@ impl App {
             }
         }
         // Step 22: a click on another visible pane of a split window makes it the active one
-        // (for every client); the click is not sent to its program.
+        // (for every client); the click is not sent to its program. #98 T1 (`CORE-30`): with
+        // `terminal.focus_follows_mouse`, pointing at it does (once per pane).
+        let follow = msg == WM_MOUSEMOVE && self.settings.terminal.focus_follows_mouse;
         if !dragging
-            && matches!(msg, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN)
+            && (matches!(msg, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN) || follow)
             && let Some(l) = self.model.layout()
         {
             let c = self.cells();
@@ -5154,10 +5270,21 @@ impl App {
                 && Some(&s.id) != active.as_ref()
             {
                 let id = s.id.clone();
-                self.event(&json!({"event": "pane_click", "pane": id}));
-                let fx = self.model.pane_op("pane.select", json!({"target": id}));
-                self.apply(fx);
-                return;
+                if follow {
+                    if self.hover_pane.as_ref() != Some(&id) {
+                        self.hover_pane = Some(id.clone());
+                        self.event(&json!({"event": "pane_hover", "pane": id}));
+                        let fx = self.model.pane_op("pane.select", json!({"target": id}));
+                        self.apply(fx);
+                    }
+                } else {
+                    self.event(&json!({"event": "pane_click", "pane": id}));
+                    let fx = self.model.pane_op("pane.select", json!({"target": id}));
+                    self.apply(fx);
+                    return;
+                }
+            } else if follow {
+                self.hover_pane = None;
             }
         }
         let Some((col, row)) = self.cell_at(x, y, dragging) else {
@@ -5418,6 +5545,9 @@ impl App {
                 .collect::<Vec<_>>()
         );
         dump["toggled_hidden"] = json!(self.toggled_hidden);
+        dump["fullscreen"] = json!(self.fullscreen.is_some());
+        dump["mru"] = json!(self.model.mru());
+        dump["pinned"] = json!(self.model.pinned_ids());
         dump["dropdown"] = json!(self.opts.dropdown);
         dump["bell_flash"] = json!(self.bell_flash);
         dump["side"] = Value::Object(
@@ -5653,6 +5783,16 @@ impl App {
             }
             // #98 T3: a press of the global `gui.show` hotkey (the real one is a test of its own).
             "gui_show" => self.toggle_shown("test"),
+            // #98 T1: files dropped from Explorer (the real drop is WM_DROPFILES).
+            "drop" => {
+                let paths: Vec<String> = cmd["paths"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|p| p.as_str().map(String::from))
+                    .collect();
+                self.drop_paths(&paths);
+            }
             "key" => {
                 let code = cmd["vk"]
                     .as_u64()
@@ -6076,6 +6216,57 @@ fn run_after(hwnd: HWND, after: Vec<After>) {
                     let t = wide(&t);
                     SetWindowTextW(hwnd, t.as_ptr());
                 }
+                After::Fullscreen(back) => {
+                    use windows_sys::Win32::Graphics::Gdi::{
+                        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+                    };
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        GWL_STYLE, HWND_TOP, SWP_FRAMECHANGED, SWP_NOOWNERZORDER, WS_POPUP,
+                    };
+                    match back {
+                        None => {
+                            let mut mi = MONITORINFO {
+                                cbSize: size_of::<MONITORINFO>() as u32,
+                                ..MONITORINFO::default()
+                            };
+                            GetMonitorInfoW(
+                                MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                                &raw mut mi,
+                            );
+                            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                            let plain = style & !(WS_OVERLAPPEDWINDOW as isize);
+                            SetWindowLongPtrW(hwnd, GWL_STYLE, plain | WS_POPUP as isize);
+                            let r = mi.rcMonitor;
+                            SetWindowPos(
+                                hwnd,
+                                HWND_TOP,
+                                r.left,
+                                r.top,
+                                r.right - r.left,
+                                r.bottom - r.top,
+                                SWP_FRAMECHANGED | SWP_NOOWNERZORDER,
+                            );
+                        }
+                        Some((style, Placed(wp))) => {
+                            use windows_sys::Win32::UI::WindowsAndMessaging::SetWindowPlacement;
+                            SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+                            SetWindowPlacement(hwnd, &raw const wp);
+                            SetWindowPos(
+                                hwnd,
+                                null_mut(),
+                                0,
+                                0,
+                                0,
+                                0,
+                                SWP_FRAMECHANGED
+                                    | SWP_NOOWNERZORDER
+                                    | SWP_NOZORDER
+                                    | SWP_NOMOVE
+                                    | windows_sys::Win32::UI::WindowsAndMessaging::SWP_NOSIZE,
+                            );
+                        }
+                    }
+                }
                 After::TestSize(w, h) => {
                     SetWindowPos(
                         hwnd,
@@ -6374,6 +6565,24 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
         }
         WM_GLOBAL => {
             app.global_pressed();
+            Some(0)
+        }
+        windows_sys::Win32::UI::WindowsAndMessaging::WM_DROPFILES => {
+            use windows_sys::Win32::UI::Shell::{DragFinish, DragQueryFileW, HDROP};
+            let drop = wp as HDROP;
+            let mut paths = Vec::new();
+            // SAFETY: the HDROP Windows passed with this message; released with DragFinish.
+            unsafe {
+                let n = DragQueryFileW(drop, u32::MAX, null_mut(), 0);
+                for i in 0..n.min(256) {
+                    let len = DragQueryFileW(drop, i, null_mut(), 0);
+                    let mut buf = vec![0u16; len as usize + 1];
+                    DragQueryFileW(drop, i, buf.as_mut_ptr(), len + 1);
+                    paths.push(String::from_utf16_lossy(&buf[..len as usize]));
+                }
+                DragFinish(drop);
+            }
+            app.drop_paths(&paths);
             Some(0)
         }
         WM_MENU => {
@@ -6823,7 +7032,13 @@ pub fn run(o: Options) -> ExitCode {
         hwnd,
         opts: o,
         endpoint,
-        model: Model::new(want, layout::DEFAULT_GRID).with_hidden(prefs.hidden_terminals.clone()),
+        model: {
+            let mut m = Model::new(want, layout::DEFAULT_GRID)
+                .with_hidden(prefs.hidden_terminals.clone())
+                .with_pinned(prefs.pinned_terminals.clone());
+            m.set_wrap(settings.tabs.cycle);
+            m
+        },
         prefs,
         prefs_dir,
         prefs_read_only: loaded.read_only,
@@ -6846,6 +7061,8 @@ pub fn run(o: Options) -> ExitCode {
         globals: None,
         global_status: Vec::new(),
         toggled_hidden: false,
+        fullscreen: None,
+        hover_pane: None,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,
@@ -7021,6 +7238,8 @@ pub fn run(o: Options) -> ExitCode {
                 app.redraw();
                 // #98 T3: the global hotkeys of this run, and the dropdown's place.
                 app.sync_globals();
+                // #98 T1 (`CORE-75`): files dropped from Explorer paste their paths.
+                windows_sys::Win32::UI::Shell::DragAcceptFiles(hwnd, 1);
                 if app.opts.dropdown {
                     app.set_shown(true, "start");
                 }
@@ -7049,7 +7268,22 @@ pub fn run(o: Options) -> ExitCode {
 
 #[cfg(test)]
 mod dropdown_tests {
-    use super::dropdown_rect;
+    use super::{dropdown_rect, quote_paths};
+    use subak_term::input::LineStyle;
+
+    /// #98 T1 (`CORE-75`): dropped paths are quoted for the pane's program.
+    #[test]
+    fn dropped_paths_are_quoted_for_the_program() {
+        let paths = vec![r"C:\Users\me\a b.txt".to_string(), r"D:\it's".to_string()];
+        assert_eq!(
+            quote_paths(&paths, LineStyle::Windows),
+            r#""C:\Users\me\a b.txt" "D:\it's""#
+        );
+        assert_eq!(
+            quote_paths(&paths, LineStyle::Readline),
+            r"'C:/Users/me/a b.txt' 'D:/it'\''s'"
+        );
+    }
 
     /// #98 T3 (`CORE-82`): the dropdown takes the top of the work area, its full width and the
     /// chosen share of its height (20–100 %), also on a monitor left of the primary one.

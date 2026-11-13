@@ -81,6 +81,11 @@ backspace = "del"             # #98 T2: del | ctrl-h | delete
 bell = "off"                  # #98 T3: off | visual | audible
 notify_command_seconds = 0    # #98 T3: 0–86400; 0: off
 notify_exit = false           # #98 T3
+focus_follows_mouse = false   # #98 T1
+
+[tabs]                        # #98 T1
+close_buttons = true
+cycle = true
 
 [dropdown]                    # #98 T3
 height = 40                   # 20–100 (percent)

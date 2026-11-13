@@ -94,6 +94,10 @@ pub struct Item<'a> {
     pub alert: Option<crate::gui::model::Alert>,
     /// #98 T3: the progress the Terminal's program reports.
     pub progress: Option<subak_term::screen::Progress>,
+    /// #98 T1 (`CORE-14`): pinned: a `◆` mark and no hide button.
+    pub pinned: bool,
+    /// #98 T1 (`CORE-10`, `tabs.close_buttons`): the tab has its `×` (hide) button.
+    pub closable: bool,
 }
 
 /// #98 T3 (`CORE-78`): a tab's progress: `42%` (accent), `42%!` (failed, danger), `‖42%`
@@ -121,6 +125,7 @@ pub fn alert_mark(a: Option<crate::gui::model::Alert>) -> Option<(char, Rgb, &'s
 /// The columns of a tab's marks (Claude and alert), each with its space.
 fn marks_width(it: &Item<'_>) -> usize {
     mark_width(it.claude)
+        + if it.pinned { 2 } else { 0 }
         + alert_mark(it.alert).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
         + progress_mark(it.progress).map_or(0, |(t, _)| width(&t) + 1)
 }
@@ -375,6 +380,9 @@ pub fn layout_hover(
             };
             put(&mut vt, &mut col, &format!("{fill}{}{on}{g}{off} ", fg(c)));
         }
+        if it.pinned {
+            put(&mut vt, &mut col, &format!("{fill}{}\u{25c6} ", fg(ACCENT)));
+        }
         if let Some((g, c, _)) = alert_mark(it.alert) {
             put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
         }
@@ -421,16 +429,22 @@ pub fn layout_hover(
             }
         }
         let close_at = col;
+        let closable = it.closable && !it.pinned;
         put(
             &mut vt,
             &mut col,
             &format!(
-                "{fill}{} × {RESET}",
-                fg(if hovered { TEXT_SECONDARY } else { TEXT_MUTED })
+                "{fill}{} {} {RESET}",
+                fg(if hovered { TEXT_SECONDARY } else { TEXT_MUTED }),
+                if closable { '×' } else { ' ' }
             ),
         );
-        spans.push((cell(start), cell(close_at), Hit::Tab(i)));
-        spans.push((cell(close_at), cell(col), Hit::Close(i)));
+        if closable {
+            spans.push((cell(start), cell(close_at), Hit::Tab(i)));
+            spans.push((cell(close_at), cell(col), Hit::Close(i)));
+        } else {
+            spans.push((cell(start), cell(col), Hit::Tab(i)));
+        }
         if is_active {
             active_cols = Some((cell(start), cell(col)));
         }
@@ -504,6 +518,8 @@ mod tests {
                 frame: None,
                 alert: None,
                 progress: None,
+                pinned: false,
+                closable: true,
             })
             .collect()
     }
@@ -768,5 +784,23 @@ mod tests {
         }
         assert_eq!(progress_mark(None), None);
         assert_eq!(progress_mark(p(ProgressState::Error, 7)).unwrap().1, DANGER);
+    }
+
+    /// #98 T1 (`CORE-14`, `CORE-10`): a pinned tab shows `◆` and no `×`; with close buttons
+    /// off no tab has one; a click there selects the tab.
+    #[test]
+    fn pinned_tabs_and_tabs_without_close_buttons() {
+        let mut list = items(&["build", "logs"]);
+        list[0].pinned = true;
+        let bar = layout(&list, Some(1), None, 120, 0);
+        let line = text(&bar, 120);
+        assert!(line.contains("● \u{25c6} build"), "{line}");
+        assert_eq!(line.matches('×').count(), 1, "only logs has one: {line}");
+        assert!(!bar.spans.iter().any(|s| s.2 == Hit::Close(0)));
+        for it in &mut list {
+            it.closable = false;
+        }
+        let line = text(&layout(&list, Some(1), None, 120, 0), 120);
+        assert_eq!(line.matches('×').count(), 0, "{line}");
     }
 }

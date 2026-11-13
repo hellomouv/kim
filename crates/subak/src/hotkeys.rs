@@ -145,6 +145,11 @@ pub const IMPLEMENTED: &[&str] = &[
     "line.next-word",
     "line.delete-previous-word",
     "line.delete-line",
+    "view.fullscreen",
+    "tab.next-mru",
+    "tab.previous-mru",
+    "tab.last",
+    "tab.pin",
 ];
 
 /// The compiled-in manifest.

@@ -62,6 +62,8 @@ pub struct Prefs {
     /// Terminals hidden in the window when it last ran (ids; Step 18 keeps tab hiding across
     /// runs). The Terminal manager shows them; opening one there shows its tab again.
     pub hidden_terminals: Vec<String>,
+    /// #98 T1 (`CORE-14`): pinned Terminals (ids), first in the bar; closing one asks first.
+    pub pinned_terminals: Vec<String>,
     /// The text size and theme a version 1 file held (Step 20: they belong in `config.toml`
     /// now); `None` when the file was version 2 or had neither. Never written back.
     pub legacy: Option<crate::config::Legacy>,
@@ -75,6 +77,7 @@ impl Default for Prefs {
             window: None,
             last_terminal: None,
             hidden_terminals: Vec::new(),
+            pinned_terminals: Vec::new(),
             legacy: None,
             extra: Map::new(),
         }
@@ -178,6 +181,21 @@ impl Prefs {
                 _ => bad.push("last_terminal"),
             }
         }
+        if let Some(v) = map.remove("pinned_terminals") {
+            let ids: Option<Vec<String>> = v.as_array().and_then(|a| {
+                a.iter()
+                    .map(|x| {
+                        x.as_str()
+                            .filter(|s| !s.is_empty() && s.len() <= 64)
+                            .map(String::from)
+                    })
+                    .collect()
+            });
+            match ids {
+                Some(ids) if ids.len() <= 1000 => p.pinned_terminals = ids,
+                _ => bad.push("pinned_terminals"),
+            }
+        }
         if let Some(v) = map.remove("hidden_terminals") {
             let ids: Option<Vec<String>> = v.as_array().and_then(|a| {
                 a.iter()
@@ -247,6 +265,9 @@ impl Prefs {
                 .map_or(Value::Null, |t| json!({"id": t.id, "name": t.name})),
         );
         m.insert("hidden_terminals".into(), json!(self.hidden_terminals));
+        if !self.pinned_terminals.is_empty() {
+            m.insert("pinned_terminals".into(), json!(self.pinned_terminals));
+        }
         for (k, v) in &self.extra {
             m.entry(k.clone()).or_insert_with(|| v.clone());
         }
@@ -503,5 +524,18 @@ mod tests {
         let l = Prefs::parse(r#"{"schema":"subak.gui","schema_version":2,"hidden_terminals":[1]}"#);
         assert!(l.prefs.hidden_terminals.is_empty());
         assert!(l.problem.unwrap().contains("hidden_terminals"));
+    }
+
+    /// #98 T1 (`CORE-14`): pinned Terminals are kept in `gui.json` (only when there are any).
+    #[test]
+    fn pinned_terminals_round_trip() {
+        let mut p = Prefs::default();
+        assert!(p.to_json().get("pinned_terminals").is_none());
+        p.pinned_terminals = vec!["t-0123456789ab".into()];
+        let l = Prefs::parse(&p.to_json().to_string());
+        assert_eq!(l.prefs.pinned_terminals, ["t-0123456789ab"]);
+        let bad =
+            Prefs::parse(r#"{"schema":"subak.gui","schema_version":2,"pinned_terminals":[1]}"#);
+        assert!(bad.prefs.pinned_terminals.is_empty());
     }
 }

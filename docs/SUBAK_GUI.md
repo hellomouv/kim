@@ -183,6 +183,16 @@ Keys go to the program, in the order of ADR 0009:
    showing only hides a client: every Terminal keeps running. The dropdown never saves its place.
    Only the top edge is offered.
 
+   **#98 T1 (tabs and the window).** `view.fullscreen` (`F11`) makes the window cover its
+   monitor without a frame and puts it back exactly where it was. `tab.pin` (no default) pins
+   the shown tab: pinned tabs come first with a `◆` mark and no `×`, closing one asks first, and
+   the pins are kept in `gui.json` (`pinned_terminals`). `tab.next-mru` / `tab.previous-mru`
+   walk the tabs in the order this window last showed them and `tab.last` goes back to the one
+   shown before (no defaults; `Ctrl+Tab` stays positional). Files dropped on the window paste
+   their paths on one line, quoted the way the pane's program reads them (`"C:\a b"` for
+   Command Prompt and PowerShell, `'C:/a b'` for the others; never with Enter). With
+   `terminal.focus_follows_mouse`, pointing at another pane of a split makes it active.
+
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
    `Ctrl+Space` as NUL, `Ctrl+2`…`Ctrl+8` as the VT220 codes, cursor keys (`SS3` in application
@@ -949,6 +959,11 @@ backspace = "del"        # #98 T2: del (0x7F) | ctrl-h (0x08) | delete (CSI 3 ~)
 bell = "off"             # #98 T3: off | visual (flash; taskbar too when not in front) | audible
 notify_command_seconds = 0   # #98 T3: notify when a command (OSC 133) that ran this long ends; 0: off
 notify_exit = false      # #98 T3: notify when a Terminal's program ends
+focus_follows_mouse = false  # #98 T1: pointing at another pane of a split makes it active
+
+[tabs]                   # #98 T1
+close_buttons = true     # each tab has its × (hide) button; pinned tabs never do
+cycle = true             # next/previous tab wrap around at the ends
 
 [dropdown]               # #98 T3: subak-gui --dropdown
 height = 40              # percent of the screen (20–100)
