@@ -2523,6 +2523,7 @@ impl Host {
             "terminal.list" => Reply::Now(self.list(p)),
             "terminal.info" => Reply::Now(self.info(p)),
             "terminal.create" => Reply::Now(self.create_request(p)),
+            "terminal.duplicate" => Reply::Now(self.duplicate(p)),
             "terminal.rename" => Reply::Now(self.rename(p)),
             "terminal.stop" => Reply::Now(self.end_request(p, Op::Stop)),
             "terminal.kill" => Reply::Now(self.end_request(p, Op::Kill)),
@@ -3569,6 +3570,65 @@ impl Host {
             "size": {"cols": l.size.0, "rows": l.size.1},
             "history_limit": l.history_limit,
         }))
+    }
+
+    /// #98 T1 (`CORE-12`, `CORE-17`): a new Terminal running what Terminal `target`'s active
+    /// pane runs: its program and arguments (or command line), in the directory its shell last
+    /// reported (else the one it started in), at its size and history limit. It never clones
+    /// a process, and environment values are not repeated (the Host keeps only their names).
+    /// With `restart`, the Terminal (one pane only) is ended first, `force` past the busy
+    /// guard, and the new one takes its name; otherwise the copy gets a free `name-2`-style name.
+    fn duplicate(self: &Arc<Self>, p: &Value) -> Result<Value, IpcError> {
+        let target = target(p)?;
+        let restart = flag(p, "restart")?;
+        let force = flag(p, "force")?;
+        let (tid, name, mut params) = {
+            let st = self.lock();
+            let i = st.reg.resolve_terminal(target)?;
+            let t = &st.reg.terminals[i];
+            if restart && t.panes().count() > 1 {
+                return Err(IpcError::new(
+                    ErrorCode::InvalidState,
+                    format!(
+                        "`{}` has more than one pane; restart works on a one-pane Terminal",
+                        t.name.display
+                    ),
+                ));
+            }
+            let pane = t.active_pane();
+            let reported = st
+                .out
+                .get(&pane.id)
+                .and_then(|o| o.screen.cwd().map(String::from));
+            let mut params = json!({
+                "cwd": reported.or_else(|| pane.cwd.clone()),
+                "size": {"cols": pane.size.0, "rows": pane.size.1},
+                "history_limit": pane.history_limit,
+            });
+            match &pane.command_line {
+                Some(l) => params["command_line"] = json!(l),
+                None => {
+                    params["command"] =
+                        json!({"program": pane.command.program, "args": pane.command.args});
+                }
+            }
+            (t.id.clone(), t.name.display.clone(), params)
+        };
+        if restart {
+            self.end_request(&json!({"target": tid, "force": force}), Op::Kill)?;
+            params["name"] = json!(name);
+        } else {
+            let st = self.lock();
+            let free = (2..1000)
+                .map(|n| format!("{name}-{n}"))
+                .find(|c| session::parse_name(c).is_ok_and(|n| st.reg.check_free(&n, None).is_ok()))
+                .unwrap_or_else(|| st.reg.default_name().display);
+            params["name"] = json!(free);
+        }
+        let mut r = self.create_request(&params)?;
+        r["source"] = json!(tid);
+        r["restarted"] = json!(restart);
+        Ok(r)
     }
 
     fn create_request(self: &Arc<Self>, p: &Value) -> Result<Value, IpcError> {

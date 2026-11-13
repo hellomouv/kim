@@ -325,6 +325,9 @@ pub struct Confirm {
     pub pane: Option<String>,
     /// #98 T1 (`CORE-14`): asked because the tab is pinned.
     pub pinned: bool,
+    /// #98 T1 (`CORE-17`): confirming restarts the Terminal (`terminal.duplicate` with
+    /// `restart` and `force`) instead of ending it.
+    pub restart: bool,
 }
 
 /// What the window must do after the model handled something.
@@ -410,6 +413,12 @@ enum Pending {
     Resize,
     Detach,
     Create,
+    /// #98 T1: `terminal.duplicate` of Terminal `id` (at tab `index`; `restart`: it ends).
+    Duplicate {
+        id: String,
+        name: String,
+        restart: bool,
+    },
     Kill {
         id: String,
         name: String,
@@ -1079,6 +1088,7 @@ impl Model {
                 processes: 0,
                 pane: None,
                 pinned: true,
+                restart: false,
             }));
         } else if t.stored() {
             self.closing.push(t.id.clone());
@@ -1106,6 +1116,35 @@ impl Model {
                 name: t.name.clone(),
             },
         )
+    }
+
+    /// #98 T1 (`CORE-12`, `CORE-17`): duplicates the shown Terminal (a new one running the same
+    /// program in the same folder), or restarts it (`restart`; `force` once the user agreed).
+    pub fn duplicate(&mut self, restart: bool, force: bool) -> Vec<Effect> {
+        if !self.connected {
+            return vec![Effect::Notice(
+                "Not connected to the Subak Host; nothing was started".into(),
+            )];
+        }
+        let Some(t) = self.terminal().cloned() else {
+            return Vec::new();
+        };
+        if t.gone() || t.stored() {
+            return vec![Effect::Notice(format!(
+                "`{}` does not run; nothing to {}",
+                t.name,
+                if restart { "restart" } else { "duplicate" }
+            ))];
+        }
+        vec![self.request(
+            "terminal.duplicate",
+            json!({"target": t.id, "restart": restart, "force": force}),
+            Pending::Duplicate {
+                id: t.id.clone(),
+                name: t.name,
+                restart,
+            },
+        )]
     }
 
     /// The user confirmed ending the busy Terminal `id`: `terminal.kill` with `force`, by id.
@@ -1462,6 +1501,26 @@ impl Model {
                     out.extend(self.on_grid(g.0, g.1));
                 }
             }
+            Pending::Duplicate { id, restart, .. } => {
+                if let Some(t) = TermInfo::from_full(&r["terminal"]) {
+                    // A restart takes the old tab's place; a copy goes right after it.
+                    let at = self.tabs.iter().position(|x| x.id == id);
+                    self.tabs
+                        .retain(|x| x.id != t.id && !(restart && x.id == id));
+                    let at = at.map_or(self.tabs.len(), |i| {
+                        (if restart { i } else { i + 1 }).min(self.tabs.len())
+                    });
+                    self.tabs.insert(at, t.clone());
+                    if restart {
+                        for p in &mut self.pinned {
+                            if *p == id {
+                                p.clone_from(&t.id);
+                            }
+                        }
+                    }
+                    self.show(t, &mut out);
+                }
+            }
             Pending::Create => {
                 if let Some(t) = TermInfo::from_full(&r["terminal"]) {
                     match self.tabs.iter_mut().find(|x| x.id == t.id) {
@@ -1548,6 +1607,24 @@ impl Model {
             Pending::Create => out.push(Effect::Notice(format!(
                 "No Terminal was created: {message} ({code})"
             ))),
+            // #98 T1: a busy Terminal asks before it restarts.
+            Pending::Duplicate {
+                id,
+                name,
+                restart: true,
+            } if code == "busy" => out.push(Effect::Confirm(Confirm {
+                id,
+                name,
+                program: e["details"]["program"].as_str().unwrap_or("").to_string(),
+                processes: e["details"]["processes"].as_u64().unwrap_or(0),
+                pane: None,
+                pinned: false,
+                restart: true,
+            })),
+            Pending::Duplicate { name, restart, .. } => out.push(Effect::Notice(format!(
+                "`{name}` was not {}: {message} ({code})",
+                if restart { "restarted" } else { "duplicated" }
+            ))),
             Pending::Kill { id, name } => {
                 self.closing.retain(|c| *c != id);
                 match code {
@@ -1559,6 +1636,7 @@ impl Model {
                         processes: e["details"]["processes"].as_u64().unwrap_or(0),
                         pane: None,
                         pinned: false,
+                        restart: false,
                     })),
                     // Already gone: its tab goes.
                     "target_not_found" => self.close_tab(&id, &mut out),
@@ -1603,6 +1681,7 @@ impl Model {
                     processes: e["details"]["processes"].as_u64().unwrap_or(0),
                     pane: Some(target),
                     pinned: false,
+                    restart: false,
                 }));
             }
             Pending::Query(method) => {
@@ -2594,6 +2673,7 @@ mod tests {
                 processes: 3,
                 pane: None,
                 pinned: false,
+                restart: false,
             })]
         );
         assert_eq!(names(&m), ["claude", "other"]);
@@ -3142,5 +3222,62 @@ mod tests {
             ["terminal.kill"],
             "unpinned: closes as before"
         );
+    }
+
+    /// #98 T1 (`CORE-12`, `CORE-17`): a copy goes right after its tab; a restart takes the old
+    /// tab's place (and its pin); a busy restart asks, and agreeing sends it with `force`.
+    #[test]
+    fn duplicates_follow_their_tab_and_restarts_take_its_place() {
+        let mut m = Model::new(Want::Any, (80, 24));
+        let fx = connect_with(
+            &mut m,
+            json!([
+                term("t-a", "a", "running", 10),
+                term("t-b", "b", "running", 11)
+            ]),
+        );
+        attach_from(&mut m, &fx);
+        let fx = m.duplicate(false, false);
+        let (id, method, params) = sent(&fx).remove(0);
+        assert_eq!(method, "terminal.duplicate");
+        assert_eq!(
+            params,
+            json!({"target": "t-a", "restart": false, "force": false})
+        );
+        respond(
+            &mut m,
+            id,
+            json!({"terminal": term("t-c", "a-2", "running", 12)}),
+        );
+        assert_eq!(names(&m), ["a", "a-2", "b"]);
+        // Restart `a` (pinned): busy first, then forced; the new one takes its place and pin.
+        let fx = m.select(0);
+        attach_from(&mut m, &fx);
+        m.toggle_pin();
+        let fx = m.duplicate(true, false);
+        let (id, _, _) = sent(&fx).remove(0);
+        let fx = fail(
+            &mut m,
+            id,
+            "busy",
+            json!({"program": "x.exe", "processes": 2}),
+        );
+        assert!(
+            matches!(&fx[..], [Effect::Confirm(c)] if c.restart && c.id == "t-a"),
+            "{fx:?}"
+        );
+        let fx = m.duplicate(true, true);
+        let (id, _, params) = sent(&fx).remove(0);
+        assert_eq!(params["force"], true);
+        respond(
+            &mut m,
+            id,
+            json!({"terminal": term("t-d", "a", "running", 13)}),
+        );
+        assert_eq!(
+            m.tabs().iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["t-d", "t-c", "t-b"]
+        );
+        assert!(m.pinned("t-d"), "the pin moved to the new Terminal");
     }
 }

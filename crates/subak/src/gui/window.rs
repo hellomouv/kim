@@ -3673,6 +3673,7 @@ impl App {
                     },
                     json!({"target": p, "force": true}),
                 ),
+                None if c.info.restart => self.model.duplicate(true, true),
                 None => self.model.confirm_close(&c.info.id),
             };
             self.apply(fx);
@@ -4165,6 +4166,10 @@ impl App {
             }
             Action::TabPin => {
                 let fx = self.model.toggle_pin();
+                self.apply(fx);
+            }
+            Action::TabDuplicate | Action::TabRestart => {
+                let fx = self.model.duplicate(a == Action::TabRestart, false);
                 self.apply(fx);
             }
             // The Terminal manager's actions (context `manager`) are never active in a window.

@@ -149,11 +149,15 @@ pub enum Action {
     TabLast,
     /// #98 T1.
     TabPin,
+    /// #98 T1.
+    TabDuplicate,
+    /// #98 T1.
+    TabRestart,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 108] = [
+    pub const ALL: [(Action, &'static str); 110] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -268,6 +272,8 @@ impl Action {
         (Action::TabPreviousMru, "tab.previous-mru"),
         (Action::TabLast, "tab.last"),
         (Action::TabPin, "tab.pin"),
+        (Action::TabDuplicate, "tab.duplicate"),
+        (Action::TabRestart, "tab.restart"),
     ];
 
     pub fn from_id(id: &str) -> Option<Action> {

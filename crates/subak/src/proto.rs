@@ -569,6 +569,8 @@ pub const METHODS: &[Method] = &[
     m("terminal.kill", CG, true),
     m("terminal.remove", CG, true),
     m("terminal.restore", CG, true),
+    // #98 T1: duplicate or restart a Terminal (it starts processes, so MCP needs the grant).
+    m("terminal.duplicate", CG, true),
     // Step 21 (ADR 0054): internal windows and panes; listing is read-only like terminal.list.
     m("window.create", CG, true),
     m("window.list", CGM, true),

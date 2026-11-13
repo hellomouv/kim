@@ -146,7 +146,14 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     assert_eq!(keys_of(&list, "gui.show"), ["Ctrl+Alt+Shift+F22"]);
     // #98 T1: fullscreen on F11, the MRU and pin actions without keys; the tab bar settings.
     assert_eq!(keys_of(&list, "view.fullscreen"), ["F11"]);
-    for id in ["tab.next-mru", "tab.previous-mru", "tab.last", "tab.pin"] {
+    for id in [
+        "tab.next-mru",
+        "tab.previous-mru",
+        "tab.last",
+        "tab.pin",
+        "tab.duplicate",
+        "tab.restart",
+    ] {
         assert!(keys_of(&list, id).is_empty(), "{id}");
     }
     assert_eq!(setting(&show, "tabs.close_buttons")["value"], true);

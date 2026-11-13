@@ -121,6 +121,8 @@
     { "id": "tab.next-mru", "title": "Most recently used tab", "scopes": ["app"], "defaults": [] },
     { "id": "tab.previous-mru", "title": "Least recently used tab (back through the order)", "scopes": ["app"], "defaults": [] },
     { "id": "tab.last", "title": "The tab shown before this one", "scopes": ["app"], "defaults": [] },
-    { "id": "tab.pin", "title": "Pin or unpin the tab (pinned tabs come first and ask before closing)", "scopes": ["app"], "defaults": [] }
+    { "id": "tab.pin", "title": "Pin or unpin the tab (pinned tabs come first and ask before closing)", "scopes": ["app"], "defaults": [] },
+    { "id": "tab.duplicate", "title": "Duplicate the Terminal (the same program in the same folder; never its process)", "scopes": ["app"], "defaults": [] },
+    { "id": "tab.restart", "title": "Restart the Terminal (asks when busy)", "scopes": ["app"], "defaults": [] }
   ]
 }

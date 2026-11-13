@@ -3415,3 +3415,89 @@ fn drops_pins_last_tab_fullscreen_and_focus_follows_mouse() {
         "EVIDENCE T1: dropped paths pasted quoted, `two` pinned first with a question on close, tab.last went back, F11 toggled fullscreen, pointing at the left pane made it active"
     );
 }
+
+/// #98 T1 (`CORE-12`, `CORE-17`): `tab.duplicate` starts a new Terminal running the same
+/// program (a new process, `one-2`, right after the tab); `tab.restart` on a busy Terminal asks
+/// first, then ends its process and starts the program again under the same name and tab.
+#[test]
+fn duplicate_and_restart_a_terminal() {
+    let host = Host::start("gui-dup", &["--no-shell"]);
+    let ep = host.ep.clone();
+    // `one`: the default shell in a folder of its own; `busy`: the stand-in (a busy program).
+    let dir = sandbox("dup-cwd");
+    let (code, doc) = sub(
+        &ep,
+        &[
+            "new",
+            "one",
+            "--size",
+            "100x30",
+            "--cwd",
+            dir.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    let one_pid = pid_of(&doc["data"]["terminal"]["windows"][0]["panes"][0]["pid"]);
+    let (_, busy_pid) = new_standin(&ep, "busy");
+    let appdata = sandbox("dup");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    for (a, k) in [
+        ("tab.duplicate", "Ctrl+Shift+F5"),
+        ("tab.restart", "Ctrl+Shift+F6"),
+    ] {
+        let (code, doc) = run_env(&["hotkeys", "set", a, k], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    // Duplicate `one`: `one-2`, a new shell process in the same folder, right after it.
+    gui.cmd(&json!({"cmd": "key", "vk": 0x74, "ctrl": true, "shift": true}));
+    let d = gui.until("one-2 shown", |d| {
+        d["phase"] == "attached" && shown(d) == "one-2"
+    });
+    assert_eq!(tab_names(&d), ["one", "one-2", "busy"]);
+    let copy = info(&ep, "one-2");
+    let copy_pane = &copy["windows"][0]["panes"][0];
+    assert_ne!(
+        pid_of(&copy_pane["pid"]),
+        one_pid,
+        "a new process, never a clone"
+    );
+    assert_eq!(
+        copy_pane["cwd"].as_str().map(|c| c.to_lowercase()),
+        Some(dir.display().to_string().to_lowercase()),
+        "the same folder"
+    );
+    assert!(Proc::open(one_pid).alive(), "the original keeps running");
+    // Restart `busy` (the stand-in is busy): asked first; the old process ends and the same
+    // program starts again as `busy` in the same tab.
+    let busy_id = info(&ep, "busy")["id"].as_str().unwrap().to_string();
+    gui.press(VK_TAB, true, false);
+    gui.until("busy shown", |d| {
+        d["phase"] == "attached" && shown(d) == "busy"
+    });
+    gui.cmd(&json!({"cmd": "key", "vk": 0x75, "ctrl": true, "shift": true}));
+    let d = gui.until("the question", |d| !d["confirm"].is_null());
+    assert!(
+        d["confirm"].to_string().contains("busy"),
+        "{}",
+        d["confirm"]
+    );
+    gui.press(VK_TAB, false, false);
+    gui.cmd(&json!({"cmd": "key", "vk": 0x0D}));
+    wait_for("the old process ended", || {
+        Proc::try_open(busy_pid).is_none_or(|p| !p.alive())
+    });
+    // (The new stand-in has no `SUBAK_TEST_STANDIN`: environment values are not repeated, so it
+    // ends at once; the window still shows the new Terminal, a new id, in the old tab.)
+    let d = gui.until("the new busy in the old tab", |d| {
+        tab_names(d) == ["one", "one-2", "busy"]
+            && d["terminal"]["name"] == "busy"
+            && d["terminal"]["id"] != busy_id.as_str()
+    });
+    println!(
+        "EVIDENCE duplicate/restart: one-2 runs a new shell in {} beside one; restarting busy asked, ended pid {busy_pid} and started the program again as a new `busy` in the same tab ({:?})",
+        dir.display(),
+        tab_names(&d)
+    );
+}

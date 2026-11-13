@@ -192,6 +192,11 @@ Keys go to the program, in the order of ADR 0009:
    their paths on one line, quoted the way the pane's program reads them (`"C:\a b"` for
    Command Prompt and PowerShell, `'C:/a b'` for the others; never with Enter). With
    `terminal.focus_follows_mouse`, pointing at another pane of a split makes it active.
+   `tab.duplicate` (no default) starts a new Terminal running what the shown one runs, in the
+   folder its shell last reported, as `name-2` right after it; `tab.restart` (no default) ends
+   the shown one-pane Terminal (asking first when it is busy) and starts the same program again
+   under the same name in the same tab. Neither clones a process, and environment values are
+   not repeated (the Host keeps only their names).
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,

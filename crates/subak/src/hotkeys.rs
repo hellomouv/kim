@@ -150,6 +150,8 @@ pub const IMPLEMENTED: &[&str] = &[
     "tab.previous-mru",
     "tab.last",
     "tab.pin",
+    "tab.duplicate",
+    "tab.restart",
 ];
 
 /// The compiled-in manifest.

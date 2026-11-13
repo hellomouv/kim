@@ -517,7 +517,15 @@ pub fn confirm_vt(c: &Confirm, focus: Choice, cols: u16) -> (Vec<u8>, Vec<(u16, 
     } else {
         format!(" {}", c.program)
     };
-    let question = if c.pinned {
+    let question = if c.restart {
+        // #98 T1: restarting ends what runs, then starts the same program again.
+        format!(
+            "Restart `{}`? It runs{program} ({} process{} in its job); they will be ended and the program started again.",
+            c.name,
+            c.processes,
+            if c.processes == 1 { "" } else { "es" }
+        )
+    } else if c.pinned {
         // #98 T1: a pinned tab always asks; the Host has not looked at its processes.
         format!(
             "`{}` is pinned. End it? It runs{program}; its processes will be ended.",
@@ -777,6 +785,7 @@ mod tests {
             processes: 3,
             pane: None,
             pinned: false,
+            restart: false,
         };
         let (vt, spans) = confirm_vt(&c, Choice::Cancel, 160);
         let row = text_of(&vt, 160, 1).remove(0);
@@ -818,6 +827,7 @@ mod tests {
             processes: 2,
             pane: None,
             pinned: false,
+            restart: false,
         };
         let (vt, _) = confirm_vt(&c, Choice::Cancel, 120);
         let hc = high_contrast(&vt);
