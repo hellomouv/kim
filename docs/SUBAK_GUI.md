@@ -197,6 +197,13 @@ Keys go to the program, in the order of ADR 0009:
    the shown one-pane Terminal (asking first when it is busy) and starts the same program again
    under the same name in the same tab. Neither clones a process, and environment values are
    not repeated (the Host keeps only their names).
+   `tabs.title` sets what a tab shows (`{name}`, `{title}` set by the program with OSC 0/2, as the
+   window saw it while the tab was shown: the Host never reports titles, which may hold a command
+   line, `{program}`, `{cwd}` the folder's name); a tab is never
+   blank. `tabs.on_exit = "close"` closes the shown tab when its program ends (the default
+   `keep` shows its last screen). `appearance.density = "compact"` lowers the tab bar (24 px
+   instead of 32). `gui.new-window` (`Ctrl+Shift+N`) opens another window of the same Host
+   with a new Terminal (`subak-gui --new-terminal`); every window is just another client.
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
@@ -969,6 +976,8 @@ focus_follows_mouse = false  # #98 T1: pointing at another pane of a split makes
 [tabs]                   # #98 T1
 close_buttons = true     # each tab has its × (hide) button; pinned tabs never do
 cycle = true             # next/previous tab wrap around at the ends
+title = "{name}"         # what a tab shows: {name} {title} {program} {cwd}
+on_exit = "keep"         # keep (the last screen stays) | close (the tab closes with its program)
 
 [dropdown]               # #98 T3: subak-gui --dropdown
 height = 40              # percent of the screen (20–100)

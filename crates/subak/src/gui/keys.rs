@@ -153,11 +153,13 @@ pub enum Action {
     TabDuplicate,
     /// #98 T1.
     TabRestart,
+    /// #98 T1.
+    GuiNewWindow,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 110] = [
+    pub const ALL: [(Action, &'static str); 111] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -274,6 +276,7 @@ impl Action {
         (Action::TabPin, "tab.pin"),
         (Action::TabDuplicate, "tab.duplicate"),
         (Action::TabRestart, "tab.restart"),
+        (Action::GuiNewWindow, "gui.new-window"),
     ];
 
     pub fn from_id(id: &str) -> Option<Action> {

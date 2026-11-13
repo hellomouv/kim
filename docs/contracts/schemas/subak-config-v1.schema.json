@@ -24,6 +24,7 @@
         "padding": { "description": "Logical pixels around the cell grid (default 8).", "type": "integer", "minimum": 0, "maximum": 16 },
         "opacity": { "description": "Window opacity in percent (default 100). High Contrast always draws opaque.", "type": "integer", "minimum": 50, "maximum": 100 },
         "motion": { "description": "system: follow Windows' Show animations setting; reduced: no motion; full: short transitions always.", "enum": ["system", "reduced", "full"] },
+        "density": { "description": "#98 T1: regular (default) or compact (a lower tab bar).", "enum": ["regular", "compact"] },
         "bold_is_bright": { "description": "Bold text in ANSI colours 0-7 uses the bright variants (default true).", "type": "boolean" }
       },
       "additionalProperties": true
@@ -33,7 +34,9 @@
       "type": "object",
       "properties": {
         "close_buttons": { "description": "Each tab has its x (hide) button (default true; pinned tabs never do).", "type": "boolean" },
-        "cycle": { "description": "The next/previous tab keys wrap around at the ends (default true).", "type": "boolean" }
+        "cycle": { "description": "The next/previous tab keys wrap around at the ends (default true).", "type": "boolean" },
+        "title": { "description": "#98 T1: what a tab shows: {name} (default), {title} (set by the program), {program}, {cwd} (folder name), with any text around them.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "on_exit": { "description": "#98 T1: when the shown tab's program ends: keep (default, its last screen stays) or close.", "enum": ["keep", "close"] }
       },
       "additionalProperties": true
     },

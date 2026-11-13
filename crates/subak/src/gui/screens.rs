@@ -609,6 +609,8 @@ mod tests {
             layout: None,
             windows: Vec::new(),
             active_window: None,
+            title: None,
+            cwd: None,
         }
     }
 

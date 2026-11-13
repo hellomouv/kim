@@ -113,6 +113,34 @@ pub fn progress_mark(p: Option<subak_term::screen::Progress>) -> Option<(String,
     })
 }
 
+/// #98 T1 (`CORE-23`, `tabs.title`): a tab's text from the format: `{name}`, `{title}` (what
+/// the program set), `{program}`, `{cwd}` (the folder's name). An empty result falls back to
+/// the name, so a tab is never blank.
+pub fn label(
+    format: &str,
+    name: &str,
+    title: Option<&str>,
+    program: &str,
+    cwd: Option<&str>,
+) -> String {
+    let folder = cwd
+        .map(|c| c.trim_end_matches(['\\', '/']))
+        .and_then(|c| c.rsplit(['\\', '/']).next())
+        .unwrap_or("");
+    let text = format
+        .replace("{name}", name)
+        .replace("{title}", title.unwrap_or(""))
+        .replace("{program}", program)
+        .replace("{cwd}", folder);
+    let text: String = text.chars().filter(|c| !c.is_control()).collect();
+    let text = text.trim();
+    if text.is_empty() {
+        name.to_string()
+    } else {
+        text.to_string()
+    }
+}
+
 /// #98 T3: the mark of a tab with unseen output (`•`) or a bell (`♪`), a shape each.
 pub fn alert_mark(a: Option<crate::gui::model::Alert>) -> Option<(char, Rgb, &'static str)> {
     use crate::gui::model::Alert;
@@ -802,5 +830,40 @@ mod tests {
         }
         let line = text(&layout(&list, Some(1), None, 120, 0), 120);
         assert_eq!(line.matches('×').count(), 0, "{line}");
+    }
+
+    /// #98 T1 (`CORE-23`): tab title formats; never a blank tab, never a control character.
+    #[test]
+    fn tab_titles_follow_the_format() {
+        assert_eq!(
+            label("{name}", "build", Some("make"), "cmd.exe", None),
+            "build"
+        );
+        assert_eq!(
+            label(
+                "{name}: {title}",
+                "build",
+                Some("make -j8"),
+                "cmd.exe",
+                None
+            ),
+            "build: make -j8"
+        );
+        assert_eq!(
+            label(
+                "{program} in {cwd}",
+                "x",
+                None,
+                "pwsh.exe",
+                Some(r"C:\work\kim\")
+            ),
+            "pwsh.exe in kim"
+        );
+        assert_eq!(
+            label("{title}", "build", None, "cmd.exe", None),
+            "build",
+            "falls back"
+        );
+        assert_eq!(label("{title}", "b", Some("a\u{7}b"), "c", None), "ab");
     }
 }

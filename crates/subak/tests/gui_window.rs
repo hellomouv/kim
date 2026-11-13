@@ -1038,6 +1038,11 @@ fn standin_helper() {
             println!("\x1b]133;D;3\x07standin-cmd-done");
             continue;
         }
+        // #98 T1: a title on request (OSC 2).
+        if let Some(v) = t.strip_prefix(b"title ") {
+            println!("\x1b]2;{}\x07standin-titled", String::from_utf8_lossy(v));
+            continue;
+        }
         // #98 T3: a bell on request.
         if t == b"bell" {
             println!("\x07standin-rang");
@@ -3498,6 +3503,64 @@ fn duplicate_and_restart_a_terminal() {
     println!(
         "EVIDENCE duplicate/restart: one-2 runs a new shell in {} beside one; restarting busy asked, ended pid {busy_pid} and started the program again as a new `busy` in the same tab ({:?})",
         dir.display(),
+        tab_names(&d)
+    );
+}
+
+/// #98 T1 (`CORE-23`, `CORE-48`, `CORE-21`, `CORE-20`): a tab shows `{name}: {title}` with the
+/// title its program set; compact density lowers the tab bar; Ctrl+Shift+N opens another
+/// window with a new Terminal; with `tabs.on_exit = "close"` the tab closes with its program.
+#[test]
+fn tab_titles_density_new_window_and_close_on_exit() {
+    let host = Host::start("gui-t1c", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "one");
+    new_standin(&ep, "two");
+    let appdata = sandbox("t1c");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    let regular = gui.dump()["bar"]["height"].as_u64().unwrap();
+    for (k, v) in [
+        ("tabs.title", "{name}: {title}"),
+        ("appearance.density", "compact"),
+        ("tabs.on_exit", "close"),
+    ] {
+        let (code, doc) = run_env(&["config", "set", k, v], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    let compact = gui.until("a lower bar", |d| {
+        d["bar"]["height"].as_u64().unwrap() < regular
+    });
+    // The program sets its title: the tab follows.
+    gui.type_text("title hello there\r");
+    let d = gui.until("the title on the tab", |d| {
+        d["bar"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("one: hello there")
+    });
+    println!("bar: {}", d["bar"]["text"]);
+    // Ctrl+Shift+N: another window with a new Terminal (the test window only reports it).
+    gui.cmd(&json!({"cmd": "key", "vk": u32::from(b'N'), "ctrl": true, "shift": true}));
+    let nw = gui
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["event"] == "new_window")
+        .expect("a new window");
+    assert!(nw["args"].to_string().contains("--new-terminal"), "{nw}");
+    // The program ends: its tab closes (on_exit = close) and `two` is shown.
+    gui.type_text("quit\r");
+    let d = gui.until("one closed", |d| {
+        tab_names(d) == ["two"] && shown(d) == "two"
+    });
+    println!(
+        "EVIDENCE T1 titles/density/new window/on exit: bar {regular} -> {} px, tab `one: hello there`, new window {}, `one` closed with its program ({:?})",
+        compact["bar"]["height"],
+        nw["args"],
         tab_names(&d)
     );
 }

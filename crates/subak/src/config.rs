@@ -252,6 +252,8 @@ pub struct Appearance {
     pub motion: Motion,
     /// Bold text in ANSI colours 0–7 uses their bright variants.
     pub bold_is_bright: bool,
+    /// #98 T1 (`CORE-48`): compact density (a lower tab bar).
+    pub compact: bool,
 }
 
 /// `[terminal]`.
@@ -360,6 +362,12 @@ pub struct TabsPrefs {
     pub close_buttons: bool,
     /// The next/previous tab keys wrap around at the ends.
     pub cycle: bool,
+    /// #98 T1 (`CORE-23`): what a tab shows: `{name}` (the default), `{title}` (what the program
+    /// set), `{program}`, `{cwd}` (the folder's name), in any text around them.
+    pub title: String,
+    /// #98 T1 (`CORE-20`): when the shown tab's program ends, its tab stays with the last screen
+    /// (`keep`, the default) or closes (`close`).
+    pub close_on_exit: bool,
 }
 
 /// `dropdown.height` bounds and default, percent.
@@ -390,6 +398,7 @@ impl Default for Settings {
                 opacity: OPACITY.2,
                 motion: Motion::System,
                 bold_is_bright: true,
+                compact: false,
             },
             terminal: TerminalPrefs {
                 default_profile: String::new(),
@@ -416,6 +425,8 @@ impl Default for Settings {
             tabs: TabsPrefs {
                 close_buttons: true,
                 cycle: true,
+                title: "{name}".into(),
+                close_on_exit: false,
             },
             profiles: Vec::new(),
         }
@@ -509,6 +520,9 @@ impl Settings {
         match (k.section, k.name) {
             ("tabs", "close_buttons") => json!(tb.close_buttons),
             ("tabs", "cycle") => json!(tb.cycle),
+            ("tabs", "title") => json!(tb.title),
+            ("tabs", "on_exit") => json!(if tb.close_on_exit { "close" } else { "keep" }),
+            ("appearance", "density") => json!(if a.compact { "compact" } else { "regular" }),
             ("terminal", "focus_follows_mouse") => json!(self.terminal.focus_follows_mouse),
             ("dropdown", "height") => json!(d.height),
             ("dropdown", "hide_on_blur") => json!(d.hide_on_blur),
@@ -829,6 +843,24 @@ pub const KEYS: &[Key] = &[
         kind: Kind::Bool,
     },
     Key {
+        section: "tabs",
+        name: "title",
+        takes: "a text with {name}, {title}, {program} or {cwd} (1-64 characters)",
+        kind: Kind::Text,
+    },
+    Key {
+        section: "tabs",
+        name: "on_exit",
+        takes: "keep or close",
+        kind: Kind::Text,
+    },
+    Key {
+        section: "appearance",
+        name: "density",
+        takes: "regular or compact",
+        kind: Kind::Text,
+    },
+    Key {
         section: "dropdown",
         name: "height",
         takes: "a whole number from 20 to 100 (percent of the screen)",
@@ -912,6 +944,25 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("dropdown", "hide_on_blur") => d.hide_on_blur = flag()?,
         ("tabs", "close_buttons") => tb.close_buttons = flag()?,
         ("tabs", "cycle") => tb.cycle = flag()?,
+        ("tabs", "title") => {
+            tb.title = clean_text(text()?, 64)
+                .filter(|t| !t.trim().is_empty())
+                .ok_or(())?;
+        }
+        ("tabs", "on_exit") => {
+            tb.close_on_exit = match text()? {
+                "keep" => false,
+                "close" => true,
+                _ => return Err(()),
+            };
+        }
+        ("appearance", "density") => {
+            a.compact = match text()? {
+                "regular" => false,
+                "compact" => true,
+                _ => return Err(()),
+            };
+        }
         ("terminal", "focus_follows_mouse") => t.focus_follows_mouse = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
@@ -2983,9 +3034,20 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
             s.tabs,
             TabsPrefs {
                 close_buttons: false,
-                cycle: false
+                cycle: false,
+                title: "{name}".into(),
+                close_on_exit: false,
             }
         );
         assert!(s.terminal.focus_follows_mouse);
+        // #98 T1 (`CORE-23`, `CORE-20`, `CORE-48`): title format, on exit, density.
+        set_value(&mut s, "tabs.title", "{name}: {title}").unwrap();
+        set_value(&mut s, "tabs.on_exit", "close").unwrap();
+        set_value(&mut s, "appearance.density", "compact").unwrap();
+        assert_eq!(s.tabs.title, "{name}: {title}");
+        assert!(s.tabs.close_on_exit && s.appearance.compact);
+        assert!(set_value(&mut s, "tabs.title", "  ").is_err());
+        assert!(set_value(&mut s, "tabs.on_exit", "reopen").is_err());
+        assert!(set_value(&mut s, "appearance.density", "tiny").is_err());
     }
 }

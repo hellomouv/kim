@@ -78,7 +78,7 @@ subak-gui — the Subak window (pre-alpha, Steps 16-19)
 
 USAGE:
     subak-gui [<terminal>] [--endpoint <name>] [--no-hotkeys] [--hotkeys-profile <name>]
-              [--dropdown]
+              [--dropdown] [--new-terminal]
     subak-gui --float [--icon] [--tray] [--manager] [--endpoint <name>] [--no-hotkeys]
     subak-gui --manager [--endpoint <name>]
     subak-gui --help | --version
@@ -144,6 +144,7 @@ OPTIONS:
     --hotkeys-profile <name>   Use the `profiles` overlay <name> of hotkeys.json on top of your
                         bindings for this run (per-profile shortcuts; HOTKEY_CONTRACT §8.2).
     --dropdown          The dropdown window: docked to the top of the screen (#98 T3).
+    --new-terminal      Start with a new Terminal (Ctrl+Shift+N opens such a window).
     -h, --help          This text.
     -V, --version       The version.
 ";
@@ -159,6 +160,8 @@ pub struct Options {
     pub no_hotkeys: bool,
     /// `--hotkeys-profile <name>` (Step 23): the `profiles` overlay of `hotkeys.json` to use.
     pub hotkeys_profile: Option<String>,
+    /// #98 T1 (`CORE-21`): `--new-terminal`: the window starts with a new Terminal.
+    pub new_terminal: bool,
     /// #98 T3 (`CORE-82`): `--dropdown`: the window docked to the top of the screen, always
     /// on top, without a taskbar button; `gui.show` shows and hides it.
     pub dropdown: bool,
@@ -203,6 +206,7 @@ fn parse(args: &[String]) -> Result<Parsed, String> {
             }
             "--no-hotkeys" => o.no_hotkeys = true,
             "--dropdown" => o.dropdown = true,
+            "--new-terminal" => o.new_terminal = true,
             "--hotkeys-profile" => {
                 i += 1;
                 let name = args

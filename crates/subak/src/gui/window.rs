@@ -159,6 +159,8 @@ const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
 const BAR_FONT: f32 = 12.0;
 const BAR_HEIGHT: f32 = 32.0;
+/// #98 T1 (`appearance.density = "compact"`).
+const BAR_HEIGHT_COMPACT: f32 = 24.0;
 /// The tab menu's commands.
 const CMD_RENAME: u32 = 1;
 const CMD_HIDE: u32 = 2;
@@ -1685,7 +1687,13 @@ impl App {
         };
         r.set_theme(theme.clone());
         let m = r.metrics();
-        let height = (layout::px(BAR_HEIGHT, self.dpi).max(1) as u32).max(m.height + 2);
+        // #98 T1 (`CORE-48`): compact density lowers the bar.
+        let bar_height = if self.settings.appearance.compact {
+            BAR_HEIGHT_COMPACT
+        } else {
+            BAR_HEIGHT
+        };
+        let height = (layout::px(bar_height, self.dpi).max(1) as u32).max(m.height + 2);
         let pad_x = layout::px(4.0, self.dpi).max(0) as u32;
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);
@@ -1712,12 +1720,28 @@ impl App {
                 .get(id)
                 .map_or(Duration::ZERO, |(_, at)| now.duration_since(*at))
         };
+        // #98 T1 (`CORE-23`): each tab's text from `tabs.title`.
+        let labels: Vec<String> = self
+            .model
+            .tabs()
+            .iter()
+            .map(|t| {
+                tabs::label(
+                    &self.settings.tabs.title,
+                    &t.name,
+                    t.title.as_deref(),
+                    &t.program,
+                    t.cwd.as_deref(),
+                )
+            })
+            .collect();
         let items: Vec<tabs::Item<'_>> = self
             .model
             .tabs()
             .iter()
-            .map(|t| tabs::Item {
-                name: &t.name,
+            .zip(&labels)
+            .map(|(t, label)| tabs::Item {
+                name: label,
                 status: if t.gone() {
                     tabs::Status::Gone
                 } else if connected {
@@ -2447,8 +2471,14 @@ impl App {
         self.matcher
             .set_repeat_time(u64::from(self.settings.terminal.repeat_time_ms));
         self.model.set_wrap(self.settings.tabs.cycle);
-        if old.tabs != self.settings.tabs {
+        self.model
+            .set_close_on_exit(self.settings.tabs.close_on_exit);
+        if old.tabs != self.settings.tabs
+            || old.appearance.compact != self.settings.appearance.compact
+        {
             self.rebuild_bar();
+            let (w, h) = self.client;
+            self.on_size(0, w, h);
         }
         let (a, b) = (&old.appearance, &self.settings.appearance);
         self.motion.enabled = b.motion.animates(self.system_animations);
@@ -2845,6 +2875,27 @@ impl App {
         }
     }
 
+    /// #98 T1 (`CORE-21`): starts another `subak-gui` for the same Host with a new Terminal
+    /// (it is just another client: closing either window ends nothing). The test window only
+    /// reports it.
+    fn new_window(&mut self) {
+        let mut args: Vec<String> = Vec::new();
+        if let Some(ep) = &self.opts.endpoint {
+            args.extend(["--endpoint".to_string(), ep.clone()]);
+        }
+        args.push("--new-terminal".into());
+        self.event(&json!({"event": "new_window", "args": args}));
+        if self.opts.test {
+            return;
+        }
+        let started = std::env::current_exe()
+            .and_then(|exe| std::process::Command::new(exe).args(&args).spawn());
+        if let Err(e) = started {
+            self.notice = Some(format!("No new window was opened: {e}"));
+            self.rebuild_banner();
+        }
+    }
+
     /// #98 T1 (`CORE-25`): fullscreen on the window's monitor (borderless), or back to the
     /// style and place it had. The test window only reports it (it stays off-screen).
     fn toggle_fullscreen(&mut self) {
@@ -3140,6 +3191,7 @@ impl App {
                 Effect::Views => self.sync_side(),
                 Effect::Show { method, result } => self.show_answer(method, &result),
                 Effect::Finished(f) => self.finished(&f),
+                Effect::NewTerminal => self.run(Action::NewTerminal),
                 Effect::Renamed(r) => {
                     self.event(&json!({"event": "renamed", "ok": r.is_ok(),
                         "error": r.as_ref().err()}));
@@ -3393,6 +3445,11 @@ impl App {
                         fed = true;
                         if self.pane.bells() > bells {
                             self.ring_bell();
+                        }
+                        // #98 T1 (`CORE-23`): the shown program's title, for `{title}` tabs.
+                        let title = self.pane.screen().title().to_string();
+                        if self.model.set_title(&title) {
+                            self.rebuild_bar();
                         }
                     }
                     Data::Reset {
@@ -4168,6 +4225,8 @@ impl App {
                 let fx = self.model.toggle_pin();
                 self.apply(fx);
             }
+            // #98 T1 (`CORE-21`): another window of the same Host, with a new Terminal.
+            Action::GuiNewWindow => self.new_window(),
             Action::TabDuplicate | Action::TabRestart => {
                 let fx = self.model.duplicate(a == Action::TabRestart, false);
                 self.apply(fx);
@@ -6950,6 +7009,7 @@ pub fn run(o: Options) -> ExitCode {
     }
     let prefs = loaded.prefs.clone();
     let want = match (&o.target, &prefs.last_terminal) {
+        _ if o.new_terminal => Want::New,
         (Some(t), _) => Want::Target(t.clone()),
         (None, Some(l)) => Want::Last {
             id: l.id.clone(),
@@ -7042,6 +7102,7 @@ pub fn run(o: Options) -> ExitCode {
                 .with_hidden(prefs.hidden_terminals.clone())
                 .with_pinned(prefs.pinned_terminals.clone());
             m.set_wrap(settings.tabs.cycle);
+            m.set_close_on_exit(settings.tabs.close_on_exit);
             m
         },
         prefs,

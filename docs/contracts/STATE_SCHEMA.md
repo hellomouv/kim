@@ -86,6 +86,8 @@ focus_follows_mouse = false   # #98 T1
 [tabs]                        # #98 T1
 close_buttons = true
 cycle = true
+title = "{name}"              # {name} {title} {program} {cwd}
+on_exit = "keep"              # keep | close
 
 [dropdown]                    # #98 T3
 height = 40                   # 20–100 (percent)

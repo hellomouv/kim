@@ -164,4 +164,17 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     );
     let (code, doc) = json(&sb, &["config", "set", "tabs.cycle", "false"]);
     assert_eq!(code, 0, "{doc}");
+    // #98 T1: tab titles, behaviour on exit, density, new windows.
+    assert_eq!(keys_of(&list, "gui.new-window"), ["Ctrl+Shift+N"]);
+    assert_eq!(setting(&show, "tabs.title")["value"], "{name}");
+    assert_eq!(setting(&show, "tabs.on_exit")["value"], "keep");
+    assert_eq!(setting(&show, "appearance.density")["value"], "regular");
+    for (k, v) in [
+        ("tabs.title", "{name}: {title}"),
+        ("tabs.on_exit", "close"),
+        ("appearance.density", "compact"),
+    ] {
+        let (code, doc) = json(&sb, &["config", "set", k, v]);
+        assert_eq!(code, 0, "{doc}");
+    }
 }

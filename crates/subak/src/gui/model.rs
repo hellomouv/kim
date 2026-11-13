@@ -76,6 +76,9 @@ pub struct TermInfo {
     /// active one (the prefix keys switch, rename and kill them).
     pub windows: Vec<(String, u64, String)>,
     pub active_window: Option<String>,
+    /// #98 T1 (`CORE-23`): the title the active pane's program set, and its folder.
+    pub title: Option<String>,
+    pub cwd: Option<String>,
 }
 
 /// Where one pane of the shown window is, in cells of the window's grid (Step 22).
@@ -236,6 +239,12 @@ impl TermInfo {
                 })
                 .collect(),
             active_window: window["id"].as_str().map(String::from),
+            // (#98 T1: the Host never reports titles; the window keeps what it saw.)
+            title: None,
+            cwd: pane["current_dir"]
+                .as_str()
+                .or_else(|| pane["cwd"].as_str())
+                .map(String::from),
         })
     }
 }
@@ -364,6 +373,8 @@ pub enum Effect {
     /// #98 T3 (`CORE-79`): a command or a Terminal's program finished (the window decides
     /// whether that is worth a notification).
     Finished(Finished),
+    /// #98 T1 (`CORE-21`): start a new Terminal as `terminal.new` does (`--new-terminal`).
+    NewTerminal,
 }
 
 /// #98 T3: what finished, for [`Effect::Finished`].
@@ -401,6 +412,8 @@ pub enum Want {
     Target(String),
     /// Reopen this Terminal (remembered from the last run, or the one shown before a disconnect).
     Last { id: String, name: String },
+    /// #98 T1 (`CORE-21`): a new Terminal (`subak-gui --new-terminal`, a new window).
+    New,
 }
 
 // A few requests are in flight at a time; boxing the Terminal of `Attach` would buy nothing.
@@ -486,6 +499,8 @@ pub struct Model {
     wrap: bool,
     /// #98 T1: the tab now shown came from a walk through the MRU order (it is not moved).
     mru_walk: bool,
+    /// #98 T1 (`CORE-20`): `tabs.on_exit = "close"`.
+    close_on_exit: bool,
 }
 
 /// #98 T3: what happened in a Terminal that is not shown.
@@ -523,6 +538,7 @@ impl Model {
             pinned: Vec::new(),
             wrap: true,
             mru_walk: false,
+            close_on_exit: false,
         }
     }
 
@@ -549,6 +565,29 @@ impl Model {
             })
             .cloned()
             .collect()
+    }
+
+    /// #98 T1 (`CORE-23`): the title the shown pane's program set (read from the window's own
+    /// screen: the Host never reports titles, which may hold a command line). Kept per
+    /// Terminal, so a tab keeps the last title seen while it was shown. `true` when it changed.
+    pub fn set_title(&mut self, title: &str) -> bool {
+        let Some(id) = self.terminal().map(|t| t.id.clone()) else {
+            return false;
+        };
+        let title = (!title.is_empty()).then(|| title.to_string());
+        let mut changed = false;
+        for t in self.tabs.iter_mut().chain(self.hidden.iter_mut()) {
+            if t.id == id && t.title != title {
+                t.title.clone_from(&title);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// #98 T1 (`tabs.on_exit`): whether the shown tab closes when its program ends.
+    pub fn set_close_on_exit(&mut self, on: bool) {
+        self.close_on_exit = on;
     }
 
     /// #98 T1 (`tabs.cycle`): whether next/previous wrap around.
@@ -700,6 +739,8 @@ impl Model {
             layout: None,
             windows: Vec::new(),
             active_window: None,
+            title: None,
+            cwd: None,
         };
         self.show(t, &mut out);
         out.push(self.request("terminal.list", json!({"detail": "full"}), Pending::List));
@@ -1437,6 +1478,8 @@ impl Model {
                         layout: None,
                         windows: Vec::new(),
                         active_window: None,
+                        title: None,
+                        cwd: None,
                     });
                 term.id = tid.to_string();
                 if let Some(t) = self.tabs.iter().find(|t| t.id == tid) {
@@ -1780,15 +1823,22 @@ impl Model {
     fn merge(&mut self, list: &[TermInfo]) {
         let shown = self.terminal().map(|t| t.id.clone());
         self.hidden.retain(|h| list.iter().any(|t| t.id == h.id));
+        // (#98 T1: the titles the window saw stay; the Host never sends any.)
         for h in &mut self.hidden {
             if let Some(t) = list.iter().find(|t| t.id == h.id) {
+                let title = h.title.take();
                 *h = t.clone();
+                h.title = title;
             }
         }
         let mut tabs: Vec<TermInfo> = Vec::new();
         for old in &self.tabs {
             match list.iter().find(|t| t.id == old.id) {
-                Some(t) => tabs.push(t.clone()),
+                Some(t) => {
+                    let mut t = t.clone();
+                    t.title.clone_from(&old.title);
+                    tabs.push(t);
+                }
                 None if Some(&old.id) == shown.as_ref() && self.phase.shows_pane() => {
                     let mut gone = old.clone();
                     gone.state = "removed".into();
@@ -1830,6 +1880,11 @@ impl Model {
             return;
         }
         match self.want.clone() {
+            Want::New => {
+                self.want = Want::Any;
+                // The window starts it as `terminal.new` does (with the default profile).
+                out.push(Effect::NewTerminal);
+            }
             Want::Target(t) => {
                 self.want = Want::Any;
                 let known = self
@@ -1858,6 +1913,8 @@ impl Model {
                     layout: None,
                     windows: Vec::new(),
                     active_window: None,
+                    title: None,
+                    cwd: None,
                 });
                 if shown.stored() {
                     self.set(Phase::Stored(shown), out);
@@ -1961,6 +2018,11 @@ impl Model {
             "pane.exited" if ours_pane(self) && self.closing.contains(&tid) => {
                 // This window is closing it (`Ctrl+W`): no "ended" banner; its removal follows.
                 self.update(&tid, |t| t.state = "exited".into());
+            }
+            // #98 T1 (`CORE-20`, `tabs.on_exit = "close"`): the tab closes with its program.
+            "pane.exited" if ours_pane(self) && self.close_on_exit => {
+                self.update(&tid, |t| t.state = "exited".into());
+                self.close_tab(&tid, &mut out);
             }
             "pane.exited" if ours_pane(self) => {
                 self.update(&tid, |t| t.state = "exited".into());
@@ -3279,5 +3341,41 @@ mod tests {
             ["t-d", "t-c", "t-b"]
         );
         assert!(m.pinned("t-d"), "the pin moved to the new Terminal");
+    }
+
+    /// #98 T1 (`CORE-23`, `CORE-20`, `CORE-21`): titles reach the tabs; with
+    /// `tabs.on_exit = "close"` the shown tab closes with its program; `--new-terminal` starts
+    /// one.
+    #[test]
+    fn titles_close_on_exit_and_new_terminal_windows() {
+        let mut m = Model::new(Want::Any, (80, 24));
+        let mut a = term("t-a", "a", "running", 10);
+        a["windows"][0]["panes"][0]["title"] = json!("ignored: the Host reports none");
+        a["windows"][0]["panes"][0]["current_dir"] = json!("C:/work");
+        let fx = connect_with(&mut m, json!([a, term("t-b", "b", "running", 11)]));
+        attach_from(&mut m, &fx);
+        assert_eq!(m.tabs()[0].title, None, "titles never come from the Host");
+        assert_eq!(m.tabs()[0].cwd.as_deref(), Some("C:/work"));
+        assert!(
+            m.set_title("vim notes.txt"),
+            "the shown pane's title, seen by the window"
+        );
+        assert!(!m.set_title("vim notes.txt"), "unchanged");
+        assert_eq!(m.tabs()[0].title.as_deref(), Some("vim notes.txt"));
+        // On exit: close.
+        m.set_close_on_exit(true);
+        event(
+            &mut m,
+            "pane.exited",
+            json!({"terminal_id": "t-a", "pane_id": "p-t-a", "pid": 10, "exit_code": 0}),
+        );
+        assert_eq!(names(&m), ["b"], "the shown tab closed with its program");
+        // A new window: `--new-terminal` asks the window for a new Terminal.
+        let mut n = Model::new(Want::New, (80, 24));
+        let fx = connect_with(&mut n, json!([term("t-a", "a", "running", 10)]));
+        assert!(
+            fx.iter().any(|e| matches!(e, Effect::NewTerminal)),
+            "{fx:?}"
+        );
     }
 }

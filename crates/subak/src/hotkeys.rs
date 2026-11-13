@@ -152,6 +152,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "tab.pin",
     "tab.duplicate",
     "tab.restart",
+    "gui.new-window",
 ];
 
 /// The compiled-in manifest.

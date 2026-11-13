@@ -191,6 +191,27 @@
         "value": true
       },
       {
+        "default": "{name}",
+        "key": "tabs.title",
+        "source": "default",
+        "takes": "a text with {name}, {title}, {program} or {cwd} (1-64 characters)",
+        "value": "{name}"
+      },
+      {
+        "default": "keep",
+        "key": "tabs.on_exit",
+        "source": "default",
+        "takes": "keep or close",
+        "value": "keep"
+      },
+      {
+        "default": "regular",
+        "key": "appearance.density",
+        "source": "default",
+        "takes": "regular or compact",
+        "value": "regular"
+      },
+      {
         "default": 40,
         "key": "dropdown.height",
         "source": "default",
