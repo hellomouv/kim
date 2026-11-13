@@ -904,12 +904,12 @@ mod show {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-        GetMessageW, MSG, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
+        GetMessageW, MSG, PostMessageW, PostQuitMessage, RegisterClassExW, SC_KEYMENU, SW_SHOW,
         SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetTimer, SetWindowPos,
         ShowWindow, TranslateMessage, WM_APP, WM_CHAR, WM_DESTROY, WM_DPICHANGED, WM_KEYDOWN,
-        WM_KILLFOCUS, WM_PAINT, WM_SETFOCUS, WM_SYSCHAR, WM_SYSKEYDOWN, WM_TIMER, WNDCLASSEXW,
-        WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP,
-        WS_SYSMENU,
+        WM_KILLFOCUS, WM_PAINT, WM_SETFOCUS, WM_SYSCHAR, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_TIMER, WNDCLASSEXW, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MINIMIZEBOX,
+        WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
     };
 
     const WM_OUTPUT: u32 = WM_APP + 1;
@@ -1035,6 +1035,13 @@ mod show {
                     let replies = app.view.take_replies();
                     send(app, &replies);
                     redraw(hwnd, app);
+                    Some(0)
+                }
+                // A lone Alt (or F10) would enter the absent menu bar and swallow the next key,
+                // which no terminal does (found by the real-desktop check of #15; the Subak
+                // window has the same guard).
+                WM_SYSKEYUP if matches!(wp, 0x12 | 0x79) => Some(0),
+                WM_SYSCOMMAND if (wp & 0xFFF0) as u32 == SC_KEYMENU && lp != b' ' as isize => {
                     Some(0)
                 }
                 WM_KEYDOWN | WM_SYSKEYDOWN => {

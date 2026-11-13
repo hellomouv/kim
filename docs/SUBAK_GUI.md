@@ -362,13 +362,13 @@ maintainer's. Build first: `cargo build --release -p subak` (both binaries land 
 
 | Manual check | Result |
 | --- | --- |
-| Visible window, rendering, Korean (steps 1–2) | **pending — maintainer** |
-| Korean IME composition and Hanja list (step 3) | **pending — maintainer** |
-| Keyboard and focus (steps 4, 6) | **pending — maintainer** |
-| Mouse and clipboard (step 5) | **pending — maintainer** |
-| Maximize/minimize and DPI across monitors (steps 7–8) | **pending — maintainer** |
-| High Contrast (step 9) | **pending — maintainer** |
-| Close, crash, detach, reconnect (steps 10–12) | automated off-screen (§10); visible run **pending — maintainer** |
+| Visible window, rendering, Korean (steps 1–2) | passed 2026-11-13 (real desktop, ADR 0088; Windows 10 22H2, 100 % and 150 %, Microsoft Korean IME) |
+| Korean IME composition and Hanja list (step 3) | passed 2026-11-13: the composing syllable is drawn underlined at the cursor and reaches cmd.exe only when committed; the 한자 key opens the candidate list below the cursor |
+| Keyboard and focus (steps 4, 6) | passed 2026-11-13: `↑`, `Ctrl+C` on `ping -t`, `Tab`, `Esc`, `F7`, `Ctrl+Plus`/`Minus`/`0` (pane 120×30 → 120×28 → 137×31 → 120×30), `Alt+F4`; hollow cursor when another window has focus |
+| Mouse and clipboard (step 5) | passed 2026-11-13 (clipboard saved and restored): word, line and drag selections copy exactly on right click; right click and `Ctrl+Shift+V` paste; the wheel scrolls back and typing returns |
+| Maximize/minimize and DPI across monitors (steps 7–8) | passed 2026-11-13 with the caption buttons (pane 638×78 maximized, back to 120×30, unchanged while minimized) and a 150 % scale change (re-rendered sharp); a second monitor is not available |
+| High Contrast (step 9) | not run (it switches the whole system theme of the maintainer's desktop; not an acceptance item) |
+| Close, crash, detach, reconnect (steps 10–12) | passed 2026-11-13: X and `Alt+F4` close and a killed process leave `work` running; reopening without a name shows `work` at the same size and place; the detach and "Disconnected …" banners; `Enter` reattaches; a new Host's `other` is picked up |
 | Tabs, the tab keys, busy confirmation, rename, hide, other clients (steps 15–21, 24) | automated off-screen with the window's own messages (§10); visible run, real keyboard and the native menu **pending — maintainer** |
 | Korean IME in the rename field (step 20), a disabled `Ctrl+W` in a real program (step 22), High Contrast tabs (step 23) | **pending — maintainer** |
 

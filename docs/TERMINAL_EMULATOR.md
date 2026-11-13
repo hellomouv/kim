@@ -318,8 +318,8 @@ CPU time is accounted in 15.6 ms ticks; "0 ms" means below one tick over the win
 (which runs only with the e2e cadence). Rendering is verified on real ConPTY output, with the
 system fonts, by pixels and golden screens — no window is shown.
 
-**Not tested here: seeing it in a visible window** (the maintainer uses this PC; agents never open
-visible windows). The harness's off-screen mode was run (`--show --offscreen`, demo and a live
+**Seen in a visible window on 2026-11-13** (ADR 0088 allows real desktop checks); the table below
+records it. The harness's off-screen mode was run (`--show --offscreen`, demo and a live
 cmd session on a private endpoint). Manual procedure for the maintainer:
 
 1. `cargo build --release -p subak -p subak-term --example term_bench`
@@ -341,7 +341,7 @@ cmd session on a private endpoint). Manual procedure for the maintainer:
 
 | Manual check | Result |
 | --- | --- |
-| Demo screen in a visible window (step 2) | **pending — maintainer** |
-| DPI change (step 3) | **pending — maintainer** |
-| Live cmd / PowerShell / `more` / `claude --version` (step 4) | **pending — maintainer** |
+| Demo screen in a visible window (step 2) | passed 2026-11-13 (real desktop, ADR 0088): Korean, kanji and kana two cells each, monochrome emoji, box drawing, 16 colours and truecolour, every attribute, lilac bar cursor |
+| DPI change (step 3) | passed 2026-11-13: at 150 % (the system DPI override) the window grew 822 → 1230 px and re-rendered sharp; restored to 100 % |
+| Live cmd / PowerShell / `more` / `claude --version` (step 4) | passed 2026-11-13 on a private endpoint: `dir`, Korean echo, the PowerShell progress bar, `more`, `claude --version` and the Claude Code TUI render as in Windows Terminal. Found and fixed: a lone `Alt` tap (the focus hand-over) entered the absent menu bar and swallowed the next key in this harness (the Subak window already guarded it) |
 | Closing the window detaches (step 5) | automated off-screen run passed (the Terminal kept running, `clients: 0`); visible run pending |
