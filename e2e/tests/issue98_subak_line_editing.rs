@@ -165,6 +165,7 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         false
     );
     assert_eq!(setting(&show, "terminal.pane_labels")["value"], false);
+    assert_eq!(setting(&show, "appearance.minimum_contrast")["value"], 4.5);
     let (code, doc) = json(&sb, &["config", "set", "tabs.cycle", "false"]);
     assert_eq!(code, 0, "{doc}");
     // #98 T1: tab titles, behaviour on exit, density, new windows.

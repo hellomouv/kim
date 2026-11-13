@@ -861,6 +861,7 @@ impl App {
             line_height: a.line_height,
             padding: a.padding as f32,
             bold_is_bright: a.bold_is_bright,
+            min_contrast: a.minimum_contrast,
         }
     }
 
@@ -2570,7 +2571,8 @@ impl App {
             || a.font_size != b.font_size
             || a.line_height != b.line_height
             || a.padding != b.padding
-            || a.bold_is_bright != b.bold_is_bright;
+            || a.bold_is_bright != b.bold_is_bright
+            || a.minimum_contrast != b.minimum_contrast;
         if a.font_family != b.font_family {
             let mut r = make_term_renderer(self.theme(), self.term_opts(), &b.font_family);
             r.set_focused(self.focused);

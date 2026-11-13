@@ -252,6 +252,9 @@ pub struct Appearance {
     pub motion: Motion,
     /// Bold text in ANSI colours 0–7 uses their bright variants.
     pub bold_is_bright: bool,
+    /// #98 T4 (`CORE-39`): the least contrast of text against its background (1.0 = off;
+    /// 4.5 by default, KIM-NFR-012).
+    pub minimum_contrast: f32,
     /// #98 T1 (`CORE-48`): compact density (a lower tab bar).
     pub compact: bool,
 }
@@ -373,6 +376,9 @@ pub struct TabsPrefs {
     pub close_on_exit: bool,
 }
 
+/// `appearance.minimum_contrast` bounds and default (WCAG ratio; KIM-NFR-012).
+pub const MIN_CONTRAST: (f32, f32, f32) = (1.0, 21.0, 4.5);
+
 /// `dropdown.height` bounds and default, percent.
 pub const DROPDOWN_HEIGHT: (u32, u32, u32) = (20, 100, 40);
 
@@ -401,6 +407,7 @@ impl Default for Settings {
                 opacity: OPACITY.2,
                 motion: Motion::System,
                 bold_is_bright: true,
+                minimum_contrast: MIN_CONTRAST.2,
                 compact: false,
             },
             terminal: TerminalPrefs {
@@ -539,6 +546,7 @@ impl Settings {
             ("appearance", "opacity") => json!(a.opacity),
             ("appearance", "motion") => json!(a.motion.as_str()),
             ("appearance", "bold_is_bright") => json!(a.bold_is_bright),
+            ("appearance", "minimum_contrast") => rounded(a.minimum_contrast),
             ("terminal", "default_profile") => json!(t.default_profile),
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
@@ -867,6 +875,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "appearance",
+        name: "minimum_contrast",
+        takes: "a number from 1.0 (off) to 21.0",
+        kind: Kind::Number,
+    },
+    Key {
+        section: "appearance",
         name: "density",
         takes: "regular or compact",
         kind: Kind::Text,
@@ -939,6 +953,9 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("appearance", "opacity") => a.opacity = int(OPACITY.0, OPACITY.1)?,
         ("appearance", "motion") => a.motion = Motion::parse(text()?).ok_or(())?,
         ("appearance", "bold_is_bright") => a.bold_is_bright = flag()?,
+        ("appearance", "minimum_contrast") => {
+            a.minimum_contrast = num(f64::from(MIN_CONTRAST.0), f64::from(MIN_CONTRAST.1))? as f32;
+        }
         ("terminal", "default_profile") => {
             t.default_profile = clean_text(text()?.trim(), 64).ok_or(())?;
         }
@@ -3061,5 +3078,16 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         assert!(set_value(&mut s, "tabs.title", "  ").is_err());
         assert!(set_value(&mut s, "tabs.on_exit", "reopen").is_err());
         assert!(set_value(&mut s, "appearance.density", "tiny").is_err());
+    }
+
+    /// #98 T4 (`CORE-39`): the contrast floor is 4.5 by default, 1.0 turns it off.
+    #[test]
+    fn the_minimum_contrast_is_a_setting() {
+        let mut s = Settings::default();
+        assert_eq!(s.appearance.minimum_contrast, 4.5);
+        set_value(&mut s, "appearance.minimum_contrast", "1").unwrap();
+        assert_eq!(s.appearance.minimum_contrast, 1.0);
+        assert!(set_value(&mut s, "appearance.minimum_contrast", "0.5").is_err());
+        assert!(set_value(&mut s, "appearance.minimum_contrast", "22").is_err());
     }
 }

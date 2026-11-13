@@ -24,6 +24,7 @@
         "padding": { "description": "Logical pixels around the cell grid (default 8).", "type": "integer", "minimum": 0, "maximum": 16 },
         "opacity": { "description": "Window opacity in percent (default 100). High Contrast always draws opaque.", "type": "integer", "minimum": 50, "maximum": 100 },
         "motion": { "description": "system: follow Windows' Show animations setting; reduced: no motion; full: short transitions always.", "enum": ["system", "reduced", "full"] },
+        "minimum_contrast": { "description": "#98 T4: the least contrast of text against its background (WCAG ratio); text below it is moved toward white or black. 1.0 turns it off; default 4.5 (KIM-NFR-012).", "type": "number", "minimum": 1, "maximum": 21 },
         "density": { "description": "#98 T1: regular (default) or compact (a lower tab bar).", "enum": ["regular", "compact"] },
         "bold_is_bright": { "description": "Bold text in ANSI colours 0-7 uses the bright variants (default true).", "type": "boolean" }
       },

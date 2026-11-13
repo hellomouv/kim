@@ -558,3 +558,51 @@ fn the_visual_bell_flashes_the_default_colours() {
         "DECSCNM flashes back"
     );
 }
+
+/// #98 T4 (`CORE-39`): text below the minimum contrast is moved just far enough toward white
+/// (on dark) or black (on light); text that already contrasts stays; 1.0 changes nothing.
+#[test]
+fn the_minimum_contrast_lifts_faint_text() {
+    use subak_term::render::{contrast, with_contrast};
+    let black = Rgb(0, 0, 0);
+    let navy = Rgb(0, 0, 128);
+    assert!(contrast(navy, black) < 4.5);
+    let lifted = with_contrast(navy, black, 4.5);
+    assert!(contrast(lifted, black) >= 4.5, "{lifted:?}");
+    assert!(
+        contrast(with_contrast(navy, black, 4.5), black) < 5.5,
+        "only as far as needed"
+    );
+    let white = Rgb(255, 255, 255);
+    let pale = Rgb(250, 250, 200);
+    let darkened = with_contrast(pale, white, 4.5);
+    assert!(
+        contrast(darkened, white) >= 4.5 && darkened.0 < pale.0,
+        "{darkened:?}"
+    );
+    assert_eq!(with_contrast(white, black, 4.5), white, "already enough");
+    // In the renderer: a navy `X` on black is drawn lighter with the floor, as is without.
+    let v = view(4, 1, b"\x1b[38;2;0;0;128mX\x1b[?25l");
+    let mut plain = builtin(1.0);
+    plain.render(&v);
+    let mut floored = Renderer::builtin(
+        Theme::kim_dark(),
+        RenderOptions {
+            min_contrast: 4.5,
+            ..RenderOptions::default()
+        },
+    );
+    floored.render(&v);
+    let ink = |r: &Renderer| {
+        cell_pixels(r, 0, 0)
+            .into_iter()
+            .max_by_key(|c| u32::from(c.0) + u32::from(c.1) + u32::from(c.2))
+            .unwrap()
+    };
+    assert_eq!(ink(&plain), navy, "1.0 changes nothing");
+    assert!(
+        contrast(ink(&floored), Theme::kim_dark().background) >= 4.4,
+        "{:?}",
+        ink(&floored)
+    );
+}

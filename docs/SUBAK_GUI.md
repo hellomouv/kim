@@ -976,6 +976,7 @@ padding = 8              # 0–16 logical px around the cell grid
 opacity = 100            # 50–100 %; High Contrast is always opaque
 motion = "system"        # system (Windows' "Show animations") | reduced | full
 bold_is_bright = true    # bold ANSI 0–7 drawn in their bright colours
+minimum_contrast = 4.5   # #98 T4: text below this contrast (WCAG) is moved toward white/black; 1.0: off
 
 [terminal]
 default_profile = ""     # the profile Ctrl+T, + and `subak new` start ("" = the Host's shell)

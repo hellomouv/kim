@@ -212,6 +212,13 @@
         "value": "keep"
       },
       {
+        "default": 4.5,
+        "key": "appearance.minimum_contrast",
+        "source": "default",
+        "takes": "a number from 1.0 (off) to 21.0",
+        "value": 4.5
+      },
+      {
         "default": "regular",
         "key": "appearance.density",
         "source": "default",

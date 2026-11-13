@@ -74,6 +74,10 @@ pub struct RenderOptions {
     pub padding: f32,
     /// Bold text in ANSI colours 0–7 uses their bright variants (as Windows Terminal does).
     pub bold_is_bright: bool,
+    /// #98 T4 (`CORE-39`): the least contrast between a cell's text and its background (WCAG
+    /// ratio, 1.0–21.0); text below it is moved toward white or black until it reaches it.
+    /// 1.0 (the renderer's default) changes nothing.
+    pub min_contrast: f32,
 }
 
 impl Default for RenderOptions {
@@ -85,6 +89,7 @@ impl Default for RenderOptions {
             line_height: 1.2,
             padding: 8.0,
             bold_is_bright: true,
+            min_contrast: 1.0,
         }
     }
 }
@@ -557,9 +562,12 @@ impl Renderer {
 
     /// Foreground and background of a cell.
     fn colors(&self, a: Attrs, selected: bool) -> (Rgb, Rgb) {
-        let (fg, mut bg) = cell_colors(&self.theme, a, self.opts.bold_is_bright, self.reverse);
+        let (mut fg, mut bg) = cell_colors(&self.theme, a, self.opts.bold_is_bright, self.reverse);
         if selected {
             bg = self.theme.selection;
+        }
+        if self.opts.min_contrast > 1.0 {
+            fg = with_contrast(fg, bg, self.opts.min_contrast);
         }
         (fg, bg)
     }
@@ -696,6 +704,49 @@ impl Renderer {
 
 /// The foreground and background of a cell with attributes `a` (inverse, dim and hidden
 /// applied; `reverse` is the screen's reverse video), as drawn and as copied as HTML.
+/// #98 T4: WCAG relative luminance.
+fn luminance(c: Rgb) -> f32 {
+    let lin = |v: u8| {
+        let v = f32::from(v) / 255.0;
+        if v <= 0.039_28 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
+}
+
+/// #98 T4: the WCAG contrast ratio of two colours (1.0–21.0).
+pub fn contrast(a: Rgb, b: Rgb) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// #98 T4 (`CORE-39`): `fg`, moved toward white or black (whichever contrasts more with `bg`)
+/// just far enough to reach `min` against `bg` (all the way when even that is not enough).
+pub fn with_contrast(fg: Rgb, bg: Rgb, min: f32) -> Rgb {
+    if contrast(fg, bg) >= min {
+        return fg;
+    }
+    let (white, black) = (Rgb(255, 255, 255), Rgb(0, 0, 0));
+    let target = if contrast(white, bg) >= contrast(black, bg) {
+        white
+    } else {
+        black
+    };
+    let (mut lo, mut hi) = (0u8, 255u8);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if contrast(fg.mix(target, mid), bg) >= min {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    fg.mix(target, lo)
+}
+
 pub fn cell_colors(t: &Theme, a: Attrs, bold_is_bright: bool, reverse: bool) -> (Rgb, Rgb) {
     let (dfg, dbg) = if reverse {
         (t.background, t.foreground)

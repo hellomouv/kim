@@ -119,7 +119,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `CORE-36` App theme following light/dark | R: "Theming and color schemes"; S `appearance.theme`, `colorSchemeMode` | Kim design system tokens. Follows the Windows light/dark setting. *Partial (Step 20):* `appearance.theme = "system"` follows Windows' light or dark app mode with `kim-light`/`kim-dark` (High Contrast wins); the floating icon and manager stay dark | partial | Step 20 | T: `crates/subak/tests/gui_settings.rs::themes_fonts_layout_opacity_and_high_contrast_in_rendered_frames` (Step 20) |
 | `CORE-37` Terminal color schemes, separate light and dark | S `colorScheme`, `lightColorScheme`, `customColorSchemes` | Scheme files paired per mode, with per-profile override. *Partial (Step 20):* two built-in schemes, `kim-dark` and `kim-light` (design tokens, contrast checked), chosen per mode with `theme = "system"`; no custom scheme files, no per-profile override (Step 33) | partial | Step 20 | T: `crates/subak-term/tests/render.rs::line_height_padding_bold_and_the_light_theme`, `crates/subak/tests/gui_settings.rs::themes_fonts_layout_opacity_and_high_contrast_in_rendered_frames` (Step 20) |
 | `CORE-38` Bundled community color schemes | S package `tabby-community-color-schemes` | A curated set shipped as data files with their licenses. *Not in Step 20:* only the two Kim themes ship *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
-| `CORE-39` Minimum contrast ratio | S `minimumContrastRatio: 4` | Contrast floor in the renderer. The default follows KIM-NFR-012 (4.5:1). *Not in Step 20:* the themes meet their declared pairs (design-check); a run-time floor for programs' own 24-bit colours is not built *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
+| `CORE-39` Minimum contrast ratio | S `minimumContrastRatio: 4` | Contrast floor in the renderer. The default follows KIM-NFR-012 (4.5:1). *Not in Step 20:* the themes meet their declared pairs (design-check); a run-time floor for programs' own 24-bit colours is not built *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-14):* `[appearance] minimum_contrast` (WCAG ratio, 1.0–21.0, default 4.5 per KIM-NFR-012): a cell's text below it against its background is moved toward white or black just far enough (the renderer's `min_contrast`; 1.0 turns it off). | implemented | #98 T4 | T: `crates/subak-term/tests/render.rs::the_minimum_contrast_lifts_faint_text`; T: `crates/subak/src/config.rs::tests::the_minimum_contrast_is_a_setting`; real desktop (#98 T4): navy `#000080` text on the dark theme was drawn as (116, 116, 185), contrast 4.53, and as the program's own (0, 0, 128), 1.20, with the floor at 1.0 |
 | `CORE-40` Bold as bright, palette generation | S `drawBoldTextInBrightColors`, `paletteGenerate` | Renderer options. *Partial:* bold as bright for ANSI 0–7 is on by default (`RenderOptions::bold_is_bright`); palette generation and the settings UI are Step 20. *Step 20:* `appearance.bold_is_bright` turns it off; palette generation is not built | partial | Step 20 | T: `crates/subak-term/tests/render.rs::colours_attributes_and_golden_frames` (Step 15, commits db12228, c26b026, fe0a286); T: `crates/subak-term/tests/render.rs::line_height_padding_bold_and_the_light_theme` (Step 20) |
 | `CORE-41` Font family, size, weight, line spacing | S `fontSize`, `fontWeight`, `fontWeightBold`, `linePadding` | DirectWrite fonts, set in the settings UI or the config. *Partial (Step 20):* `appearance.font_family` (tried first, the design chain after it), `font_size` 8–36, `line_height` 1.0–2.0 and `padding` 0–16 in `config.toml` and the settings menu, through the GDI rasterizer (ADR 0051); no font weight setting | partial | Step 20 | T: `crates/subak-term/tests/render.rs::a_chosen_font_family_draws_and_falls_back`, `crates/subak/tests/gui_settings.rs::themes_fonts_layout_opacity_and_high_contrast_in_rendered_frames` (Step 20) |
 | `CORE-42` Fallback font | S `fallbackFont` | An explicit fallback chain, then system fallback for Korean/CJK (KIM-NFR-013). *Partial:* the design system's chain (Cascadia Mono → Consolas → D2Coding → Malgun Gothic → Segoe UI Emoji → Segoe UI Symbol) chosen per character by each font's cmap; a user-set chain is Step 20. *Step 20:* the user's family goes first in the chain; a family that is not installed is skipped and the window names the one used | partial | Step 20 | T: `crates/subak-term/src/render/gdi.rs::the_chain_skips_missing_families_and_falls_back_by_cmap` (Step 15, commits db12228, c26b026, fe0a286) |
@@ -450,16 +450,16 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 47 |
+| `planned` | 46 |
 | `partial` | 91 |
-| `implemented` | 40 |
+| `implemented` | 41 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 6 | 50 | 22 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 5 | 50 | 23 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 7 | 7 | 10 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -497,3 +497,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Tab colours: `CORE-24` `partial` (per Terminal; per-profile colours and icons remain). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Detected shells: `SHELL-04` (Clink), `SHELL-08` (Cygwin), `SHELL-09` (MSYS2), `SHELL-10` (Cmder), `SHELL-11` (Visual Studio developer prompts) `implemented` (only the Visual Studio prompt could be started on the development PC). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Profiles in the window: `SHELL-19` (switch in place), `SHELL-21` (copy current path) `implemented`; `SHELL-16` stays `partial` (now the menu tree; manager and settings remain). No Tabby re-fetch. |
+| 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | The minimum contrast: `CORE-39` `implemented`. No Tabby re-fetch. |
