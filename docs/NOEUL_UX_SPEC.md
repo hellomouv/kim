@@ -920,6 +920,18 @@ Evidence column):
 9. With a redaction drawn, leave the overlay idle for a minute: the CPU use of `noeul.exe` in Task
    Manager stays at 0 %.
 
+**Result (2026-11-13, real desktop, ADR 0088; Windows 10 22H2, 100 %):** steps 2–7 and 9 pass. The
+solid redaction covers exactly the dragged cells in Kim's ink (`#111111`); a mosaic box, a `Ctrl`
+mosaic stroke with larger cells (`]`) and a blur obscure words; the eraser wipes the mosaic and blur
+back to the picture and leaves the redaction; `N` selects the redaction, the arrows move it,
+`Ctrl`+arrows grow it, the colour button recolours it (still opaque) and each `Ctrl+Z` undoes one
+step. In the copy and in the saved PNG all 2541 cells of the box are the fill colour, the pixels
+next to its edges are untouched, and the PNG holds only `IHDR`, `IDAT` and `IEND`. A pin keeps the
+box; `Space`, `N`, `Delete`, `Esc` keeps it redacted and `Space`, `N`, `Delete`, `Enter` brings the
+word back. Idle for 30 s with a redaction on screen, `noeul.exe` used 0 ms of CPU. The chip's warning
+text is not part of the overlay's accessible name, so it was not read here (unit-tested). Not run:
+step 8 at 150 % (the annotation stroke scaling at 150 % is checked in §4.9).
+
 ### 4.11 Step 54: manual check of pin transforms and controls
 
 Step 54 ([ADR 0044](adr/0044-noeul-pin-transforms-and-control.md)) ships the pin transforms
