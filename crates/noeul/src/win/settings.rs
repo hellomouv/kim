@@ -46,9 +46,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
     WM_APP, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
     WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_GETDLGCODE, WM_KEYDOWN, WM_SETFONT,
-    WM_SYSCHAR, WM_SYSKEYDOWN, WNDCLASSEXW, WNDPROC, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    WM_SETTINGCHANGE, WM_SYSCHAR, WM_SYSCOLORCHANGE, WM_SYSKEYDOWN, WM_THEMECHANGED, WNDCLASSEXW,
+    WNDPROC, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: &str = "NoeulSettings";
@@ -250,7 +250,7 @@ pub fn dark_mode() -> bool {
             &raw mut n,
         )
     };
-    r == 0 && v == 0 && !high_contrast()
+    wants_dark(true, !(r == 0 && v == 0), high_contrast())
 }
 
 pub fn high_contrast() -> bool {
@@ -405,16 +405,79 @@ fn build(hwnd: HWND, dark: bool) {
         }
     }
     if dark {
-        let on: i32 = 1;
-        // SAFETY: DWMWA_USE_IMMERSIVE_DARK_MODE (20) with a BOOL of the documented size.
-        unsafe { DwmSetWindowAttribute(hwnd, 20, (&raw const on).cast(), 4) };
-        let theme = wide("DarkMode_Explorer");
-        for i in [
-            LIST, CHANGE, DISABLE, RESET, RESET_ALL, IMPORT, EXPORT, FORCE, DOUBLE, MIDDLE, CLOSE,
-        ] {
-            // SAFETY: our own control; a theme name.
-            unsafe { SetWindowTheme(item(hwnd, i), theme.as_ptr(), std::ptr::null()) };
+        set_dark_controls(hwnd, true);
+    }
+}
+
+/// The caption and the themed controls in dark mode, or back to the default look.
+fn set_dark_controls(hwnd: HWND, dark: bool) {
+    use id::*;
+    let on: i32 = i32::from(dark);
+    // SAFETY: DWMWA_USE_IMMERSIVE_DARK_MODE (20) with a BOOL of the documented size.
+    unsafe { DwmSetWindowAttribute(hwnd, 20, (&raw const on).cast(), 4) };
+    let theme = wide(if dark {
+        "DarkMode_Explorer"
+    } else {
+        "Explorer"
+    });
+    for i in [
+        LIST, CHANGE, DISABLE, RESET, RESET_ALL, IMPORT, EXPORT, FORCE, DOUBLE, MIDDLE, CLOSE,
+    ] {
+        // SAFETY: our own control; a theme name.
+        unsafe { SetWindowTheme(item(hwnd, i), theme.as_ptr(), std::ptr::null()) };
+    }
+}
+
+/// Whether the window should be dark: an interactive window while Windows apps use the dark
+/// mode and High Contrast is off.
+pub fn wants_dark(interactive: bool, apps_use_light: bool, high_contrast: bool) -> bool {
+    interactive && !apps_use_light && !high_contrast
+}
+
+/// Follows a change of Windows' app mode or High Contrast while the window is open (it was
+/// decided once at creation, so the window stayed dark after switching to light; found by the
+/// real-desktop check of #66): the caption, the controls and the colours, then a repaint.
+fn follow_theme(hwnd: HWND) {
+    let Some((interactive, was_dark)) = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .map(|st| (st.interactive, st.dark.is_some()))
+    }) else {
+        return;
+    };
+    let dark = interactive && dark_mode();
+    if dark == was_dark {
+        return;
+    }
+    STATE.with(|s| {
+        if let Some(st) = s.borrow_mut().as_mut() {
+            if dark {
+                // SAFETY: a plain brush, deleted with the window or the next switch.
+                st.dark = Some(unsafe { CreateSolidBrush(0x0020_2020) });
+            } else if let Some(b) = st.dark.take() {
+                // SAFETY: our brush, no longer selected anywhere.
+                unsafe { DeleteObject(b) };
+            }
         }
+    });
+    set_dark_controls(hwnd, dark);
+    use windows_sys::Win32::Graphics::Gdi::{
+        RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RedrawWindow,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, WM_NCACTIVATE};
+    // SAFETY: repaints our own window and its controls; the default WM_NCACTIVATE handling draws
+    // the caption once in the other state and back (Windows 10 keeps the old caption colour
+    // after the DWM attribute changes until the frame is activated again).
+    unsafe {
+        RedrawWindow(
+            hwnd,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN,
+        );
+        let active = usize::from(GetForegroundWindow() == hwnd);
+        DefWindowProcW(hwnd, WM_NCACTIVATE, 1 - active, 0);
+        DefWindowProcW(hwnd, WM_NCACTIVATE, active, 0);
     }
 }
 
@@ -896,6 +959,11 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             layout(hwnd);
             0
         }
+        WM_SETTINGCHANGE | WM_THEMECHANGED | WM_SYSCOLORCHANGE => {
+            follow_theme(hwnd);
+            // SAFETY: the default handling of our own window's message.
+            unsafe { DefWindowProcW(hwnd, msg, wp, lp) }
+        }
         WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX | WM_CTLCOLORBTN => {
             match STATE.with(|s| s.borrow().as_ref().and_then(|st| st.dark)) {
                 Some(brush) => {
@@ -971,4 +1039,25 @@ pub fn test_state() -> Value {
 
 pub fn is_open() -> bool {
     STATE.with(|s| s.borrow().is_some())
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::wants_dark;
+
+    /// #66: the window is dark only when interactive, in the dark app mode and without High
+    /// Contrast; `follow_theme` re-evaluates this on every theme change.
+    #[test]
+    fn the_window_is_dark_only_in_the_dark_app_mode_without_high_contrast() {
+        assert!(wants_dark(true, false, false));
+        assert!(!wants_dark(true, true, false), "light app mode");
+        assert!(
+            !wants_dark(true, false, true),
+            "High Contrast uses the system colours"
+        );
+        assert!(
+            !wants_dark(false, false, false),
+            "test windows stay default"
+        );
+    }
 }
