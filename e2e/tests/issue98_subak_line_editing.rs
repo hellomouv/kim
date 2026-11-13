@@ -162,6 +162,7 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         setting(&show, "terminal.focus_follows_mouse")["value"],
         false
     );
+    assert_eq!(setting(&show, "terminal.pane_labels")["value"], false);
     let (code, doc) = json(&sb, &["config", "set", "tabs.cycle", "false"]);
     assert_eq!(code, 0, "{doc}");
     // #98 T1: tab titles, behaviour on exit, density, new windows.
