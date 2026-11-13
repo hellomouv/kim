@@ -51,10 +51,10 @@ struct Roots {
     constraints: Vec<(Value, &'static str, String)>,
 }
 
-fn with_defs(defs: &Value, body: Value) -> Value {
-    let mut v = body;
-    v["$defs"] = defs.clone();
-    v
+/// A sub-schema: its `$ref`s resolve in the one shared schema (`Roots::doc`), so no part
+/// carries a copy of `$defs`.
+fn with_defs(_defs: &Value, body: Value) -> Value {
+    body
 }
 
 fn roots() -> &'static Roots {
@@ -131,24 +131,24 @@ thread_local! {
     static V: Validators = {
         let r = roots();
         Validators {
-            doc: Validator::new(&r.doc),
-            rule: Validator::new(&r.rule),
-            rule_base: Validator::new(&r.rule_base),
-            trigger: Validator::new(&r.trigger),
-            trigger_keys: Validator::new(&r.trigger_keys),
-            trigger_syntax: Validator::new(&r.trigger_syntax),
-            step: Validator::new(&r.step),
+            doc: Validator::with_defs(&r.doc, &r.doc),
+            rule: Validator::with_defs(&r.rule, &r.doc),
+            rule_base: Validator::with_defs(&r.rule_base, &r.doc),
+            trigger: Validator::with_defs(&r.trigger, &r.doc),
+            trigger_keys: Validator::with_defs(&r.trigger_keys, &r.doc),
+            trigger_syntax: Validator::with_defs(&r.trigger_syntax, &r.doc),
+            step: Validator::with_defs(&r.step, &r.doc),
             step_types: r
                 .step_types
                 .iter()
-                .map(|(t, val)| (t.clone(), Validator::new(val)))
+                .map(|(t, val)| (t.clone(), Validator::with_defs(val, &r.doc)))
                 .collect(),
-            step_future: Validator::new(&r.step_future),
-            output_reserved_free: Validator::new(&r.output_reserved_free),
+            step_future: Validator::with_defs(&r.step_future, &r.doc),
+            output_reserved_free: Validator::with_defs(&r.output_reserved_free, &r.doc),
             constraints: r
                 .constraints
                 .iter()
-                .map(|(v, code, d)| (Validator::new(v), *code, d.as_str()))
+                .map(|(v, code, d)| (Validator::with_defs(v, &r.doc), *code, d.as_str()))
                 .collect(),
         }
     };
@@ -326,6 +326,13 @@ pub fn rule_problems(rule: &Value, at: &str) -> Vec<(&'static str, String)> {
         out.sort_by_key(|(c, _)| SCHEMA_CODES.iter().position(|x| x == c));
         out
     })
+}
+
+/// Frees the compiled schema patterns of this thread (about 24 MB for the key-syntax patterns;
+/// found by the real-desktop memory check of #87): called after the rules are loaded, so a
+/// running engine host keeps only what it uses.
+pub fn release_patterns() {
+    crate::jsonschema::clear_pattern_cache();
 }
 
 /// Validates a whole document against the full schema (what `schema-check` does).

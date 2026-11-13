@@ -32,8 +32,23 @@ const ANNOTATIONS: &[&str] = &[
     "writeOnly",
 ];
 
+thread_local! {
+    /// The compiled patterns of this thread, shared by its validators.
+    static SHARED: RefCell<HashMap<String, Regex>> = RefCell::new(HashMap::new());
+}
+
+/// Frees this thread's compiled patterns. A long-lived process that validates only now and
+/// then (Ddalgak's engine host, after loading the rules) calls it so the large key-syntax
+/// patterns do not stay resident; the next validation compiles them again.
+#[allow(dead_code)]
+pub fn clear_pattern_cache() {
+    SHARED.with(|c| c.borrow_mut().clear());
+}
+
 pub struct Validator<'a> {
     root: &'a Value,
+    /// The schema whose `$defs` the `$ref`s resolve against (the root itself by default).
+    defs: &'a Value,
     regexes: RefCell<HashMap<String, Regex>>,
 }
 
@@ -45,8 +60,17 @@ impl std::fmt::Debug for Validator<'_> {
 
 impl<'a> Validator<'a> {
     pub fn new(root: &'a Value) -> Self {
+        Self::with_defs(root, root)
+    }
+
+    /// Validates against `root` while resolving `#/$defs/...` in `defs`, so many sub-schemas
+    /// share one `$defs` instead of each carrying a copy of it (Ddalgak held about 25 MB of such
+    /// copies; found by the real-desktop memory check of #87).
+    #[allow(dead_code)]
+    pub fn with_defs(root: &'a Value, defs: &'a Value) -> Self {
         Self {
             root,
+            defs,
             regexes: RefCell::new(HashMap::new()),
         }
     }
@@ -63,7 +87,7 @@ impl<'a> Validator<'a> {
         let name = reference
             .strip_prefix("#/$defs/")
             .ok_or_else(|| format!("unsupported $ref `{reference}` (only #/$defs/<name>)"))?;
-        self.root
+        self.defs
             .get("$defs")
             .and_then(|d| d.get(name))
             .ok_or_else(|| format!("unresolved $ref `{reference}`"))
@@ -72,14 +96,22 @@ impl<'a> Validator<'a> {
     /// Matches with the cached compiled pattern. The cached `Regex` itself is used (a clone
     /// would start with an empty search cache on every call, which made Ddalgak's run-time
     /// validation of large rule files several times slower).
+    ///
+    /// The cache is shared by every validator on the thread: Ddalgak keeps one validator per
+    /// sub-schema alive for the life of its engine host, and each compiled the same large key
+    /// patterns again, which held about 24 MB (found by the real-desktop memory check of #87).
     fn is_match(&self, pattern: &str, s: &str) -> Result<bool, String> {
-        if let Some(re) = self.regexes.borrow().get(pattern) {
-            return Ok(re.is_match(s));
-        }
-        let re = Regex::new(pattern).map_err(|e| format!("invalid pattern `{pattern}`: {e}"))?;
-        let matched = re.is_match(s);
-        self.regexes.borrow_mut().insert(pattern.to_string(), re);
-        Ok(matched)
+        let _ = &self.regexes;
+        SHARED.with(|cache| {
+            if let Some(re) = cache.borrow().get(pattern) {
+                return Ok(re.is_match(s));
+            }
+            let re =
+                Regex::new(pattern).map_err(|e| format!("invalid pattern `{pattern}`: {e}"))?;
+            let matched = re.is_match(s);
+            cache.borrow_mut().insert(pattern.to_string(), re);
+            Ok(matched)
+        })
     }
 
     fn check(

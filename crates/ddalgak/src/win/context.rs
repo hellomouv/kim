@@ -141,8 +141,11 @@ pub(crate) fn is_password_window(hwnd: HWND) -> bool {
     // SAFETY: `class` has room for the given number of UTF-16 units.
     let n = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), 64) };
     let name = String::from_utf16_lossy(&class[..usize::try_from(n).unwrap_or(0)]);
-    let editlike =
-        name.eq_ignore_ascii_case("Edit") || name.to_ascii_uppercase().starts_with("RICHEDIT");
+    // An edit control by any class name: `Edit`, `RichEdit…`, and the frameworks that register
+    // it under their own name (`WindowsForms10.EDIT.app.0.…`, `ATL:Edit`, …), which all keep
+    // `ES_PASSWORD`. Only exact `Edit`/`RichEdit…` counted before, so a WinForms password box was
+    // typed into (found by the real-desktop check of #74).
+    let editlike = name.to_ascii_uppercase().contains("EDIT");
     // SAFETY: reads a window's style; works for windows of other processes (documented).
     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) };
     editlike && (style as u32) & (ES_PASSWORD as u32) != 0
@@ -305,7 +308,10 @@ mod tests {
     };
 
     fn edit(style: u32) -> HWND {
-        let class = wide("EDIT");
+        edit_of(&wide("EDIT"), style)
+    }
+
+    fn edit_of(class: &[u16], style: u32) -> HWND {
         // SAFETY: creates a hidden child of the message-only parent (never shown).
         let parent = unsafe {
             CreateWindowExW(
@@ -343,6 +349,41 @@ mod tests {
         };
         assert!(!h.is_null());
         h
+    }
+
+    /// #74: an edit control registered under a framework's own class name (as WinForms does,
+    /// `WindowsForms10.EDIT.app.0.…`) with `ES_PASSWORD` is a password field too.
+    #[test]
+    fn a_framework_edit_class_with_a_password_style_is_a_password_field() {
+        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetClassInfoExW, RegisterClassExW, WNDCLASSEXW,
+        };
+        let name = wide("WindowsForms10.EDIT.app.0.ddalgaktest");
+        // SAFETY: reads the system EDIT class into a sized structure and registers a copy of it
+        // under another name for this process (a superclass, as frameworks do).
+        unsafe {
+            let mut wc = WNDCLASSEXW {
+                cbSize: u32::try_from(size_of::<WNDCLASSEXW>()).unwrap(),
+                ..std::mem::zeroed()
+            };
+            assert_ne!(
+                GetClassInfoExW(std::ptr::null_mut(), wide("EDIT").as_ptr(), &raw mut wc),
+                0
+            );
+            wc.hInstance = GetModuleHandleW(std::ptr::null());
+            wc.lpszClassName = name.as_ptr();
+            RegisterClassExW(&raw const wc);
+        }
+        let pw = edit_of(&name, ES_PASSWORD as u32);
+        let plain = edit_of(&name, 0);
+        assert!(is_password_window(pw), "a WinForms-style password box");
+        assert!(!is_password_window(plain));
+        // SAFETY: windows created by this thread.
+        unsafe {
+            DestroyWindow(pw);
+            DestroyWindow(plain);
+        }
     }
 
     #[test]

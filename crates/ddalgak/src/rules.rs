@@ -188,7 +188,9 @@ pub fn load(path: &Path) -> Loaded {
 /// Reads and interprets the rules file with what the checks know beyond it (Ddalgak's own
 /// shortcuts).
 pub fn load_with(path: &Path, ctx: &Context) -> Loaded {
-    from_store(&store::read_path(path, ctx, MIGRATIONS))
+    let loaded = from_store(&store::read_path(path, ctx, MIGRATIONS));
+    crate::schema::release_patterns();
+    loaded
 }
 
 /// #100: the rules file with `profile` active in memory (the file is not changed); the file's
