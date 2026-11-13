@@ -179,7 +179,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `PIN-05` | Opacity with `Ctrl`+wheel or `Ctrl`+`+`/`-` | G, F | Same, never below 10 %. Step 54 (ADR 0044): `pin.opacity-up`/`-down` (`Ctrl+Plus`/`Ctrl+Minus`), `Ctrl`+wheel (away: more opaque), the menu and `noeul pin set --opacity`, 10 % steps from 10 to 100 %, a constant alpha of the retained surface (nothing is painted again; 0.0 ms); copy and save stay opaque; missing: the manual check of the visible result (UX spec §4.11) | partial | NOEUL-FR-062 | N2 | T, M | T: `crates/noeul/src/transform.rs` opacity_steps_stay_within_ten_and_a_hundred_percent; T: `crates/noeul/src/app.rs` the_wheel_direction_ctrl_opacity_shift_double_click_and_border_drag; T: `crates/noeul/src/win/pinwnd/tests.rs` opacity_changes_only_the_constant_alpha; T: `crates/noeul/tests/pin_transform.rs` transforms_through_the_cli_and_the_windows_messages_are_reversible |
 | `PIN-06` | Rotate with `1`/`2`, flip with `3`/`4` | G, K | Same keys. Step 54 (ADR 0044): `pin.rotate-cw`/`-ccw` (`1`/`2`), `pin.flip-horizontal`/`-vertical` (`3`/`4`), the menu and `noeul pin set --rotate/--rotation/--flip/--mirrored`; an orientation group (each step has an exact inverse), pixel-exact, around the pin's centre, the picture and its annotations never changed; redactions applied before the turn, so outputs stay redacted; missing: the manual check | partial | NOEUL-FR-062 | N2 | T | T: `crates/noeul/src/transform.rs` every_transform_is_undone_by_its_inverse, orientations_move_every_pixel_exactly; T: `crates/noeul/src/pins/tests.rs` every_transform_is_reversible_and_touches_only_its_pin, transforms_compose_with_annotations_and_redactions; T: `crates/noeul/tests/pin_transform.rs` transforms_through_the_cli_and_the_windows_messages_are_reversible |
 | `PIN-07` | Thumbnail mode with `Shift`+double-click | G, H | `Shift`+double-click and `pin.thumbnail` (`T`). Step 54: both, the menu and `noeul pin set --thumbnail`; the whole (turned) picture in 96 × 96 logical pixels of its monitor at the pin's corner, its zoom kept for later, no resize band; a hidden thumbnail comes back as a thumbnail; missing: the manual check with a real mouse | partial | NOEUL-FR-062 | N2 | T, M | T: `crates/noeul/src/transform.rs` thumbnails_fit_ninety_six_logical_pixels_of_the_monitor; T: `crates/noeul/src/pins/tests.rs` thumbnails_extreme_zoom_and_border_resizing; T: `crates/noeul/src/win/pinwnd/tests.rs` shift_double_click_and_ctrl_drop_are_reported; T: `crates/noeul/src/app.rs` hidden_pins_and_thumbnails_come_back |
-| `PIN-08` | Free-size thumbnail by right-dragging (Pro) | P | Pin extra | planned | NOEUL-FR-069 | N4 | T | — |
+| `PIN-08` | Free-size thumbnail by right-dragging (Pro) | P | A right-drag on the picture (beyond the system's drag rectangle) makes a thumbnail fitted into the swept box: the picture's proportions, at most its 100 % size, at least 16 px on the longest side, at the pin's corner, its zoom kept for when thumbnail mode ends; a right-click without a drag still opens the menu (#99). | supported | NOEUL-FR-069 | N4 | T, M | T: `crates/noeul/src/transform.rs` tests::free_size_thumbnails_fit_the_swept_box; T: `crates/noeul/src/win/pinwnd/tests.rs` a_right_drag_asks_for_a_thumbnail_and_a_right_click_for_the_menu; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, a real right-button drag on a 300 × 150 pin: 180 × 80 swept → 160 × 80 thumbnail, 100 × 120 → 100 × 50, the corner kept at 3000,400; a right-click opened the menu |
 | `PIN-09` | Close with `Esc`, `Ctrl+W` or a **double-click** on the image | G, K | ◆ `Esc`, `Ctrl+W` and the menu close; a double-click on a pin does nothing by default, so the clicks that created a pin cannot close it. Step 49: `Esc`/`Ctrl+W` close, a double-click does nothing. Step 53: the pin menu (Close), `Esc` closes even with shortcuts off, a new pin can swallow the rest of its creating gesture (guard time for Step 51); missing: the manual check | partial | NOEUL-FR-026, NOEUL-FR-061 | N1 | T (FLOW-28) | T: `crates/noeul/src/win/pinwnd.rs` off_screen_pin_window_lifecycle, a_new_pin_swallows_the_rest_of_the_gesture; T: `crates/noeul/src/hotkeys.rs` pin_keys_match_context_bindings; T: `crates/noeul/src/app.rs` the_pin_menu_lists_this_builds_actions_with_their_keys |
 | `PIN-10` | The paste hotkey brings back recently closed images (count setting) | G | ◆ "Reopen closed pin" is its own command (tray, CLI); `F3` always pins the clipboard. Step 49: the last closed pin is kept and reopened with its ID by `noeul pin reopen` and the tray; missing: a configurable count (P1 N1, later Step) | partial | NOEUL-FR-065 | N1 | T | T: `crates/noeul/src/pins.rs` lifecycle_close_reopen_destroy_and_quit; T: `crates/noeul/tests/instance.rs` a_one_pixel_pin_lives_closes_and_reopens |
 | `PIN-11` | Destroy an image (not recoverable): `Shift+Esc` or menu | G, K, F | `pin.destroy` (`Shift+Escape`), menu. Step 53: both, nothing kept for reopen; missing: the manual check | partial | NOEUL-FR-065 | N1 | T | T: `crates/noeul/src/app.rs` pin_keys_zoom_hide_destroy_and_escape_always_closes; T: `crates/noeul/src/pins.rs` lifecycle_close_reopen_destroy_and_quit |
@@ -321,9 +321,9 @@ picture.
 
 | Status | Rows |
 | --- | --- |
-| `supported` | 7 |
+| `supported` | 8 |
 | `partial` | 112 |
-| `planned` | 28 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `planned` | 27 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -335,7 +335,7 @@ picture.
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 1 | 9 | 1 | 1 | 12 |
 | 6. Annotation (`ANN`) | 0 | 15 | 2 | 0 | 17 |
-| 7. Floating pins (`PIN`) | 2 | 21 | 5 | 2 | 30 |
+| 7. Floating pins (`PIN`) | 3 | 21 | 4 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 0 | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 0 | 5 | 0 | 1 | 6 |
 | 10. Settings (`SET`) | 0 | 10 | 6 | 6 | 22 |
@@ -371,6 +371,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-12` (typed size and fixed ratio, `T`) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `DET-03` (the wheel steps to the parent element and back) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-12` moves to `partial`: the double arrow tool. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-08` (free-size thumbnail by right-drag) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

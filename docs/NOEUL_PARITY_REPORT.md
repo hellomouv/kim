@@ -53,13 +53,12 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 Each is tracked in [#99](https://github.com/madebymouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
 `SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06`, `DET-09` and `SNIP-10` to *partial*, and
-`SNIP-12` (typed size and fixed ratio) and `DET-03` (the wheel steps to a parent element) to
-*supported*.
+`SNIP-12` (typed size and fixed ratio), `DET-03` (the wheel steps to a parent element) and `PIN-08`
+(free-size thumbnail) to *supported*.
 
 - `ANN-12` (partial since #99: the double arrow) Numbered markers, rounded rectangles, dashes, styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
 - `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes
-- `PIN-08` Free-size thumbnail by right-dragging (Pro)
 - `PIN-15` Group manager window (Pro)
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-21` Interface translations

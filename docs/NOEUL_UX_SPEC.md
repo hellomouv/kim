@@ -1478,7 +1478,9 @@ no default); `Ctrl+Plus`/`Ctrl+Minus` differ from the zoom keys by the modifier,
 context conflicts. `pin.zoom-reset` and the middle-click now also restore full opacity and end
 thumbnail mode. Of the mouse gestures, `Ctrl`+wheel (away from the user: more opaque),
 border resizing (the outline, the shadow and 4 logical pixels inside the edge; the aspect ratio
-kept) and `Shift`+double-click (thumbnail) shipped, and dropping a pin with `Ctrl` held onto
+kept), `Shift`+double-click (thumbnail) and — #99 (`PIN-08`) — a right-drag on the picture (a
+thumbnail fitted into the swept box, at the pin's corner; a right-click without a drag still opens
+the menu) shipped, and dropping a pin with `Ctrl` held onto
 another pin joins that pin's group. The pin's double-click setting is still not in this build.
 
 **Choices and where they differ from Snipaste** (the matrix lists each):

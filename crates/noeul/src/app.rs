@@ -536,6 +536,9 @@ pub enum PinEvent {
     Dropped(PinId, i32, i32),
     /// `Shift`+double-click: thumbnail mode on or off (Step 54).
     ShiftDoubleClick(PinId),
+    /// #99 (`PIN-08`): a right-drag on the picture swept this box (device pixels): a thumbnail
+    /// of that size. (A right-click without a drag still opens the menu.)
+    RightDrag(PinId, (u32, u32)),
     /// #99 (`PIN-20`): `Ctrl`+click on the picture (no movement): selected, or not any more.
     CtrlClick(PinId),
     /// Files were dropped on the pin at this screen point (Step 55, NOEUL-FR-073): they are
@@ -3414,6 +3417,11 @@ impl<S: Shell> App<S> {
                 self.last_action = Some(("pin.resize".into(), r));
             }
             PinEvent::ShiftDoubleClick(id) => self.action("pin.thumbnail", Some(id)),
+            PinEvent::RightDrag(id, (bw, bh)) => {
+                if self.pins.set_thumbnail_box(id, bw, bh) == Ok(true) {
+                    self.last_action = Some(("pin.thumbnail".into(), "changed"));
+                }
+            }
             PinEvent::Files(id, paths, at) => {
                 // Image files dropped on a pin are pinned where they were dropped (NOEUL-FR-073).
                 let _ = id;

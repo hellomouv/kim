@@ -1002,6 +1002,21 @@ impl Pins {
         })
     }
 
+    /// #99 (`PIN-08`): thumbnail mode at a free size: the whole picture fitted into the box a
+    /// right-drag swept (`bw`×`bh` device pixels), at the pin's top-left, its zoom kept for when
+    /// it ends. `Ok(false)` when unchanged.
+    pub fn set_thumbnail_box(&mut self, id: PinId, bw: u32, bh: u32) -> Result<bool, PinError> {
+        self.change(id, |p| {
+            let (w, h) = p.base();
+            let size = transform::thumbnail_fit(w, h, bw, bh);
+            if p.state.thumbnail == Some(size) {
+                return false;
+            }
+            p.state.thumbnail = Some(size);
+            true
+        })
+    }
+
     /// Lets the mouse through a pin, or not (NOEUL-FR-063); the window shows the badge meanwhile.
     /// The caller makes sure a recovery path exists. `Ok(false)` when unchanged.
     /// #99 (`PIN-21`): the view's filter.

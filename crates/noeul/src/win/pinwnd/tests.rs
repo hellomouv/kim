@@ -742,3 +742,55 @@ fn files_dropped_on_a_pin_are_reported_with_the_point() {
     );
     drop(pin);
 }
+
+/// #99 (`PIN-08`): a right-drag on the picture reports the box it swept (a thumbnail of that
+/// size); a right-click without a drag still asks for the menu at its point.
+#[test]
+fn a_right_drag_asks_for_a_thumbnail_and_a_right_click_for_the_menu() {
+    let ledger = Ledger::new();
+    let r = Rect::new(FAR, FAR + 500, 200, 120);
+    let frame = Frame::solid(&ledger, r, [1, 2, 3, 255]).unwrap();
+    let view = View::plain(r);
+    let m = view.margin() as i32;
+    let pin = create(
+        PinId(408),
+        &frame,
+        &WindowSpec {
+            view,
+            focus: false,
+            guard: None,
+        },
+        Style::OFF_SCREEN_TEST,
+    )
+    .unwrap();
+    let hwnd = pin.hwnd();
+    let (ox, oy) = (r.x - m, r.y - m);
+    let _ = take_events();
+    // SAFETY: synchronous messages to our own window on this thread.
+    unsafe {
+        SendMessageW(
+            hwnd,
+            WM_NCRBUTTONDOWN,
+            HTCAPTION as usize,
+            lp(r.x + 10, r.y + 10),
+        );
+        // The release comes in client coordinates (the window holds the mouse).
+        SendMessageW(hwnd, WM_RBUTTONUP, 0, lp(r.x + 90 - ox, r.y + 50 - oy));
+    }
+    assert_eq!(take_events(), [PinEvent::RightDrag(PinId(408), (80, 40))]);
+    // SAFETY: as above.
+    unsafe {
+        SendMessageW(
+            hwnd,
+            WM_NCRBUTTONDOWN,
+            HTCAPTION as usize,
+            lp(r.x + 30, r.y + 30),
+        );
+        SendMessageW(hwnd, WM_RBUTTONUP, 0, lp(r.x + 31 - ox, r.y + 30 - oy));
+    }
+    assert_eq!(
+        take_events(),
+        [PinEvent::Menu(PinId(408), Some((r.x + 31, r.y + 30)))],
+        "a click is the menu"
+    );
+}

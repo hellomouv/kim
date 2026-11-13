@@ -207,6 +207,28 @@ pub fn alpha(o: u32) -> u8 {
 /// The longest side of a thumbnail, in logical pixels of the pin's monitor.
 pub const THUMBNAIL: u32 = 96;
 
+/// The shortest longest side of a free-size thumbnail (#99, `PIN-08`), in device pixels.
+pub const THUMBNAIL_MIN: u32 = 16;
+
+/// #99 (`PIN-08`): the size of a free-size thumbnail of a picture shown at `w`×`h` at 100 %,
+/// fitted into the box `bw`×`bh` the right-drag swept (its proportions kept), never larger than
+/// the picture itself and never smaller than [`THUMBNAIL_MIN`] on its longest side.
+pub fn thumbnail_fit(w: u32, h: u32, bw: u32, bh: u32) -> (u32, u32) {
+    let (w, h) = (u64::from(w.max(1)), u64::from(h.max(1)));
+    let (bw, bh) = (u64::from(bw.max(1)), u64::from(bh.max(1)));
+    // The scale is num/den, the smaller of bw/w and bh/h, at most 1.
+    let (mut num, mut den) = if bw * h <= bh * w { (bw, w) } else { (bh, h) };
+    if num > den {
+        (num, den) = (1, 1);
+    }
+    let longest = w.max(h);
+    if longest * num / den < u64::from(THUMBNAIL_MIN) {
+        (num, den) = (u64::from(THUMBNAIL_MIN).min(longest), longest);
+    }
+    let side = |v: u64| u32::try_from((v * num + den / 2) / den).unwrap_or(1).max(1);
+    (side(w), side(h))
+}
+
 /// The size of the thumbnail of a picture shown at `w`×`h` at 100 % on a monitor of `dpi`: the
 /// whole picture, its longest side [`THUMBNAIL`] logical pixels (a smaller picture keeps its size).
 pub fn thumbnail_size(w: u32, h: u32, dpi: u32) -> (u32, u32) {
@@ -876,6 +898,28 @@ mod tests {
             (255, 26, 26, 255)
         );
         assert_eq!(clamp_opacity(3), 10);
+    }
+
+    #[test]
+    fn free_size_thumbnails_fit_the_swept_box() {
+        // #99 (`PIN-08`): the picture's proportions in the box, never larger than 100 %.
+        assert_eq!(thumbnail_fit(1920, 1080, 400, 400), (400, 225));
+        assert_eq!(thumbnail_fit(1920, 1080, 200, 50), (89, 50));
+        assert_eq!(
+            thumbnail_fit(300, 200, 5000, 5000),
+            (300, 200),
+            "at most the picture"
+        );
+        assert_eq!(
+            thumbnail_fit(1920, 1080, 3, 3),
+            (16, 9),
+            "at least 16 on the longest side"
+        );
+        assert_eq!(
+            thumbnail_fit(10, 8, 1, 1),
+            (10, 8),
+            "a tiny picture keeps its size"
+        );
     }
 
     #[test]

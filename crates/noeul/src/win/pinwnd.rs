@@ -73,21 +73,22 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CS_DBLCLKS, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, EnumWindows, GWL_EXSTYLE, GWLP_USERDATA, GetForegroundWindow, GetWindowLongPtrW,
-    GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL, IDC_SIZENESW,
-    IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsIconic, IsWindow, IsWindowVisible, LoadCursorW,
-    MA_ACTIVATE, MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW,
-    RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA,
-    UpdateLayeredWindow, WA_INACTIVE, WM_ACTIVATE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU,
-    WM_DESTROY, WM_DPICHANGED, WM_DROPFILES, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL,
-    WM_MOVING, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
-    WM_NCMBUTTONDBLCLK, WM_NCMBUTTONDOWN, WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN,
-    WM_NCRBUTTONUP, WM_NULL, WM_RBUTTONDOWN, WM_SETCURSOR, WM_SYSKEYDOWN, WNDCLASSEXW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    DestroyWindow, EnumWindows, GWL_EXSTYLE, GWLP_USERDATA, GetForegroundWindow, GetSystemMetrics,
+    GetWindowLongPtrW, GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT,
+    HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL,
+    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsIconic, IsWindow, IsWindowVisible,
+    LoadCursorW, MA_ACTIVATE, MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    PostMessageW, RegisterClassExW, SM_CXDRAG, SM_CYDRAG, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetCursor,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA, UpdateLayeredWindow, WA_INACTIVE, WM_ACTIVATE,
+    WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_DPICHANGED, WM_DROPFILES,
+    WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+    WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVING, WM_NCDESTROY, WM_NCHITTEST,
+    WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMBUTTONDBLCLK, WM_NCMBUTTONDOWN,
+    WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP, WM_NULL, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SETCURSOR, WM_SYSKEYDOWN, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 const CLASS: &str = "NoeulPin";
@@ -121,6 +122,8 @@ struct Slot {
     /// Real pins take the mouse capture while their border is dragged; the test hook's
     /// windows (never activated, off-screen) do not.
     capture: bool,
+    /// #99 (`PIN-08`): where (screen) the right button went down on the picture.
+    right_from: Option<(i32, i32)>,
 }
 
 thread_local! {
@@ -528,7 +531,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             return 0;
         }
         WM_CAPTURECHANGED if lp as HWND != hwnd => {
-            with_slot(hwnd, |s| s.drag = None);
+            with_slot(hwnd, |s| {
+                s.drag = None;
+                s.right_from = None;
+            });
         }
         // `Shift`+double-click toggles thumbnail mode; a plain double-click on a pin has no
         // default action (NOEUL-FR-026); never maximize.
@@ -544,6 +550,39 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             return 0;
         }
         WM_NCRBUTTONDBLCLK | WM_NCMBUTTONDBLCLK => return 0,
+        // #99 (`PIN-08`): a right-press on the picture: a drag beyond the system's drag
+        // rectangle makes a thumbnail of the swept size, a click opens the menu as before.
+        WM_NCRBUTTONDOWN if wp as u32 == HTCAPTION && slot(hwnd).is_some() => {
+            let captured = slot(hwnd).is_some_and(|s| s.capture);
+            with_slot(hwnd, |s| s.right_from = Some(point_of(lp)));
+            if captured {
+                // SAFETY: our window takes the mouse until the button is released.
+                unsafe { SetCapture(hwnd) };
+            }
+            return 0;
+        }
+        WM_RBUTTONUP if slot(hwnd).is_some_and(|s| s.right_from.is_some()) => {
+            let from = slot(hwnd).and_then(|s| s.right_from);
+            with_slot(hwnd, |s| s.right_from = None);
+            // SAFETY: we hold the capture taken on the press.
+            unsafe { ReleaseCapture() };
+            let (cx, cy) = point_of(lp);
+            let (ox, oy) = origin(hwnd);
+            let at = (ox.saturating_add(cx), oy.saturating_add(cy));
+            if let (Some(id), Some((fx, fy))) = (pin_of(hwnd), from) {
+                let (dx, dy) = (at.0.abs_diff(fx), at.1.abs_diff(fy));
+                // SAFETY: plain metric queries.
+                let (tx, ty) =
+                    unsafe { (GetSystemMetrics(SM_CXDRAG), GetSystemMetrics(SM_CYDRAG)) };
+                let beyond = dx > tx.unsigned_abs() / 2 || dy > ty.unsigned_abs() / 2;
+                push(if beyond {
+                    PinEvent::RightDrag(id, (dx.max(1), dy.max(1)))
+                } else {
+                    PinEvent::Menu(id, Some(at))
+                });
+            }
+            return 0;
+        }
         WM_NCMBUTTONUP => {
             if let Some(id) = pin_of(hwnd)
                 && !guarded(hwnd)
@@ -1131,6 +1170,7 @@ pub fn create(id: PinId, frame: &Frame, spec: &WindowSpec, style: Style) -> Resu
                 activations: 0,
                 view,
                 drag: None,
+                right_from: None,
                 capture: style.activate,
             },
         );
