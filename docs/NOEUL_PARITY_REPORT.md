@@ -39,7 +39,7 @@ service, no hot corners).
 | Annotation and redaction on the overlay and on pins | works (missing: Pro shapes) | `crates/noeul/tests/annotation.rs`, `crates/noeul/src/app.rs` a_solid_redaction_is_shown_copied_and_saved_without_a_pixel_of_the_original |
 | Pin transforms: zoom, rotate, flip, opacity, thumbnail, click-through with a way back | works | `crates/noeul/tests/pin_transform.rs` |
 | History and recovery (in memory; opt-in disk history and pin backup) | works | `crates/noeul/tests/history_backup.rs`, `crates/noeul/src/app/keeping_tests.rs` |
-| Groups | works (missing: group manager window) | `crates/noeul/tests/pin_transform.rs` |
+| Groups | works (managed in the settings window since #99) | `crates/noeul/tests/pin_transform.rs` |
 | Monitors and DPI (mixed DPI, monitors removed, pins brought back) | works | `crates/noeul/tests/displays.rs` |
 | Customisation: every shortcut, gestures, settings window | works (missing: other settings sections) | `crates/noeul/tests/settings_window.rs`, `crates/noeul/tests/instance.rs` |
 | Install through Kim, CLI, agents (MCP), interop | works | `e2e/tests/step62_noeul_agents_kim.rs`, `crates/noeul/tests/mcp_adapter.rs` |
@@ -54,11 +54,11 @@ Each is tracked in [#99](https://github.com/madebymouv/kim/issues/99) (except `A
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
 `SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06`, `DET-09` and `SNIP-10` to *partial*, and
 `SNIP-12` (typed size and fixed ratio), `DET-03` (the wheel steps to a parent element), `PIN-08`
-(free-size thumbnail) and `ANN-14` (a right-click marks the detected element) to *supported*.
+(free-size thumbnail), `ANN-14` (a right-click marks the detected element) and `PIN-15` (the
+group manager in the settings window) to *supported*.
 
 - `ANN-12` (partial since #99: the double arrow) Numbered markers, rounded rectangles, dashes, styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` (partial since #99: per-tool colours) Rotatable shapes; several pen sizes; shareable palette (Pro)
-- `PIN-15` Group manager window (Pro)
 - `PIN-28` (partial since #99: pins show on every virtual desktop) Images on virtual desktops (Pro)
 - `SET-21` (partial since #99: Korean tray and pin menus) Interface translations
 - `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/madebymouv/kim/issues/69), done on the Linux server)

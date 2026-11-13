@@ -18,7 +18,7 @@
 //! (`WM_COMMAND` for the buttons, [`WM_TEST_KEY`] for a recorded chord) and read it back with
 //! [`test_state`].
 
-use crate::prefs::{Key, Model, Toggle};
+use crate::prefs::{GroupAction, Key, Model, Toggle};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::os::windows::process::CommandExt;
@@ -79,6 +79,32 @@ pub mod id {
     pub const LABEL_KEYS: u16 = 140;
     pub const LABEL_DOUBLE: u16 = 141;
     pub const LABEL_MIDDLE: u16 = 142;
+    /// #99 (`PIN-15`): the pin groups of the running instance.
+    pub const LABEL_GROUPS: u16 = 143;
+    pub const GROUPS: u16 = 150;
+    pub const GROUP_SWITCH: u16 = 151;
+    pub const GROUP_SHOW: u16 = 152;
+    pub const GROUP_HIDE: u16 = 153;
+    pub const GROUP_CLOSE: u16 = 154;
+}
+
+/// #99 (`PIN-15`): the instance's pipe name when it is not the default one (`--endpoint`), so
+/// the group commands reach this instance.
+static ENDPOINT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// The instance tells the window which pipe it answers on (its name under `\\.\pipe\`).
+pub fn set_endpoint(pipe_path: &str) {
+    let name = pipe_path.rsplit('\\').next().unwrap_or(pipe_path);
+    let _ = ENDPOINT.set(name.to_string());
+}
+
+/// Arguments for a command that talks to the running instance.
+fn to_instance(mut args: Vec<String>) -> Vec<String> {
+    if let Some(e) = ENDPOINT.get() {
+        args.push("--endpoint".into());
+        args.push(e.clone());
+    }
+    args
 }
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
@@ -180,7 +206,7 @@ pub fn open(interactive: bool) -> Result<(), String> {
             x,
             y,
             600,
-            560,
+            740,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             inst,
@@ -379,6 +405,30 @@ fn build(hwnd: HWND, dark: bool) {
             i,
         );
     }
+    child(
+        hwnd,
+        "STATIC",
+        "Pin &groups (select one, then Switch, Show, Hide or Close its pins):",
+        0,
+        0,
+        LABEL_GROUPS,
+    );
+    child(
+        hwnd,
+        "LISTBOX",
+        "Pin groups",
+        WS_TABSTOP | WS_VSCROLL | WS_BORDER | LBS_NOTIFY as u32 | LBS_NOINTEGRALHEIGHT as u32,
+        WS_EX_CLIENTEDGE,
+        GROUPS,
+    );
+    for (i, t) in [
+        (GROUP_SWITCH, "S&witch to"),
+        (GROUP_SHOW, "Sh&ow pins"),
+        (GROUP_HIDE, "Hi&de pins"),
+        (GROUP_CLOSE, "Clo&se pins"),
+    ] {
+        child(hwnd, "BUTTON", t, WS_TABSTOP | BS_PUSHBUTTON as u32, 0, i);
+    }
     child(hwnd, "STATIC", "Loading…", 0, 0, STATUS);
     child(
         hwnd,
@@ -540,8 +590,16 @@ fn layout(hwnd: HWND) {
     place(TRAY, 12, 382, 560, 22);
     place(HISTORY_DISK, 12, 406, 560, 22);
     place(PIN_BACKUP, 12, 430, 560, 22);
-    place(STATUS, 12, 458, 560, 40);
-    place(CLOSE, 472, 500, 100, 28);
+    place(LABEL_GROUPS, 12, 458, 560, 18);
+    place(GROUPS, 12, 478, 440, 130);
+    for (k, i) in [GROUP_SWITCH, GROUP_SHOW, GROUP_HIDE, GROUP_CLOSE]
+        .into_iter()
+        .enumerate()
+    {
+        place(i, 462, 478 + 34 * k as i32, 110, 28);
+    }
+    place(STATUS, 12, 616, 560, 40);
+    place(CLOSE, 472, 658, 100, 28);
     if let Some(old) = old.filter(|f| !f.is_null()) {
         // SAFETY: the previous font, no longer selected anywhere.
         unsafe { DeleteObject(old) };
@@ -572,7 +630,13 @@ fn start(hwnd: HWND, args: Vec<String>, status: &str) {
         let v = if args.first().map(String::as_str) == Some("reload") {
             let hk = run_noeul(&["hotkeys".into(), "list".into()]);
             let cfg = run_noeul(&["config".into(), "show".into()]);
-            serde_json::json!({"ok": true, "hotkeys": hk["data"], "config": cfg["data"]})
+            let groups = run_noeul(&to_instance(vec![
+                "pin".into(),
+                "group".into(),
+                "list".into(),
+            ]));
+            serde_json::json!({"ok": true, "hotkeys": hk["data"], "config": cfg["data"],
+                "groups": groups["data"]})
         } else {
             run_noeul(&args)
         };
@@ -597,8 +661,23 @@ fn show(hwnd: HWND) {
         return;
     };
     let list = item(hwnd, LIST);
+    let groups = item(hwnd, GROUPS);
     // SAFETY: our own controls; NUL-terminated strings.
     unsafe {
+        SendMessageW(groups, LB_RESETCONTENT, 0, 0);
+        for g in &m.groups {
+            let w = wide(&g.text());
+            SendMessageW(groups, LB_ADDSTRING, 0, w.as_ptr() as isize);
+        }
+        if let Some(i) = m.group_selected {
+            SendMessageW(groups, LB_SETCURSEL, i, 0);
+        }
+        for i in [GROUP_SWITCH, GROUP_SHOW, GROUP_HIDE, GROUP_CLOSE] {
+            EnableWindow(
+                item(hwnd, i),
+                i32::from(!busy && m.group_selected.is_some()),
+            );
+        }
         SendMessageW(list, LB_RESETCONTENT, 0, 0);
         for r in &m.rows {
             let w = wide(&r.text());
@@ -668,7 +747,8 @@ fn command(hwnd: HWND, ctl: u16, code: u16) {
     use id::*;
     let handled = matches!(
         (ctl, code),
-        (LIST | DOUBLE | MIDDLE, 1)
+        (LIST | DOUBLE | MIDDLE | GROUPS, 1)
+            | (GROUP_SWITCH | GROUP_SHOW | GROUP_HIDE | GROUP_CLOSE, 0)
             | (
                 CHANGE
                     | DISABLE
@@ -776,6 +856,24 @@ fn command(hwnd: HWND, ctl: u16, code: u16) {
             };
             start(hwnd, Model::toggle(t, on), "Saving…");
         }
+        (GROUPS, 1) => {
+            // LBN_SELCHANGE
+            // SAFETY: our own list box.
+            let i = unsafe { SendMessageW(item(hwnd, GROUPS), LB_GETCURSEL, 0, 0) };
+            with_model(|m| m.group_selected = usize::try_from(i).ok());
+            show(hwnd);
+        }
+        (GROUP_SWITCH | GROUP_SHOW | GROUP_HIDE | GROUP_CLOSE, 0) => {
+            let a = match ctl {
+                GROUP_SWITCH => GroupAction::Switch,
+                GROUP_SHOW => GroupAction::Show,
+                GROUP_HIDE => GroupAction::Hide,
+                _ => GroupAction::Close,
+            };
+            if let Some(c) = with_model(|m| m.group_command(a)).flatten() {
+                start(hwnd, to_instance(c), "Working…");
+            }
+        }
         (CLOSE, 0) => {
             // SAFETY: our own window.
             unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) };
@@ -864,6 +962,7 @@ fn finished(hwnd: HWND) {
         with_model(|m| {
             let first = m.rows.is_empty();
             m.refresh(fresh);
+            m.set_groups(&v["groups"]);
             if first {
                 m.status = format!(
                     "{} actions. Select one and press Change to record new keys.",

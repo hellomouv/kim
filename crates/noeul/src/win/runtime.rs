@@ -925,6 +925,7 @@ pub fn run(opts: &RunOpts) -> Result<Value> {
         TRAY.with(|s| *s.borrow_mut() = Some(t));
     }
     let endpoint_path = pipe::path(&opts.endpoint);
+    crate::win::settings::set_endpoint(&opts.endpoint);
     let dev = dev_synthetic_desktop();
     let backend: Box<dyn CaptureBackend> = if dev {
         // Step 58: a test can give the off-screen desktop its own layout in a file and change

@@ -96,6 +96,46 @@ pub struct Model {
     pub status: String,
     /// A refused binding the user may force (`--replace` or `--allow-conflict`).
     pub pending: Option<Vec<String>>,
+    /// #99 (`PIN-15`): the running instance's pin groups (empty when Noeul does not run).
+    pub groups: Vec<GroupRow>,
+    pub group_selected: Option<usize>,
+}
+
+/// #99 (`PIN-15`): one pin group as the settings window lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GroupRow {
+    pub name: String,
+    pub pins: u64,
+    pub hidden: u64,
+    pub current: bool,
+}
+
+impl GroupRow {
+    /// `default — 3 pins (1 hidden), current`.
+    pub fn text(&self) -> String {
+        let mut t = format!(
+            "{} \u{2014} {} pin{}",
+            self.name,
+            self.pins,
+            if self.pins == 1 { "" } else { "s" }
+        );
+        if self.hidden > 0 {
+            t.push_str(&format!(" ({} hidden)", self.hidden));
+        }
+        if self.current {
+            t.push_str(", current");
+        }
+        t
+    }
+}
+
+/// #99 (`PIN-15`): what a group button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupAction {
+    Switch,
+    Show,
+    Hide,
+    Close,
 }
 
 fn args(a: &[&str]) -> Vec<String> {
@@ -142,14 +182,57 @@ impl Model {
         }
     }
 
+    /// #99 (`PIN-15`): the groups from `noeul pin group list --json` (its `data`; nothing when
+    /// the instance does not run).
+    pub fn set_groups(&mut self, list: &Value) {
+        let current = list["current"].as_str().unwrap_or("");
+        let name = self
+            .group_selected
+            .and_then(|i| self.groups.get(i))
+            .map(|g| g.name.clone());
+        self.groups = list["groups"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|g| {
+                let name = g["name"].as_str().unwrap_or("").to_string();
+                GroupRow {
+                    current: name == current,
+                    name,
+                    pins: g["pins"].as_u64().unwrap_or(0),
+                    hidden: g["hidden"].as_u64().unwrap_or(0),
+                }
+            })
+            .collect();
+        self.group_selected = name
+            .and_then(|n| self.groups.iter().position(|g| g.name == n))
+            .or_else(|| (!self.groups.is_empty()).then_some(0));
+    }
+
+    /// #99 (`PIN-15`): the command for a group button on the selected group.
+    pub fn group_command(&self, a: GroupAction) -> Option<Vec<String>> {
+        let g = self.group_selected.and_then(|i| self.groups.get(i))?;
+        let n = g.name.as_str();
+        Some(match a {
+            GroupAction::Switch => args(&["pin", "group", "switch", n]),
+            GroupAction::Show => args(&["pin", "show", "--group", n]),
+            GroupAction::Hide => args(&["pin", "hide", "--group", n]),
+            GroupAction::Close => args(&["pin", "close", "--group", n, "--yes"]),
+        })
+    }
+
     /// Keeps the selection on the same action after the rows are read again.
     pub fn refresh(&mut self, fresh: Model) {
         let id = self.selected_row().map(|r| r.id.clone());
         let status = std::mem::take(&mut self.status);
         let pending = self.pending.take();
+        let (groups, group_selected) =
+            (std::mem::take(&mut self.groups), self.group_selected.take());
         *self = fresh;
         self.status = status;
         self.pending = pending;
+        self.groups = groups;
+        self.group_selected = group_selected;
         if let Some(id) = id {
             self.selected = self.rows.iter().position(|r| r.id == id).or(Some(0));
         }
@@ -295,6 +378,19 @@ impl Model {
                     "The shortcuts were imported (a backup was kept).".into()
                 }
                 Some(["config", "set"]) => "Saved.".into(),
+                Some(["pin", "group"]) => format!(
+                    "Switched to the group {}: its pins show, the others are hidden.",
+                    cmd.get(3).map_or("", String::as_str)
+                ),
+                Some(["pin", "show" | "hide" | "close"]) => format!(
+                    "The pins of the group {} were {}.",
+                    cmd.get(3).map_or("", String::as_str),
+                    match cmd[1].as_str() {
+                        "show" => "shown",
+                        "hide" => "hidden",
+                        _ => "closed",
+                    }
+                ),
                 _ => "Done.".into(),
             };
             // A default it shadows, or a warning, in the CLI's own words.
@@ -470,5 +566,43 @@ mod tests {
         fresh.rows.swap(0, 1);
         m.refresh(fresh);
         assert_eq!(m.selected_row().unwrap().id, "paste.float");
+    }
+
+    /// #99 (`PIN-15`): the groups list parses, keeps the selection by name and builds commands.
+    #[test]
+    fn the_groups_are_listed_and_their_buttons_build_commands() {
+        let mut m = Model::default();
+        assert_eq!(
+            m.group_command(GroupAction::Switch),
+            None,
+            "nothing to act on"
+        );
+        let list = serde_json::json!({"current": "work", "groups": [
+            {"name": "default", "pins": 3, "hidden": 1},
+            {"name": "work", "pins": 1, "hidden": 0}]});
+        m.set_groups(&list);
+        assert_eq!(m.groups.len(), 2);
+        assert_eq!(m.groups[0].text(), "default \u{2014} 3 pins (1 hidden)");
+        assert_eq!(m.groups[1].text(), "work \u{2014} 1 pin, current");
+        m.group_selected = Some(1);
+        m.set_groups(&list);
+        assert_eq!(
+            m.group_selected,
+            Some(1),
+            "the selection stays on the same group"
+        );
+        assert_eq!(
+            m.group_command(GroupAction::Close).unwrap(),
+            ["pin", "close", "--group", "work", "--yes"]
+        );
+        assert_eq!(
+            m.group_command(GroupAction::Switch).unwrap(),
+            ["pin", "group", "switch", "work"]
+        );
+        m.set_groups(&Value::Null);
+        assert!(
+            m.groups.is_empty() && m.group_selected.is_none(),
+            "Noeul not running"
+        );
     }
 }

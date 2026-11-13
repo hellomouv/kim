@@ -377,3 +377,56 @@ fn a_global_key_changed_in_the_window_is_registered_live_and_back() {
     unsafe { PostMessageW(w as HWND, WM_CLOSE, 0, 0) };
     sb.stop_all();
 }
+
+const GROUPS: i32 = 150;
+const GROUP_SWITCH: i32 = 151;
+const GROUP_HIDE: i32 = 153;
+
+fn current_group(sb: &Sandbox) -> String {
+    let (_, l) = sb.json(&["pin", "group", "list"]);
+    l["data"]["current"].as_str().unwrap_or("").to_string()
+}
+
+/// #99 (`PIN-15`): the settings window lists the running instance's pin groups (through the
+/// instance's own pipe, here the test endpoint) and its buttons switch to a group and hide a
+/// group's pins through the CLI.
+#[test]
+fn the_settings_window_manages_the_pin_groups() {
+    let mut sb = Sandbox::synthetic("settings-groups", Keys::NoGlobals);
+    let pid = sb.instance();
+    // A pin in each group (groups without pins are not listed unless current).
+    let (code, v) = sb.json(&["capture", "--region", "-20000,-20000,64,48", "--pin"]);
+    assert_eq!(code, 0, "{v:#}");
+    let (code, v) = sb.json(&["pin", "group", "switch", "work"]);
+    assert_eq!(code, 0, "{v:#}");
+    let (code, v) = sb.json(&["capture", "--region", "-20000,-20000,32,24", "--pin"]);
+    assert_eq!(code, 0, "{v:#}");
+    assert_eq!(current_group(&sb), "work");
+    let (code, v) = sb.json(&["settings"]);
+    assert_eq!(code, 0, "{v:#}");
+    let w = settings_windows(pid)[0];
+    // SAFETY: a count query on the test instance's list box.
+    wait("the groups listed", || unsafe {
+        SendMessageW(ctl(w, GROUPS), LB_GETCOUNT, 0, 0) >= 2
+    });
+    ready(w);
+    // The groups are in file order: `default` first. Switch to it.
+    // SAFETY: our test instance's list box; then the notification its parent acts on.
+    unsafe { SendMessageW(ctl(w, GROUPS), LB_SETCURSEL, 0, 0) };
+    click(w, GROUPS, 1);
+    let before = text(ctl(w, STATUS));
+    click(w, GROUP_SWITCH, 0);
+    let s = status_after(w, &before);
+    assert!(s.contains("Switched to the group default"), "{s}");
+    assert_eq!(current_group(&sb), "default");
+    // Hide the pins of `work` (its row is the second).
+    // SAFETY: our test instance's list box.
+    unsafe { SendMessageW(ctl(w, GROUPS), LB_SETCURSEL, 1, 0) };
+    click(w, GROUPS, 1);
+    let before = text(ctl(w, STATUS));
+    click(w, GROUP_HIDE, 0);
+    let s = status_after(w, &before);
+    assert!(s.contains("group work were hidden"), "{s}");
+    // SAFETY: closing the test instance's window.
+    unsafe { PostMessageW(w as HWND, WM_CLOSE, 0, 0) };
+}
