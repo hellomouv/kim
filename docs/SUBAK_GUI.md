@@ -1094,15 +1094,15 @@ first (`subak config show`; keep a copy if you have one): `set E=--endpoint suba
 
 | Manual check | Result |
 | --- | --- |
-| Themes, caption, icon, opacity in the visible window (steps 1–2, 10) | automated off-screen with frames and the window's own report (§13.11); visible run **pending — maintainer** |
-| Fonts and line spacing (step 3) | automated (face, cell heights, pane resized, same pid); visible look **pending — maintainer** |
-| Persistence across a restart (step 4) | automated; visible run **pending — maintainer** |
-| Motion and Windows' animation setting (step 5) | automated with the setting and a simulated Windows value; the real setting and the look **pending — maintainer** |
-| Hover (step 6) | automated with posted mouse messages and a frame; real pointer **pending — maintainer** |
-| Profiles from the file, Notepad (step 7) | automated (recording opener, real Host, exact argv/cwd/env); Notepad **pending — maintainer** |
-| Mouse and `Ctrl+C` choices with the real clipboard (step 8) | automated with the recording clipboard; real clipboard **pending — maintainer** |
-| A broken file (step 9) | automated; visible banner **pending — maintainer** |
-| Real High Contrast and light mode (step 10), Narrator (step 11) | simulated (`system` test command); real settings and Narrator **pending — maintainer** |
+| Themes, caption, icon, opacity in the visible window (steps 1–2, 10) | passed 2026-11-13 (real desktop, sandboxed settings) after a fix: a live theme change left the caption in the old colour on Windows 10; the frame is repainted now. Light/dark from the menu and `theme = "system"` following Windows' app mode (flipped and restored); 80 % opacity = alpha 204 |
+| Fonts and line spacing (step 3) | passed 2026-11-13: Consolas, Courier New, line spacing 1.6 and a larger size resized the shown pane (120×30 → 96×19) with the same pid |
+| Persistence across a restart (step 4) | passed 2026-11-13: size, theme, opacity and place after a reopen |
+| Motion and Windows' animation setting (step 5) | 2026-11-13: Windows' animation setting switched and restored; the 120 ms fade could not be told apart by screen sampling (tracked, MILESTONE_B §7) |
+| Hover (step 6) | passed 2026-11-13 with the real pointer: the hovered tab lightens (#15151B → #22212C), its `×` brighter |
+| Profiles from the file, Notepad (step 7) | passed 2026-11-13: a `pwsh` profile as `default_profile` — `Ctrl+T` opens `PS C:\Windows>`, the menu lists "New Terminal: pwsh (default)" |
+| Mouse and `Ctrl+C` choices with the real clipboard (step 8) | passed 2026-11-13 (clipboard saved and restored): copy on select, smart `Ctrl+C` (copies a selection, else interrupts `ping -t`), `right_click = menu` |
+| A broken file (step 9) | passed 2026-11-13: the banner names line 5; `Ctrl+Plus` applies to the window only; the file unchanged; `config reset --all --yes` keeps `config-invalid-….toml` |
+| Real High Contrast and light mode (step 10), Narrator (step 11) | light/dark app mode passed 2026-11-13 (real setting, restored); High Contrast and Narrator not run on the maintainer's desktop |
 
 ### 13.10 Known limits and tracked deviations (Step 20)
 

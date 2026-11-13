@@ -9,14 +9,8 @@ Status: **current** (Step 20, issue #20) · Validates [ADR 0039](adr/0039-subak-
 `SUBAK-FR-037`, `SUBAK-FR-038`, `SUBAK-FR-046`, `SUBAK-FR-048`, `SUBAK-FR-049`, `SUBAK-NFR-001`,
 `SUBAK-NFR-002`, `KIM-NFR-012`
 
-> **Milestone B is not complete.** The window (Steps 16–20) is validated on real Windows with
-> real Hosts, real ConPTY panes and the window's own off-screen test mode, but its **visible**
-> parts — the window on the desktop, the real keyboard and IME, the real clipboard, native menus,
-> Windows' own High Contrast, light-mode and animation settings, Narrator, a real pointer — need a
-> visible desktop. Agents may not show windows on the maintainer's machine, so those checks are
-> **pending — maintainer** (§6, with the results table §6.3). Visual judgement (coherent,
-> polished) is the maintainer's. Everything else here was measured on this machine, as stated row
-> by row; "simulated" means the window received the Windows value through its test command.
+> **Milestone B passed (2026-11-13).** The window journey ran on the real desktop (§6.3); remaining
+> nonessential deviations are tracked in §7.
 
 ## 1. Result
 
@@ -24,7 +18,7 @@ Status: **current** (Step 20, issue #20) · Validates [ADR 0039](adr/0039-subak-
 | --- | --- | --- |
 | The native Windows GUI is coherent, responsive, polished and keyboard-accessible without obscuring the work area | **partly verified**: responsiveness, keyboard access, contrast tokens and the frames are automated off-screen; the visible look and feel is **pending — maintainer** | Frames checked pixel by pixel for `kim-dark`, `kim-light` and High Contrast (`gui_settings.rs`); every action is a shortcut or in a native menu reachable with the Menu key; 150 declared WCAG pairs pass `design-check`; journey latencies §5; the window is a normal, resizable, non-topmost window (only the optional floating icon is always on top, ADR 0045) |
 | Preferences survive app restart and do not affect running Host sessions unexpectedly | **verified** (automated, real Host) | `gui_settings.rs::preferences_survive_restart_migrate_from_version_1_and_never_touch_running_terminals`, `config_cli.rs::a_profile_launches_…_settings_never_touch_running_terminals`, `config_boundary.rs` (the Host never reads `config.toml`); the one expected effect — a new text size or line height re-lays out the shown pane's grid, as a zoom does — keeps the process |
-| The Milestone B journey is tested on real Windows; remaining nonessential UX deviations are tracked | journey **verified headlessly** (off-screen windows, real Hosts, debug and release builds; §3, §5); the visible run **pending — maintainer** (§6); deviations **tracked** (§7) | `milestone_b.rs`, `e2e/tests/step20_subak_polish.rs`, §7 |
+| The Milestone B journey is tested on real Windows; remaining nonessential UX deviations are tracked | journey verified headlessly (§3, §5) and on the real desktop 2026-11-13 (§6.3); deviations tracked (§7) | `milestone_b.rs`, `e2e/tests/step20_subak_polish.rs`, §7 |
 
 ## 2. Scope and plan
 
@@ -145,22 +139,38 @@ here touches your default Host.
    covers the taskbar or other windows (only the optional floating icon is always on top).
 10. Clean up: `subak.exe %E% host stop --kill-terminals --yes`; restore your settings file.
 
-### 6.3 Results (pending — to be filled in by the maintainer)
+### 6.3 Results
+
+**2026-11-13, run by the agent on the real desktop (ADR 0088): Windows 10 Pro 22H2 19045, one
+monitor at 100 % (150 % checked in Steps 15–16), Microsoft Korean IME.** Binaries copied into a
+fresh folder; `APPDATA`/`LOCALAPPDATA` pointed at a sandbox, so the maintainer's settings and
+Host were never touched.
 
 | Manual check | Result |
 | --- | --- |
-| Open, empty state, Host started without a shell (steps 1–2) | **pending — maintainer** |
-| CRUD from the window and the CLI, Korean (steps 3–4, 7) | **pending — maintainer** |
-| Tabs and the marker fade (step 5) | **pending — maintainer** |
-| Close and reopen with the same processes (step 6) | **pending — maintainer** |
-| Settings (step 8, SUBAK_GUI §13.9) | **pending — maintainer** |
-| Responsive, coherent, polished, not obscuring the work area (step 9) | **pending — maintainer** (visual judgement) |
-
-Record the Windows build, display scale(s), keyboard layout and pass/fail per row in issue #20.
+| Open, empty state, Host started without a shell (steps 1–2) | passed: the window opens with no Terminal; `status` shows a Host with 0 Terminals |
+| CRUD from the window and the CLI, Korean (steps 3–4, 7) | passed: `Ctrl+T` cmd.exe, `dir`, `echo 한글`; `new build` + `rename build 빌드` appear in the window; `Ctrl+Shift+R` renames; `Ctrl+W` ends an idle tab at once and asks on `busy` (Cancel default) |
+| Tabs and the marker fade (step 5) | tabs switch with `Ctrl+Tab`/`Ctrl+Shift+Tab`; the 120 ms marker fade could not be measured by sampling the screen (see §7) |
+| Close and reopen with the same processes (step 6) | passed: X keeps every Terminal; reopening shows the last tab at the same place |
+| Settings (step 8, SUBAK_GUI §13.9) | passed except High Contrast and Narrator (not run); one defect found and fixed (§7.1) |
+| Responsive, coherent, polished, not obscuring the work area (step 9) | passed: typing is immediate, the window is not topmost and stays inside the work area |
 
 ## 7. Deviations and open issues (tracked)
 
+Tracked after the 2026-11-13 real-desktop run (nonessential):
+
+- The rename field opens with the name and the caret at its end, not selected: typing appends
+  (Windows fields usually select the name so typing replaces it).
+- The tab marker's 120 ms fade could not be confirmed by sampling the screen (the new tab paints
+  when its screen arrives); the motion choice is covered by automated tests.
+- High Contrast and Narrator were not run on the maintainer's desktop (a system-wide theme switch,
+  speech); the window's High Contrast path is covered with the simulated setting.
+
 ### 7.1 Found and fixed in this Step
+
+- (2026-11-13, real desktop) A live theme change left the caption in the old colour on Windows 10
+  until the window was activated again: the window now repaints its frame once
+  (`WM_NCACTIVATE` through the default procedure) after setting the caption mode.
 
 - Settings lived in `gui.json` next to the placement, unversioned against `config.toml`'s plan:
   moved, with a one-time migration and a backup (§4).

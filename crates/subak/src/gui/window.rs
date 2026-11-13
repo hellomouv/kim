@@ -5750,7 +5750,10 @@ fn run_after(hwnd: HWND, after: Vec<After>) {
                         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
                     }
                 }
-                After::Caption { dark, colors } => set_caption(hwnd, dark, colors),
+                After::Caption { dark, colors } => {
+                    set_caption(hwnd, dark, colors);
+                    repaint_caption(hwnd);
+                }
                 After::Menu { items, at, tab } => {
                     let Some(menu) = build_menu(&items) else {
                         continue;
@@ -5835,6 +5838,20 @@ fn set_caption(hwnd: HWND, dark: bool, colors: [Rgb; 3]) {
             let v = colorref(c);
             DwmSetWindowAttribute(hwnd, attr, (&raw const v).cast(), 4);
         }
+    }
+}
+
+/// Repaints the caption after a live theme change. Windows 10 keeps drawing the old caption
+/// after `DWMWA_USE_IMMERSIVE_DARK_MODE` changes until the frame is activated again (neither
+/// `SWP_FRAMECHANGED` nor `RDW_FRAME` does it; found by the real-desktop check of #20), so the
+/// default handling of `WM_NCACTIVATE` draws it once in the other state and back in the real one.
+fn repaint_caption(hwnd: HWND) {
+    // SAFETY: plain queries and the default window procedure on our own window.
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, WM_NCACTIVATE};
+        let active = usize::from(GetForegroundWindow() == hwnd);
+        DefWindowProcW(hwnd, WM_NCACTIVATE, 1 - active, 0);
+        DefWindowProcW(hwnd, WM_NCACTIVATE, active, 0);
     }
 }
 
