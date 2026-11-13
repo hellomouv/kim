@@ -311,6 +311,7 @@
         "path": { "type": "string", "minLength": 1 },
         "state": { "enum": ["default", "user", "invalid", "newer_version"] },
         "tray_icon": { "type": "boolean" },
+        "language": { "description": "`[general] language` (#99, SET-21): the tray menu's and the pin menu's language; `auto` follows the Windows display language.", "enum": ["auto", "en", "ko"] },
         "tray_clicks": {
           "description": "`[general] tray_left_click` and `tray_middle_click` (#99): what a left or middle click on the tray icon does; the right click is the menu.",
           "type": "object",

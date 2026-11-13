@@ -173,6 +173,11 @@ pub trait Shell {
     fn request_element(&mut self, req: ElementRequest);
     /// The overlay closed: no more element lookups (a lookup still running is abandoned).
     fn end_detection(&mut self);
+    /// #99 (`SET-21`): whether the Windows display language is Korean (`[general] language =
+    /// "auto"`). Test shells answer English, whatever the machine.
+    fn ui_korean(&self) -> bool {
+        false
+    }
     /// The window that has the keyboard focus now (the foreground window), as geometry and flags
     /// only (NOEUL-SEC-007), for `capture.window` and `noeul capture --window active` (Step 58);
     /// `None` when no window has focus. The debug-build test hook only ever names a test's own
@@ -628,7 +633,7 @@ pub struct PinOptions {
 }
 
 /// The menu's entries: implemented pin actions only (NOEUL-FR-114).
-const MENU: &[Option<(&str, &str)>] = &[
+pub(crate) const MENU: &[Option<(&str, &str)>] = &[
     Some(("pin.copy", "Copy")),
     Some(("pin.copy-text", "Copy text")),
     Some(("pin.save", "Save\u{2026}")),
@@ -3531,15 +3536,18 @@ impl<S: Shell> App<S> {
                         "pin.copy-text" => self.pins.content(id).is_some_and(|c| c.text.is_some()),
                         _ => true,
                     };
+                    let lang = self.lang();
                     let text = match *action {
                         "pin.group-new" => format!(
-                            "{text} (now in {})",
+                            "{} ({} {})",
+                            lang.tr(text),
+                            lang.tr("now in"),
                             self.pins.group(id).unwrap_or(crate::pins::DEFAULT_GROUP)
                         ),
                         "pin.opacity-down" if t.opacity != transform::OPACITY_FULL => {
-                            format!("{text} ({} %)", t.opacity)
+                            format!("{} ({} %)", lang.tr(text), t.opacity)
                         }
-                        _ => (*text).to_string(),
+                        _ => lang.tr(text),
                     };
                     PinMenuItem {
                         action: Some(action),
@@ -3569,7 +3577,7 @@ impl<S: Shell> App<S> {
                 if c.offered.contains(kind) && c.pasted != Some(*kind) {
                     items.push(PinMenuItem {
                         action: Some(action),
-                        label: format!("Pin clipboard as: {}", kind.title()),
+                        label: format!("{}: {}", self.lang().tr("Pin clipboard as"), kind.title()),
                         enabled: true,
                         checked: false,
                     });
@@ -3739,7 +3747,13 @@ impl<S: Shell> App<S> {
     }
 
     /// The tray menu as shown: each item with its text (groups by name) and check mark.
+    /// #99 (`SET-21`): the language the menus are shown in.
+    pub fn lang(&self) -> crate::lang::Lang {
+        crate::lang::Lang::of(self.settings.settings.language, self.shell.ui_korean())
+    }
+
     pub fn tray_entries(&self) -> Vec<crate::tray::Entry> {
+        let lang = self.lang();
         let groups = self.pins.groups();
         let current = self.pins.current_group();
         self.tray_menu()
@@ -3749,13 +3763,13 @@ impl<S: Shell> App<S> {
                     let name = groups.get(usize::from(i)).map_or("", |g| g.name.as_str());
                     crate::tray::Entry {
                         item,
-                        label: format!("Group: {name}"),
+                        label: format!("{}: {name}", lang.tr("Group")),
                         checked: name == current,
                     }
                 }
                 _ => crate::tray::Entry {
                     item,
-                    label: item.label().to_string(),
+                    label: lang.tr(item.label()),
                     checked: false,
                 },
             })
@@ -6726,6 +6740,46 @@ pub(crate) mod tests {
                 .exists()
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #99 (`SET-21`): `[general] language = "ko"` shows the tray menu and the pin menu in
+    /// Korean (keys and percentages kept); `en` and the test shell's `auto` stay English.
+    #[test]
+    fn the_menus_follow_the_language_setting() {
+        let mut a = keyed("menu-language");
+        a.shell.clipboard = Some((40, 30));
+        a.action("paste.float", None);
+        let id = PinId(1);
+        let tray = |a: &App<FakeShell>| {
+            a.tray_entries()
+                .into_iter()
+                .map(|e| e.label)
+                .collect::<Vec<_>>()
+        };
+        let pin_menu = |a: &mut App<FakeShell>| {
+            a.pin_event(PinEvent::Menu(id, Some((50, 60))));
+            a.take_pin_menu()
+                .unwrap()
+                .items
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            tray(&a).iter().any(|l| l == "Quit Noeul"),
+            "auto in a test shell: English"
+        );
+        assert_eq!(a.status()["settings"]["language"], "auto");
+        set_config(&mut a, &[("general.language", "ko")]);
+        assert_eq!(a.status()["settings"]["language"], "ko");
+        let t = tray(&a);
+        assert!(t.iter().any(|l| l == "노을 끝내기"), "{t:?}");
+        assert!(t.iter().any(|l| l == "클립보드 고정	F3"), "{t:?}");
+        let m = pin_menu(&mut a);
+        assert!(m.iter().any(|l| l.starts_with("복사")), "{m:?}");
+        assert!(m.iter().any(|l| l.starts_with("닫기	")), "keys kept: {m:?}");
+        set_config(&mut a, &[("general.language", "en")]);
+        assert!(pin_menu(&mut a).iter().any(|l| l.starts_with("Copy")));
     }
 
     #[test]

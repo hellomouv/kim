@@ -261,6 +261,17 @@ pub fn per_monitor_dpi_awareness() -> bool {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != 0 }
 }
 
+/// #99 (`SET-21`): whether the Windows display language is Korean (primary language 0x12).
+pub fn ui_language_is_korean() -> bool {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetUserDefaultUILanguage() -> u16;
+    }
+    // SAFETY: no arguments, no preconditions.
+    let id = unsafe { GetUserDefaultUILanguage() };
+    id & 0x3FF == 0x12
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

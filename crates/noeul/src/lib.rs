@@ -52,6 +52,7 @@ pub mod gif;
 pub mod hotkeys;
 pub mod html;
 pub mod ipc;
+pub mod lang;
 pub mod output;
 pub mod overlay;
 pub mod paste;

@@ -216,11 +216,41 @@ impl TrayAction {
     }
 }
 
+/// #99 (`SET-21`): the menus' language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+    /// The Windows display language (Korean when it is Korean, else English).
+    Auto,
+    En,
+    Ko,
+}
+
+impl Language {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Language::Auto => "auto",
+            Language::En => "en",
+            Language::Ko => "ko",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Language> {
+        Some(match s {
+            "auto" => Language::Auto,
+            "en" => Language::En,
+            "ko" => Language::Ko,
+            _ => return None,
+        })
+    }
+}
+
 /// Effective settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     /// Show the notification-area icon (NOEUL-FR-004; on by default).
     pub tray_icon: bool,
+    /// #99 (`SET-21`): the language of the tray menu and the pin menu.
+    pub language: Language,
     /// #99 (`SET-06`): the tray icon's left and middle clicks (the right click is the menu).
     pub tray_left_click: TrayAction,
     pub tray_middle_click: TrayAction,
@@ -322,6 +352,7 @@ impl Default for Settings {
     fn default() -> Settings {
         Settings {
             tray_icon: true,
+            language: Language::Auto,
             tray_left_click: TrayAction::Capture,
             tray_middle_click: TrayAction::PinClipboard,
             keyboard_help: KeyboardHelp::FirstRun,
@@ -378,6 +409,7 @@ impl Loaded {
             "path": self.path.display().to_string(),
             "state": self.state.as_str(),
             "tray_icon": s.tray_icon,
+            "language": s.language.as_str(),
             "tray_clicks": { "left": s.tray_left_click.as_str(), "middle": s.tray_middle_click.as_str() },
             "keyboard_help": s.keyboard_help.as_str(),
             "quick_save_folder": s.quick_save_folder.as_ref().map(|p| p.display().to_string()),
@@ -467,6 +499,12 @@ const KEYS: &[Key] = &[
         name: "tray_icon",
         takes: "true or false",
         default: "true",
+    },
+    Key {
+        section: "general",
+        name: "language",
+        takes: "\"auto\", \"en\" or \"ko\"",
+        default: "\"auto\"",
     },
     Key {
         section: "general",
@@ -679,6 +717,9 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
     let s = v.as_str();
     match (section, name) {
         ("general", "tray_icon") => settings.tray_icon = v.as_bool().ok_or(())?,
+        ("general", "language") => {
+            settings.language = s.and_then(Language::parse).ok_or(())?;
+        }
         ("general", "tray_left_click") => {
             settings.tray_left_click = s.and_then(TrayAction::parse).ok_or(())?;
         }

@@ -257,7 +257,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `SET-18` | Bind arbitrary commands to hotkeys (Pro) | P, C | Shortcuts serve Noeul's actions; automation belongs to Ddalgak and scripts | not intended | D-10 | — | — | — |
 | `SET-19` | Process priority, GPU acceleration switch | A | No priority boost; rendering choice is internal | not intended | D-16 | — | — | — |
 | `SET-20` | Update checks | L | Noeul never checks; Kim shows updates on request | not intended | D-15 | — | — | — |
-| `SET-21` | Interface translations | H | English and Korean | planned | NOEUL-FR-104 | N5 | M | — |
+| `SET-21` | Interface translations | H | #99: `[general] language` (`auto`: the Windows display language, `en`, `ko`; in `config show`) translates the tray menu and the pin menu into Korean (shortcut keys and values kept). Missing: the overlay (toolbar tips, readouts, help), the settings window, messages and the CLI stay English | partial | NOEUL-FR-104 | N5 | T, M | T: `crates/noeul/src/lang.rs` tests::every_menu_text_is_translated, auto_follows_the_display_language_and_unknown_texts_stay_english; T: `crates/noeul/src/app.rs` tests::the_menus_follow_the_language_setting; M: 2026-11-13 Windows 10 22H2 (Korean display language), `auto`: a pin's right-click menu showed 복사, 저장…, 주석 달기, 확대 … 닫기, 완전히 닫기 with their keys |
 | `SET-22` | Snipaste's double-click-copies gesture as an option | — (Noeul addition) | Opt-in "Snipaste-style gestures" preset. Step 51: `[gestures] double_click`/`middle_click` and `noeul config set gestures.preset snipaste` (double-click and `Enter` copy, `Ctrl+T` and middle-click pin, written to `config.toml` and `hotkeys.json`, named in `hotkeys list` and `config show`, undone by `config reset gestures`); missing: the settings window (N5) | partial | NOEUL-FR-024 | N5 | T (FLOW-24) | T: `crates/noeul/src/app.rs` gesture_settings_and_the_snipaste_style_preset_reach_the_next_overlay; T: `crates/noeul/tests/double_click.rs` the_gesture_setting_and_the_preset_reach_the_running_instance |
 
 ## 11. Command line (`CLI`)
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 9 |
-| `partial` | 113 |
-| `planned` | 25 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 114 |
+| `planned` | 24 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -338,7 +338,7 @@ picture.
 | 7. Floating pins (`PIN`) | 3 | 21 | 4 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 0 | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 0 | 5 | 0 | 1 | 6 |
-| 10. Settings (`SET`) | 0 | 10 | 6 | 6 | 22 |
+| 10. Settings (`SET`) | 0 | 11 | 5 | 6 | 22 |
 | 11. Command line (`CLI`) | 0 | 5 | 3 | 1 | 9 |
 | 12. Application (`APP`) | 0 | 1 | 3 | 3 | 7 |
 | 13. Noeul additions (`ADD`) | 0 | 2 | 5 | 0 | 7 |
@@ -374,6 +374,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-08` (free-size thumbnail by right-drag) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-13` moves to `partial`: per-tool colours. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-14` (a right-click marks the detected element) is `supported` after the real-desktop check. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-21` moves to `partial`: Korean tray and pin menus (`[general] language`). |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

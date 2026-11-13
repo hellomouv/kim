@@ -348,6 +348,10 @@ impl Shell for WinShell {
         }
     }
 
+    fn ui_korean(&self) -> bool {
+        crate::lang::ui_is_korean()
+    }
+
     fn end_detection(&mut self) {
         self.uia = None;
     }
