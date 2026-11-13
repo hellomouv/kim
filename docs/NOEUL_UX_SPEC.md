@@ -640,8 +640,9 @@ Step 52 ships detection, the magnifier, the precision keys, snapping and the rec
    pointer keys) it sets the first corner at the pointer — the rubber band then follows the pointer
    (phase `marking`) — and the next `Space` or a click sets the opposite corner. A right-click
    undoes the mark (a previous selection comes back); `Esc` cancels the capture.
-5. **Acceleration.** A held key moves 1 pixel for the press and nine repeats, then 2, 5 and 10 per
-   repeat: the pointer keys, the arrows and `Ctrl`/`Shift`+arrows.
+5. **Acceleration.** A held key moves 1 pixel for the press and its first nine repeats, 2 pixels
+   per repeat for the next ten, 5 for the ten after, then 10: the pointer keys, the arrows and
+   `Ctrl`/`Shift`+arrows.
 6. **Snapping.** While dragging, marking or resizing with the mouse, a moving edge within 6
    logical pixels of a monitor edge or a detected window's edge snaps to it. Holding `Alt` turns it
    off for that movement; with detection off only monitor edges remain.
@@ -703,6 +704,18 @@ Evidence column):
     hover a window that is not DPI-aware and one that is: the highlight fits each window exactly;
     the magnifier's cells are larger and it shows the logical position "x, y at 150 %".
 12. Hover Noeul's own pins: they are detected like other windows.
+
+**Result (2026-11-13, real desktop, ADR 0088; Windows 10 22H2, 100 %, 150 % checked in §4.7):**
+detection over the test's own Notepad offers its visible frame (1207, 300, 886×593, without the
+invisible resize border) and a click without a drag selects exactly that; element mode (`E`) offers
+the text area (1208, 351, 884×518) through UI Automation; a test window with `WDA_MONITOR` is
+reported `protected`, never offered and not selected by a click, and the magnifier shows its
+pixels black as Windows captures them; the magnifier's HEX/RGB matched the screen; `D`×5 and `S`×3
+moved the real cursor 5 and 3 pixels, `Space` started marking and the second `Space` selected
+exactly 605, 903, 11×11; a held key accelerated as above (1 press + 14 repeats = 20 px, the arrows
+1 + 12 = 16 px); a drag ending 4 px before Notepad's edge snapped to it and did not with `Alt`;
+`Comma`/`Period` walked the rectangle history; `M` turned the magnifier off. The physical-key
+check needs scan codes in the injected input, as a real keyboard sends them.
 
 ### 4.9 Step 56: annotation, its rules and the manual check
 
