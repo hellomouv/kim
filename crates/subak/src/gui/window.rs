@@ -196,6 +196,8 @@ const CMD_PIN: u32 = 30;
 const CMD_DUPLICATE: u32 = 31;
 const CMD_RESTART: u32 = 32;
 const CMD_COLOR: u32 = 500;
+/// #98 T4: `CMD_SWITCH + k`: switch the tab to the `k`-th profile in place (`SHELL-19`).
+const CMD_SWITCH: u32 = 600;
 /// The terminal font families the settings menu offers (the installed ones are shown).
 const MENU_FONTS: [&str; 7] = [
     "Cascadia Mono",
@@ -2954,6 +2956,33 @@ impl App {
         }
     }
 
+    /// #98 T4 (`SHELL-21`): copies the folder the shown pane's shell reported last (OSC 7 or
+    /// 9;9, seen by the window, else by the Host), or says that none is known.
+    fn copy_path(&mut self) {
+        let path = self
+            .pane
+            .screen()
+            .cwd()
+            .map(String::from)
+            .or_else(|| self.model.terminal().and_then(|t| t.cwd.clone()));
+        let Some(path) = path else {
+            self.notice = Some(
+                "No folder is known for this pane: its shell does not report it (shell integration, OSC 7)"
+                    .into(),
+            );
+            self.rebuild_banner();
+            return;
+        };
+        match self.clipboard.write(&path, None) {
+            Ok(()) => self.toast(format!("Copied {path}")),
+            Err(e) => {
+                self.notice = Some(format!("Nothing was copied: {e}"));
+                self.rebuild_banner();
+            }
+        }
+        self.event(&json!({"event": "copied_path", "path": path}));
+    }
+
     /// #98 T1 (`CORE-63`): opens the command palette over the pane: every window action (with
     /// the keys that run it now), every Terminal of this window (hidden ones too) and every
     /// shell profile, filtered as the user types.
@@ -4506,6 +4535,7 @@ impl App {
             // #98 T1 (`CORE-21`): another window of the same Host, with a new Terminal.
             Action::GuiNewWindow => self.new_window(),
             Action::CommandPalette => self.open_palette(),
+            Action::CopyPath => self.copy_path(),
             Action::TabColor => {
                 let i = self.model.active();
                 self.open_menu(i, None);
@@ -4721,7 +4751,67 @@ impl App {
                 )
             })
             .collect();
+        // #98 T4 (`SHELL-16`): profiles of a group go into its submenu (the tree), the others
+        // stay in the list.
+        let groups: Vec<String> = {
+            let mut g: Vec<String> = self
+                .settings
+                .all_profiles()
+                .iter()
+                .take(64)
+                .filter_map(|p| p.group.clone())
+                .collect();
+            g.dedup();
+            let mut seen = Vec::new();
+            g.retain(|x| {
+                let new = !seen.contains(x);
+                seen.push(x.clone());
+                new
+            });
+            g
+        };
+        let all = self.settings.all_profiles();
+        let mut tree: Vec<MenuItem> = Vec::new();
+        let mut loose: Vec<MenuItem> = Vec::new();
+        for (k, item) in profiles.into_iter().enumerate() {
+            if all.get(k).and_then(|p| p.group.as_ref()).is_none() {
+                loose.push(item);
+            }
+        }
+        for g in &groups {
+            let members: Vec<MenuItem> = all
+                .iter()
+                .enumerate()
+                .take(64)
+                .filter(|(_, p)| p.group.as_deref() == Some(g.as_str()))
+                .map(|(k, p)| MenuItem::cmd(CMD_PROFILE + k as u32, p.name.clone(), connected))
+                .collect();
+            tree.push(MenuItem::sub(format!("New Terminal: {g}"), members));
+        }
+        loose.extend(tree);
+        let profiles = loose;
         items.splice(at_new..at_new, profiles);
+        // #98 T4 (`SHELL-19`): switch the tab to another profile in place.
+        if let Some(t) = tab.and_then(|i| self.model.tabs().get(i))
+            && !t.gone()
+            && !t.stored()
+            && let Some(at) = items.iter().position(|i| i.id == CMD_RESTART)
+        {
+            let switch: Vec<MenuItem> = self
+                .settings
+                .all_profiles()
+                .iter()
+                .enumerate()
+                .take(64)
+                .map(|(k, p)| MenuItem::cmd(CMD_SWITCH + k as u32, p.name.clone(), connected))
+                .collect();
+            if !switch.is_empty() {
+                items.insert(
+                    at + 1,
+                    MenuItem::sub("Switch to profile (asks when busy)", switch),
+                );
+            }
+        }
         // #98 T1 (`CORE-24`): the tab's colour.
         if let Some(t) = tab.and_then(|i| self.model.tabs().get(i))
             && let Some(at) = items.iter().position(|i| i.id == CMD_RESTART)
@@ -4785,6 +4875,21 @@ impl App {
                     CMD_DUPLICATE => Action::TabDuplicate,
                     _ => Action::TabRestart,
                 });
+            }
+            c if (CMD_SWITCH..CMD_SWITCH + 64).contains(&c) => {
+                focus_tab(self);
+                let p = self
+                    .settings
+                    .all_profiles()
+                    .get((c - CMD_SWITCH) as usize)
+                    .cloned();
+                if let Some(p) = p {
+                    self.event(&json!({"event": "switch_profile", "profile": p.name}));
+                    let fx = self
+                        .model
+                        .duplicate_with(true, false, Some(&p.create_params()));
+                    self.apply(fx);
+                }
             }
             c if (CMD_COLOR..=CMD_COLOR + tabs::TAB_COLORS.len() as u32).contains(&c) => {
                 let id = tab

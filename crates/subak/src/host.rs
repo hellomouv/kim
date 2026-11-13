@@ -3614,6 +3614,23 @@ impl Host {
             }
             (t.id.clone(), t.name.display.clone(), params)
         };
+        // #98 T4 (`SHELL-19`): another profile's program, folder and environment instead.
+        if !p["command"].is_null() || !p["command_line"].is_null() {
+            if let Some(o) = params.as_object_mut() {
+                o.remove("command");
+                o.remove("command_line");
+            }
+            for k in ["command", "command_line", "cwd", "env"] {
+                if !p[k].is_null() {
+                    params[k] = p[k].clone();
+                }
+            }
+            if p["cwd"].is_null()
+                && let Some(o) = params.as_object_mut()
+            {
+                o.remove("cwd");
+            }
+        }
         if restart {
             self.end_request(&json!({"target": tid, "force": force}), Op::Kill)?;
             params["name"] = json!(name);

@@ -3725,3 +3725,75 @@ fn tab_colours_from_the_tab_menu() {
         "EVIDENCE tab colours: the tab menu has Pin/Duplicate/Restart/Tab colour; teal drawn and saved, None removed it"
     );
 }
+
+/// #98 T4 (`SHELL-21`, `SHELL-19`, `SHELL-16`): `clipboard.copy-path` copies the pane's folder;
+/// "Switch to profile" restarts the tab with another profile's program under the same name; a
+/// profile group is a submenu of the New Terminal list.
+#[test]
+fn copy_path_switch_profile_and_profile_groups() {
+    const CMD_SWITCH: u32 = 600;
+    let host = Host::start("gui-t4", &["--no-shell"]);
+    let ep = host.ep.clone();
+    let dir = sandbox("t4-cwd");
+    let (code, doc) = sub(
+        &ep,
+        &[
+            "new",
+            "one",
+            "--size",
+            "100x30",
+            "--cwd",
+            dir.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{doc}");
+    let old = doc["data"]["terminal"]["id"].as_str().unwrap().to_string();
+    let appdata = sandbox("t4");
+    let cfg = appdata.join("mouv").join("subak");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("config.toml"),
+        "config_version = 1\n\n[[profiles]]\nname = \"switched\"\nprogram = \"cmd.exe\"\nargs = [\"/k\", \"echo switched-in-pla^ce\"]\ngroup = \"Work\"\n",
+    )
+    .unwrap();
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let (code, doc) = run_env(
+        &["hotkeys", "set", "clipboard.copy-path", "Ctrl+Shift+F4"],
+        &env,
+    );
+    assert_eq!(code, 0, "{doc}");
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    // Copy the folder: the one the Terminal started in (the shell reports none).
+    let d = gui.cmd(&json!({"cmd": "key", "vk": 0x73, "ctrl": true, "shift": true}));
+    assert_eq!(
+        d["clipboard"].as_str().map(str::to_lowercase),
+        Some(dir.display().to_string().to_lowercase()),
+        "{}",
+        d["clipboard"]
+    );
+    // The group `Work` is a submenu; the tab menu offers switching to `switched`.
+    gui.cmd(&json!({"cmd": "menu", "tab": 0}));
+    let menu = gui
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .rfind(|v| v["event"] == "menu")
+        .unwrap();
+    let text = menu["items"].to_string();
+    assert!(text.contains("New Terminal: Work"), "{text}");
+    assert!(text.contains("Switch to profile"), "{text}");
+    // Switch in place: a new Terminal named `one` runs the profile's program.
+    gui.cmd(&json!({"cmd": "menu", "tab": 0, "id": CMD_SWITCH}));
+    wait_for("the profile runs in `one`", || {
+        capture(&ep, "one").contains("switched-in-place")
+    });
+    let d = gui.until("one switched", |d| {
+        d["phase"] == "attached" && shown(d) == "one" && d["terminal"]["id"] != old.as_str()
+    });
+    assert_eq!(tab_names(&d), ["one"]);
+    println!(
+        "EVIDENCE T4: copied {}, `Work` is a submenu, `one` switched to the profile `switched` in place",
+        dir.display()
+    );
+}

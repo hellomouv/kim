@@ -159,11 +159,13 @@ pub enum Action {
     CommandPalette,
     /// #98 T1.
     TabColor,
+    /// #98 T4.
+    CopyPath,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 113] = [
+    pub const ALL: [(Action, &'static str); 114] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -283,6 +285,7 @@ impl Action {
         (Action::GuiNewWindow, "gui.new-window"),
         (Action::CommandPalette, "command.palette"),
         (Action::TabColor, "tab.color"),
+        (Action::CopyPath, "clipboard.copy-path"),
     ];
 
     pub fn from_id(id: &str) -> Option<Action> {

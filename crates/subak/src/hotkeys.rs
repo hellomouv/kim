@@ -155,6 +155,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "gui.new-window",
     "command.palette",
     "tab.color",
+    "clipboard.copy-path",
 ];
 
 /// The compiled-in manifest.

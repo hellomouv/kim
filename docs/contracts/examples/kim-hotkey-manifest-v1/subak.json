@@ -126,6 +126,7 @@
     { "id": "tab.restart", "title": "Restart the Terminal (asks when busy)", "scopes": ["app"], "defaults": [] },
     { "id": "gui.new-window", "title": "New window (another client of the same Host, with a new Terminal)", "scopes": ["app"], "defaults": ["Ctrl+Shift+N"] },
     { "id": "command.palette", "title": "Command palette (every action, Terminal and profile, filtered as you type)", "scopes": ["app"], "defaults": ["Ctrl+Shift+P"] },
-    { "id": "tab.color", "title": "Tab menu with its colour (and pin, duplicate, restart)", "scopes": ["app"], "defaults": [] }
+    { "id": "tab.color", "title": "Tab menu with its colour (and pin, duplicate, restart)", "scopes": ["app"], "defaults": [] },
+    { "id": "clipboard.copy-path", "title": "Copy the pane's current folder (as its shell reports it)", "scopes": ["app"], "defaults": [] }
   ]
 }

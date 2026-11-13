@@ -154,6 +154,7 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         "tab.duplicate",
         "tab.restart",
         "tab.color",
+        "clipboard.copy-path",
     ] {
         assert!(keys_of(&list, id).is_empty(), "{id}");
     }

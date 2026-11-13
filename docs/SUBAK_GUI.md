@@ -214,6 +214,11 @@ Keys go to the program, in the order of ADR 0009:
    and a "Tab colour" submenu (none, red, orange, yellow, green, teal, blue, purple, pink): a
    coloured tab starts with a bar in its colour (the name stays the signal), kept in
    `gui.json` (`tab_colors`, by Terminal id).
+   #98 T4: the tab menu's "Switch to profile" restarts the shown one-pane Terminal with another
+   profile's program, folder and environment under the same name (asking first when it is
+   busy); profiles with a `group` are a submenu of the New Terminal list ("New Terminal: Work",
+   "New Terminal: Detected"); `clipboard.copy-path` (no default) copies the folder the pane's
+   shell reported last (OSC 7 or 9;9, else the folder it started in), or says none is known.
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,

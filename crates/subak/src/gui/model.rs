@@ -1169,6 +1169,17 @@ impl Model {
     /// #98 T1 (`CORE-12`, `CORE-17`): duplicates the shown Terminal (a new one running the same
     /// program in the same folder), or restarts it (`restart`; `force` once the user agreed).
     pub fn duplicate(&mut self, restart: bool, force: bool) -> Vec<Effect> {
+        self.duplicate_with(restart, force, None)
+    }
+
+    /// #98 T4 (`SHELL-19`): as [`Model::duplicate`], with a profile's `command`, `cwd` and `env`
+    /// instead of the Terminal's own (`restart`: the switch in place).
+    pub fn duplicate_with(
+        &mut self,
+        restart: bool,
+        force: bool,
+        extra: Option<&Value>,
+    ) -> Vec<Effect> {
         if !self.connected {
             return vec![Effect::Notice(
                 "Not connected to the Subak Host; nothing was started".into(),
@@ -1184,9 +1195,17 @@ impl Model {
                 if restart { "restart" } else { "duplicate" }
             ))];
         }
+        let mut params = json!({"target": t.id, "restart": restart, "force": force});
+        if let Some(Value::Object(x)) = extra {
+            for (k, v) in x {
+                if !v.is_null() {
+                    params[k] = v.clone();
+                }
+            }
+        }
         vec![self.request(
             "terminal.duplicate",
-            json!({"target": t.id, "restart": restart, "force": force}),
+            params,
             Pending::Duplicate {
                 id: t.id.clone(),
                 name: t.name,
