@@ -238,6 +238,11 @@ pub struct TerminalPrefs {
     pub copy_on_select: bool,
     /// `Ctrl+C` copies when text is selected, else it interrupts the program as always.
     pub smart_ctrl_c: bool,
+    /// #98 T2 (`CORE-61`, Tabby `altIsMeta`): Alt with a character sends `ESC` first (on by
+    /// default, as in Windows Terminal); off: the character alone.
+    pub alt_is_meta: bool,
+    /// #98 T2 (`CORE-62`): what Backspace sends.
+    pub backspace: subak_term::input::BackspaceMode,
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
@@ -326,6 +331,8 @@ impl Default for Settings {
                 default_profile: String::new(),
                 copy_on_select: false,
                 smart_ctrl_c: false,
+                alt_is_meta: true,
+                backspace: subak_term::input::BackspaceMode::Del,
                 claude_indicators: true,
                 claude_animation: true,
                 detect_shells: true,
@@ -433,6 +440,8 @@ impl Settings {
             ("terminal", "default_profile") => json!(t.default_profile),
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
+            ("terminal", "alt_is_meta") => json!(t.alt_is_meta),
+            ("terminal", "backspace") => json!(t.backspace.as_str()),
             ("terminal", "claude_indicators") => json!(t.claude_indicators),
             ("terminal", "claude_animation") => json!(t.claude_animation),
             ("terminal", "detect_shells") => json!(t.detect_shells),
@@ -645,6 +654,18 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "alt_is_meta",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "terminal",
+        name: "backspace",
+        takes: "del, ctrl-h or delete",
+        kind: Kind::Text,
+    },
+    Key {
+        section: "terminal",
         name: "claude_indicators",
         takes: "true or false",
         kind: Kind::Bool,
@@ -744,6 +765,10 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         }
         ("terminal", "copy_on_select") => t.copy_on_select = flag()?,
         ("terminal", "smart_ctrl_c") => t.smart_ctrl_c = flag()?,
+        ("terminal", "alt_is_meta") => t.alt_is_meta = flag()?,
+        ("terminal", "backspace") => {
+            t.backspace = subak_term::input::BackspaceMode::parse(text()?).ok_or(())?;
+        }
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
@@ -2733,6 +2758,26 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
             p.problems
                 .iter()
                 .any(|x| x.message.contains("beyond loopback"))
+        );
+    }
+
+    /// #98 T2 (`CORE-61`, `CORE-62`): Alt as Meta and the Backspace mode are settings with the
+    /// Windows Terminal defaults.
+    #[test]
+    fn alt_as_meta_and_the_backspace_mode_are_settings() {
+        use subak_term::input::BackspaceMode;
+        let mut s = Settings::default();
+        assert!(s.terminal.alt_is_meta);
+        assert_eq!(s.terminal.backspace, BackspaceMode::Del);
+        set_value(&mut s, "terminal.alt_is_meta", "false").unwrap();
+        set_value(&mut s, "terminal.backspace", "ctrl-h").unwrap();
+        assert!(!s.terminal.alt_is_meta);
+        assert_eq!(s.terminal.backspace, BackspaceMode::CtrlH);
+        assert!(set_value(&mut s, "terminal.backspace", "bs").is_err());
+        assert_eq!(
+            s.terminal.backspace,
+            BackspaceMode::CtrlH,
+            "a refused value changes nothing"
         );
     }
 }

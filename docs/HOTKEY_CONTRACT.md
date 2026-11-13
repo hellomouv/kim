@@ -832,6 +832,12 @@ delete question owns every key while it is open. `gui.show` stays unshipped (no 
 registration yet); the floating UI is reached by a click, the tray (`Win+B`), or
 `subak-gui --manager`.
 
+**#98 T2 (implemented, 2026-11-13).** The `terminal` context gains `terminal.insert-newline`
+(`Alt+Shift+Enter`: a line feed, a new line without running) and the line-editing actions
+`line.home`, `line.end`, `line.previous-word`, `line.next-word`, `line.delete-previous-word` and
+`line.delete-line` (no default): each sends the keys of the program in the pane (Windows keys to
+Command Prompt and PowerShell, readline keys to everything else).
+
 **Step 19 (implemented).** The window's search, selection and clipboard actions join the
 `terminal` context, in the final and the shipped manifest: `clipboard.copy-html` and
 `clipboard.paste-one-line` (no default; the pane menu), `selection.all` `Ctrl+Shift+A`,

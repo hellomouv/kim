@@ -2722,6 +2722,12 @@ impl App {
         if bytes.is_empty() {
             return;
         }
+        // The test window says which bytes it sent (#98 T2: what a key or an action encodes
+        // to, which the console's line input would hide from the program).
+        if self.opts.test {
+            let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+            self.event(&json!({"event": "input", "hex": hex}));
+        }
         if let (Some(stream), Some(l)) = (self.model.input_stream(), &self.link) {
             l.input(stream, bytes);
         }
@@ -3472,6 +3478,17 @@ impl App {
             return;
         }
         let bytes = match keys::char_key(c, alt, held) {
+            // #98 T2: with Alt as Meta off, Alt with a character sends the character alone.
+            Typed::Key(k @ Key::Char(_), m) if !self.settings.terminal.alt_is_meta => {
+                self.pane.key(k, Mods { alt: false, ..m })
+            }
+            // #98 T2: the Backspace setting (the key still returns the view to the live screen).
+            Typed::Key(Key::Backspace, m)
+                if self.settings.terminal.backspace != subak_term::input::BackspaceMode::Del =>
+            {
+                self.pane.key(Key::Backspace, m);
+                subak_term::input::backspace_bytes(self.settings.terminal.backspace, m)
+            }
             Typed::Key(k, m) => self.pane.key(k, m),
             Typed::Raw(b) => {
                 self.pane.scroll_to_bottom();
@@ -3733,6 +3750,40 @@ impl App {
             Action::ScrollBottom => {
                 self.pane.scroll_to_bottom();
                 self.redraw();
+            }
+            // #98 T2: a new line without running it, and the line-editing keys for the program.
+            Action::InsertNewline
+            | Action::LineHome
+            | Action::LineEnd
+            | Action::LinePreviousWord
+            | Action::LineNextWord
+            | Action::LineDeletePreviousWord
+            | Action::LineDeleteLine => {
+                if matches!(self.model.phase, Phase::Attached { .. }) {
+                    use subak_term::input::{self as ti, LineEdit, LineStyle};
+                    let program = self
+                        .model
+                        .active()
+                        .and_then(|i| self.model.tabs().get(i))
+                        .map(|t| t.program.clone())
+                        .unwrap_or_default();
+                    let style = LineStyle::of_program(&program);
+                    let bytes: &[u8] = match a {
+                        Action::InsertNewline => ti::INSERT_NEWLINE,
+                        Action::LineHome => ti::line_edit(LineEdit::Home, style),
+                        Action::LineEnd => ti::line_edit(LineEdit::End, style),
+                        Action::LinePreviousWord => ti::line_edit(LineEdit::PreviousWord, style),
+                        Action::LineNextWord => ti::line_edit(LineEdit::NextWord, style),
+                        Action::LineDeletePreviousWord => {
+                            ti::line_edit(LineEdit::DeletePreviousWord, style)
+                        }
+                        _ => ti::line_edit(LineEdit::DeleteLine, style),
+                    };
+                    self.pane.scroll_to_bottom();
+                    self.pane.clear_selection();
+                    self.input(bytes);
+                    self.redraw();
+                }
             }
             // The Terminal manager's actions (context `manager`) are never active in a window.
             Action::ManagerOpen

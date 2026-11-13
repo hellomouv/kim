@@ -137,6 +137,13 @@ pub const IMPLEMENTED: &[&str] = &[
     "manager.search",
     "manager.pin",
     "manager.close",
+    "terminal.insert-newline",
+    "line.home",
+    "line.end",
+    "line.previous-word",
+    "line.next-word",
+    "line.delete-previous-word",
+    "line.delete-line",
 ];
 
 /// The compiled-in manifest.

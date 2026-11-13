@@ -123,11 +123,25 @@ pub enum Action {
     BufferList,
     BufferDelete,
     CopyPageUp,
+    /// #98 T2.
+    InsertNewline,
+    /// #98 T2.
+    LineHome,
+    /// #98 T2.
+    LineEnd,
+    /// #98 T2.
+    LinePreviousWord,
+    /// #98 T2.
+    LineNextWord,
+    /// #98 T2.
+    LineDeletePreviousWord,
+    /// #98 T2.
+    LineDeleteLine,
 }
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 95] = [
+    pub const ALL: [(Action, &'static str); 102] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -229,6 +243,13 @@ impl Action {
         (Action::ManagerSearch, "manager.search"),
         (Action::ManagerPin, "manager.pin"),
         (Action::ManagerClose, "manager.close"),
+        (Action::InsertNewline, "terminal.insert-newline"),
+        (Action::LineHome, "line.home"),
+        (Action::LineEnd, "line.end"),
+        (Action::LinePreviousWord, "line.previous-word"),
+        (Action::LineNextWord, "line.next-word"),
+        (Action::LineDeletePreviousWord, "line.delete-previous-word"),
+        (Action::LineDeleteLine, "line.delete-line"),
     ];
 
     pub fn from_id(id: &str) -> Option<Action> {

@@ -87,6 +87,20 @@
       },
       {
         "default": true,
+        "key": "terminal.alt_is_meta",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
+      },
+      {
+        "default": "del",
+        "key": "terminal.backspace",
+        "source": "default",
+        "takes": "del, ctrl-h or delete",
+        "value": "del"
+      },
+      {
+        "default": true,
         "key": "terminal.claude_indicators",
         "source": "default",
         "takes": "true or false",

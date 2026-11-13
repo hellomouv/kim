@@ -159,6 +159,111 @@ pub fn encode_key(key: Key, mods: Mods, modes: &ModeState) -> Vec<u8> {
     out
 }
 
+/// #98 T2 (`CORE-62`, Tabby's input `backspace`): what the Backspace key sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackspaceMode {
+    /// DEL (0x7F), BS with Ctrl: the xterm and Windows Terminal default.
+    #[default]
+    Del,
+    /// BS (`Ctrl+H`, 0x08), DEL with Ctrl: for hosts that expect `^H` (some SSH and serial).
+    CtrlH,
+    /// The Delete key's sequence (`CSI 3 ~`).
+    Delete,
+}
+
+impl BackspaceMode {
+    pub const ALL: [Self; 3] = [Self::Del, Self::CtrlH, Self::Delete];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Del => "del",
+            Self::CtrlH => "ctrl-h",
+            Self::Delete => "delete",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.as_str() == s)
+    }
+}
+
+/// #98 T2: the Backspace key's bytes in `mode` (an `ESC` prefix for Alt, as for every key).
+pub fn backspace_bytes(mode: BackspaceMode, mods: Mods) -> Vec<u8> {
+    let mut out = Vec::new();
+    if mods.alt {
+        out.push(0x1b);
+    }
+    match mode {
+        BackspaceMode::Del => out.push(if mods.ctrl { 0x08 } else { 0x7f }),
+        BackspaceMode::CtrlH => out.push(if mods.ctrl { 0x7f } else { 0x08 }),
+        BackspaceMode::Delete => out.extend_from_slice(b"\x1b[3~"),
+    }
+    out
+}
+
+/// #98 T2 (`CORE-57`): a line-editing action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEdit {
+    Home,
+    End,
+    PreviousWord,
+    NextWord,
+    DeletePreviousWord,
+    DeleteLine,
+}
+
+/// #98 T2: how the program in the pane edits its line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineStyle {
+    /// Command Prompt and PowerShell (PSReadLine's Windows mode): the keys themselves.
+    Windows,
+    /// readline and the like (bash, zsh, fish, WSL, SSH sessions): the Emacs control keys.
+    Readline,
+}
+
+impl LineStyle {
+    /// From the pane's program: `cmd`, `powershell` and `pwsh` edit the Windows way, every
+    /// other program (a Unix shell, `wsl`, `ssh`…) the readline way.
+    pub fn of_program(program: &str) -> LineStyle {
+        let base = program
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or(program)
+            .to_ascii_lowercase();
+        let base = base.strip_suffix(".exe").unwrap_or(&base);
+        if matches!(base, "cmd" | "powershell" | "pwsh") {
+            LineStyle::Windows
+        } else {
+            LineStyle::Readline
+        }
+    }
+}
+
+/// #98 T2: the bytes of a line-editing action for the program's style.
+pub fn line_edit(op: LineEdit, style: LineStyle) -> &'static [u8] {
+    match (style, op) {
+        (LineStyle::Windows, LineEdit::Home) => b"\x1b[H",
+        (LineStyle::Windows, LineEdit::End) => b"\x1b[F",
+        (LineStyle::Windows, LineEdit::PreviousWord) => b"\x1b[1;5D",
+        (LineStyle::Windows, LineEdit::NextWord) => b"\x1b[1;5C",
+        // Ctrl+Backspace (PSReadLine BackwardKillWord).
+        (LineStyle::Windows, LineEdit::DeletePreviousWord) => b"\x08",
+        // Escape clears the line in both Command Prompt and PSReadLine.
+        (LineStyle::Windows, LineEdit::DeleteLine) => b"\x1b",
+        (LineStyle::Readline, LineEdit::Home) => b"\x01",
+        (LineStyle::Readline, LineEdit::End) => b"\x05",
+        (LineStyle::Readline, LineEdit::PreviousWord) => b"\x1bb",
+        (LineStyle::Readline, LineEdit::NextWord) => b"\x1bf",
+        (LineStyle::Readline, LineEdit::DeletePreviousWord) => b"\x17",
+        // To the end, then kill back to the start: the whole line.
+        (LineStyle::Readline, LineEdit::DeleteLine) => b"\x05\x15",
+    }
+}
+
+/// #98 T2 (`CORE-58`): a new line in the input without running it (a line feed; Enter sends a
+/// carriage return), for multi-line prompts.
+pub const INSERT_NEWLINE: &[u8] = b"\n";
+
 /// The C0 control Ctrl with a character sends (`Ctrl+A` = 0x01 … `Ctrl+Z` = 0x1A, `Ctrl+@` and
 /// `Ctrl+Space` = NUL, `Ctrl+[` = ESC, `Ctrl+\` `]` `^` `_`, the VT220 digits `Ctrl+2`…`Ctrl+8`,
 /// `Ctrl+?` = DEL), or `None` when Ctrl does not change the character.

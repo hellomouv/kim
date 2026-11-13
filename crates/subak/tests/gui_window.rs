@@ -2977,3 +2977,100 @@ fn claude_marks_move_per_terminal_only_while_shown() {
         "turning marks cost {cpu_anim:.1} ms CPU in 10 s"
     );
 }
+
+/// #98 T2 (`CORE-57`, `CORE-58`, `CORE-61`, `CORE-62`): Alt+Shift+Enter inserts a new line,
+/// bound line-editing actions send the readline keys to a non-Windows program, and the
+/// Backspace and Alt-as-Meta settings change what the keys send (read again on focus).
+#[test]
+fn line_editing_insert_newline_backspace_and_alt_as_meta() {
+    let host = Host::start("gui-lineedit", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "agent");
+    let appdata = sandbox("lineedit");
+    let gui = Gui::start(&ep, Some("agent"), &appdata);
+    gui.state("attached");
+    // The bytes the window sent for one key (its `input` events come before the key's dump
+    // reply, so they are read from the history).
+    let inputs = || -> Vec<String> {
+        gui.history()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| v["event"] == "input")
+            .map(|v| v["hex"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    let sends = |key: Value, what: &str, hex: &str| {
+        let before = inputs().len();
+        gui.cmd(&key);
+        let after = inputs();
+        assert_eq!(after[before..], [hex.to_string()], "{what}");
+        println!("sent {what}: {hex}");
+    };
+    // Backspace reaches the window as its character (WM_CHAR 0x08).
+    let backspace = json!({"cmd": "key", "vk": 0x08, "char": "\u{8}"});
+    let alt_x = json!({"cmd": "key", "vk": u32::from(b'X'), "alt": true, "char": "x"});
+    // Defaults: Backspace is DEL, Alt+x is ESC x, Alt+Shift+Enter a line feed.
+    sends(backspace.clone(), "Backspace", "7f");
+    sends(alt_x.clone(), "Alt+x", "1b78");
+    sends(
+        json!({"cmd": "key", "vk": VK_RETURN, "alt": true, "shift": true}),
+        "Alt+Shift+Enter",
+        "0a",
+    );
+    // The line-editing actions have no default keys; bound, they reach the program (the
+    // stand-in is not a Windows shell: the readline keys).
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    for (a, k) in [
+        ("line.home", "Ctrl+Shift+F9"),
+        ("line.delete-previous-word", "Ctrl+Shift+F10"),
+    ] {
+        let (code, doc) = run_env(&["hotkeys", "set", a, k], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    for (k, v) in [
+        ("terminal.backspace", "ctrl-h"),
+        ("terminal.alt_is_meta", "false"),
+    ] {
+        let (code, doc) = run_env(&["config", "set", k, v], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    let home = json!({"cmd": "key", "vk": 0x78, "ctrl": true, "shift": true});
+    sends(home.clone(), "line.home", "01");
+    sends(
+        json!({"cmd": "key", "vk": 0x79, "ctrl": true, "shift": true}),
+        "line.delete-previous-word",
+        "17",
+    );
+    sends(backspace, "Backspace (ctrl-h)", "08");
+    sends(alt_x, "Alt+x (Alt as Meta off)", "78");
+    // The program really gets them: after Enter ends the line of the keys above, q, Ctrl+A
+    // (line.home) and w arrive in one line.
+    sends(
+        json!({"cmd": "key", "vk": VK_RETURN, "char": "\r"}),
+        "Enter",
+        "0d",
+    );
+    sends(
+        json!({"cmd": "key", "vk": u32::from(b'Q'), "char": "q"}),
+        "q",
+        "71",
+    );
+    sends(home, "line.home", "01");
+    gui.type_text("w\r");
+    wait_for("the stand-in got q, Ctrl+A, w", || {
+        let c = capture(&ep, "agent");
+        println!(
+            "stand-in: {}",
+            c.lines()
+                .filter(|l| l.contains("standin-got"))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+        c.contains("standin-got-710177")
+    });
+    println!(
+        "EVIDENCE line editing: Alt+Shift+Enter 0a, line.home 01, line.delete-previous-word 17, Backspace 7f→08 (ctrl-h), Alt+x 1b78→78 (alt_is_meta off); stand-in got 710177"
+    );
+}

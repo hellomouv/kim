@@ -535,3 +535,89 @@ fn resize_keeps_content_and_clears_the_selection() {
     assert_eq!(v.size(), (8, 2));
     assert_eq!(rows(&v), ["hello", "world"]);
 }
+
+// ---------------------------------------------------------------------------------------------
+// #98 T2: line editing, insert-newline and the Backspace mode (`CORE-57`, `CORE-58`, `CORE-62`).
+
+#[test]
+fn backspace_modes_send_del_bs_or_the_delete_sequence() {
+    use subak_term::input::{BackspaceMode, backspace_bytes};
+    let m = modes(b"");
+    // The default matches the encoder (and Windows Terminal).
+    assert_eq!(
+        backspace_bytes(BackspaceMode::Del, Mods::NONE),
+        encode_key(Key::Backspace, Mods::NONE, &m)
+    );
+    assert_eq!(backspace_bytes(BackspaceMode::Del, Mods::CTRL), b"\x08");
+    assert_eq!(backspace_bytes(BackspaceMode::CtrlH, Mods::NONE), b"\x08");
+    assert_eq!(backspace_bytes(BackspaceMode::CtrlH, Mods::CTRL), b"\x7f");
+    assert_eq!(
+        backspace_bytes(BackspaceMode::Delete, Mods::NONE),
+        b"\x1b[3~"
+    );
+    assert_eq!(
+        backspace_bytes(BackspaceMode::CtrlH, Mods::ALT),
+        b"\x1b\x08"
+    );
+    for b in BackspaceMode::ALL {
+        assert_eq!(BackspaceMode::parse(b.as_str()), Some(b));
+    }
+    assert_eq!(BackspaceMode::parse("bs"), None);
+    assert_eq!(BackspaceMode::default(), BackspaceMode::Del);
+}
+
+#[test]
+fn line_editing_follows_the_program_in_the_pane() {
+    use subak_term::input::{INSERT_NEWLINE, LineEdit, LineStyle, line_edit};
+    for p in [
+        "cmd.exe",
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "pwsh",
+        "PWSH.EXE",
+    ] {
+        assert_eq!(LineStyle::of_program(p), LineStyle::Windows, "{p}");
+    }
+    for p in [
+        "wsl.exe",
+        "bash",
+        "/usr/bin/zsh",
+        "ssh.exe",
+        "",
+        "C:/msys64/usr/bin/bash.exe",
+    ] {
+        assert_eq!(LineStyle::of_program(p), LineStyle::Readline, "{p}");
+    }
+    assert_eq!(line_edit(LineEdit::Home, LineStyle::Readline), b"\x01");
+    assert_eq!(line_edit(LineEdit::End, LineStyle::Readline), b"\x05");
+    assert_eq!(
+        line_edit(LineEdit::PreviousWord, LineStyle::Readline),
+        b"\x1bb"
+    );
+    assert_eq!(line_edit(LineEdit::NextWord, LineStyle::Readline), b"\x1bf");
+    assert_eq!(
+        line_edit(LineEdit::DeletePreviousWord, LineStyle::Readline),
+        b"\x17"
+    );
+    assert_eq!(
+        line_edit(LineEdit::DeleteLine, LineStyle::Readline),
+        b"\x05\x15"
+    );
+    // Windows: the same bytes the keys themselves send.
+    let m = modes(b"");
+    assert_eq!(
+        line_edit(LineEdit::Home, LineStyle::Windows),
+        encode_key(Key::Home, Mods::NONE, &m)
+    );
+    assert_eq!(
+        line_edit(LineEdit::PreviousWord, LineStyle::Windows),
+        encode_key(Key::Left, Mods::CTRL, &m)
+    );
+    assert_eq!(
+        line_edit(LineEdit::DeletePreviousWord, LineStyle::Windows),
+        encode_key(Key::Backspace, Mods::CTRL, &m)
+    );
+    assert_eq!(line_edit(LineEdit::DeleteLine, LineStyle::Windows), b"\x1b");
+    // Enter sends CR; a new line without running is LF.
+    assert_eq!(INSERT_NEWLINE, b"\n");
+    assert_ne!(encode_key(Key::Enter, Mods::NONE, &m), INSERT_NEWLINE);
+}

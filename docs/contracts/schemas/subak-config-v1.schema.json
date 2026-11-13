@@ -37,6 +37,8 @@
         "claude_animation": { "description": "Step 44: the Claude marks move (default true); false or reduced motion: static marks, no timer.", "type": "boolean" },
         "detect_shells": { "description": "Step 33: the shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, WSL distributions) are offered as profiles (default true).", "type": "boolean" },
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
+        "alt_is_meta": { "description": "#98 T2: Alt with a character sends ESC first (default true, as in Windows Terminal); false: the character alone.", "type": "boolean" },
+        "backspace": { "description": "#98 T2: what Backspace sends: del (DEL 0x7F, default), ctrl-h (BS 0x08) or delete (CSI 3 ~).", "enum": ["del", "ctrl-h", "delete"] },
         "right_click": { "description": "copy-paste (default): copy a selection, else paste; menu: the pane menu; paste; none.", "enum": ["copy-paste", "menu", "paste", "none"] },
         "middle_click": { "enum": ["none", "paste"] },
         "word_separators": { "description": "Characters that end a word for double-click selection and mark mode.", "type": "string", "maxLength": 128 },

@@ -148,6 +148,8 @@ Keys go to the program, in the order of ADR 0009:
    | `selection.all` / `selection.mark` | `Ctrl+Shift+A` / `Ctrl+Shift+M` | Select all; select with the keyboard (mark mode, §12.3) |
    | `search.open` | `Ctrl+Shift+F` | Find in the output (§12.1) |
    | `output.save` | none (the pane menu) | Save the output to a file, asking first (§12.5) |
+   | `terminal.insert-newline` | `Alt+Shift+Enter` | #98 T2 (`CORE-58`): a new line in the input without running it (LF; Enter sends CR), for multi-line prompts such as Claude Code's |
+   | `line.home`, `line.end`, `line.previous-word`, `line.next-word`, `line.delete-previous-word`, `line.delete-line` | none (bind them) | #98 T2 (`CORE-57`): line editing in the program's own keys: Command Prompt and PowerShell get the Windows keys (`Home`, `End`, `Ctrl+Left`/`Right`, `Ctrl+Backspace`, `Esc`), every other program (bash, WSL, SSH…) the readline keys (`Ctrl+A`, `Ctrl+E`, `Alt+B`/`F`, `Ctrl+W`, `Ctrl+E Ctrl+U`) |
    | `view.zoom-in` / `view.zoom-out` / `view.zoom-reset` | `Ctrl+Plus` / `Ctrl+Minus` / `Ctrl+0` (and the numpad `+`, `-`, `0`) | Text size 8–36 px (default 13), saved as `appearance.font_size` in `config.toml` (§13) |
    | `scroll.page-up` / `scroll.page-down` | `Ctrl+Shift+PageUp` / `PageDown` | Scroll the history a page |
    | `scroll.line-up` / `scroll.line-down` | `Ctrl+Shift+Up` / `Down` | Scroll a line |
@@ -914,6 +916,8 @@ bold_is_bright = true    # bold ANSI 0–7 drawn in their bright colours
 default_profile = ""     # the profile Ctrl+T, + and `subak new` start ("" = the Host's shell)
 copy_on_select = false   # copy a mouse selection when the button is released
 smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the program
+alt_is_meta = true       # #98 T2: Alt+key sends ESC first (false: the character alone)
+backspace = "del"        # #98 T2: del (0x7F) | ctrl-h (0x08) | delete (CSI 3 ~)
 claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
 claude_animation = true  # Step 44: the marks move (false: static; reduced motion is static too)
 right_click = "copy-paste"   # copy-paste | menu | paste | none

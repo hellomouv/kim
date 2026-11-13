@@ -109,6 +109,13 @@
     { "id": "manager.delete", "title": "Delete the selected Terminal (asks first)", "context": "manager", "defaults": ["Delete"], "destructive": true },
     { "id": "manager.search", "title": "Search Terminals", "context": "manager", "defaults": ["Ctrl+F", "char:/"] },
     { "id": "manager.pin", "title": "Keep the manager open (pin)", "context": "manager", "defaults": ["Ctrl+P"] },
-    { "id": "manager.close", "title": "Close the manager (Terminals keep running)", "context": "manager", "defaults": ["Escape"] }
+    { "id": "manager.close", "title": "Close the manager (Terminals keep running)", "context": "manager", "defaults": ["Escape"] },
+    { "id": "terminal.insert-newline", "title": "Insert a new line without running it", "context": "terminal", "defaults": ["Alt+Shift+Enter"] },
+    { "id": "line.home", "title": "Line editing: to the start of the line", "context": "terminal", "defaults": [] },
+    { "id": "line.end", "title": "Line editing: to the end of the line", "context": "terminal", "defaults": [] },
+    { "id": "line.previous-word", "title": "Line editing: one word back", "context": "terminal", "defaults": [] },
+    { "id": "line.next-word", "title": "Line editing: one word forward", "context": "terminal", "defaults": [] },
+    { "id": "line.delete-previous-word", "title": "Line editing: delete the previous word", "context": "terminal", "defaults": [] },
+    { "id": "line.delete-line", "title": "Line editing: delete the whole line", "context": "terminal", "defaults": [] }
   ]
 }
