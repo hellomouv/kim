@@ -273,16 +273,30 @@ marker is checked by counting, inside the script. Paste the file into issue #14.
   answers.
 - Sleep, hibernate and logoff: [CONPTY_PROOF §7.2–7.3](CONPTY_PROOF.md) (`scripts/conpty-smoke.ps1`).
 
-### 6.4 Results (pending — to be filled in by the maintainer)
+### 6.4 Results
 
-| Check | Date | Result | Evidence |
-| --- | --- | --- | --- |
-| Windows Terminal window closed with a live Claude Code session; Host, shell and Claude Code pids unchanged (Verify) | — | **pending** | — |
-| New Windows Terminal window reattached; the same Claude Code process answered with the code (Finish) | — | **pending** | — |
-| Tab close only (variant) | — | pending | — |
-| Command Prompt (conhost) window close (variant) | — | pending | — |
+**2026-11-13, run by the agent on the real desktop (ADR 0088), Windows 10 Pro 22H2 19045,
+Windows Terminal 1.24.261001001, Claude Code 2.1.323, release `subak` 0.0.1.** The steps of §6.2
+were driven with real keyboard input in the agent's own Windows Terminal windows (addressed by
+window handle; Windows Terminal serves every window from one process, which also hosts the
+maintainer's windows): Prepare in a new window (job breakaway: true, in a job: false), `claude`
+typed into the attached pane, the marker question answered (`OK kim-3709`), Record, the whole
+window closed with its close command, Verify from another console, a new window attached with
+`subak --endpoint subak-milestone-a attach claude`, the follow-up asked, Finish `-Cleanup`.
 
-Milestone A becomes **complete** when the first two rows pass.
+| Phase | Result | Evidence |
+| --- | --- | --- |
+| Prepare | all checks passed | Host `subak.exe` 121804, pane shell `cmd.exe` 65080, tab process `powershell.exe` 102348 |
+| Record | all checks passed | Claude Code `claude.exe` 124820 in the pane; client 23328 attached; marker on screen 3× |
+| Verify (window closed) | all checks passed | tab process and client gone; Host, shell and Claude Code the same live processes; marker still on screen |
+| Finish (reattached) | all checks passed | same processes; Claude Code answered `kim-3709-again` (0 → 1) after the reattach; Host stopped |
+
+The first run (marker `kim-3310`) passed every survival and reattach check but flagged "the
+tab's shell is gone" because the script took Windows Terminal itself as the tab's shell when the
+script was the tab's own command; `scripts/milestone-a-smoke.ps1` now records the process
+directly below the terminal host. Variants of §6.3: closing only a tab and closing a console
+window are recorded in [CONPTY_PROOF §7.1](CONPTY_PROOF.md); sleep, hibernate and sign-out are
+not run (they end the agent session and the maintainer's work on this PC).
 
 ## 7. Defects and open issues
 

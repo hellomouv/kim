@@ -559,6 +559,17 @@ function Invoke-Prepare {
     }
     $chain = Get-Ancestors $PID
     Note ("this tab's process chain: " + (($chain | ForEach-Object { "$($_.name) $($_.pid)" }) -join ' <- '))
+    # The tab's own process is the one directly below the terminal host: the shell typed into,
+    # or this script itself when it is the tab's command (`wt ... powershell -File ...`). The
+    # host process (Windows Terminal serves every window) outlives the closed window.
+    $me = Get-ProcessTable | Where-Object { $_.ProcessId -eq $PID } | Select-Object -First 1
+    $full = @([ordered]@{ pid = [int]$PID; name = [string]$me.Name; started = (Get-StartTime $me) }) + @($chain)
+    $hostAt = -1
+    for ($i = 0; $i -lt $full.Count; $i++) {
+        if (@('WindowsTerminal.exe', 'OpenConsole.exe', 'conhost.exe') -contains $full[$i].name) { $hostAt = $i; break }
+    }
+    $tabProcess = if ($hostAt -gt 0) { $full[$hostAt - 1] } else { $full[[Math]::Min(1, $full.Count - 1)] }
+    Note "this tab's own process: $($tabProcess.name) $($tabProcess.pid)"
 
     Step "subak new $Terminal on \\.\pipe\$($script:ep)"
     if (Get-HostStatus) {
@@ -576,7 +587,7 @@ function Invoke-Prepare {
         marker        = 'kim-' + (Get-Random -Minimum 1000 -Maximum 9999)
         prepared_at   = $t0
         wt_session    = $env:WT_SESSION
-        tab           = @($chain)
+        tab           = @($tabProcess) + @($chain)
         host          = (Get-ProcessRecord ([int]$d.host.pid))
         shell         = (Get-ProcessRecord ([int]$d.terminal.windows[0].panes[0].pid))
         job_breakaway = $st.host.job_breakaway
