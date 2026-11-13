@@ -134,4 +134,14 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         30
     );
     assert_eq!(setting(&show, "terminal.notify_exit")["value"], true);
+    // #98 T3: the dropdown's settings, and `gui.show` (global, no default) can be bound.
+    assert_eq!(setting(&show, "dropdown.height")["value"], 40);
+    assert_eq!(setting(&show, "dropdown.hide_on_blur")["value"], true);
+    let (code, doc) = json(&sb, &["config", "set", "dropdown.height", "25"]);
+    assert_eq!(code, 0, "{doc}");
+    assert!(keys_of(&list, "gui.show").is_empty(), "no default");
+    let (code, doc) = json(&sb, &["hotkeys", "set", "gui.show", "Ctrl+Alt+Shift+F22"]);
+    assert_eq!(code, 0, "{doc}");
+    let (_, list) = json(&sb, &["hotkeys", "list"]);
+    assert_eq!(keys_of(&list, "gui.show"), ["Ctrl+Alt+Shift+F22"]);
 }

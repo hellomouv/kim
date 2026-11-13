@@ -182,8 +182,8 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 
 | Tabby feature | Tabby reference | Subak approach | Status | Target Step | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| `CORE-82` Quake-style dropdown window | R: "Optional dockable window with a global spawn hotkey ("Quake console")"; S `appearance.dock`, `dockScreen`, `dockFill`, `dockHideOnBlur`, `dockAlwaysOnTop` | A GUI client docked to a screen edge. It is just another client, so hiding it never touches processes. Not part of Step 18, which shipped the floating icon and Terminal manager instead (ADR 0045) *Step 32 audit (2026-11-11):* not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
-| `CORE-83` Global show/hide hotkey | S `toggle-window` (`Ctrl-Space`), `hacks.globalHotkey` | Uses `RegisterHotKey`, opt-in (`gui.show`, no default). No default that collides with Chinese IME toggling (`Ctrl+Space`). Not shipped in Step 18 (ADR 0045): `subak-gui --manager` (e.g. a Start-menu link's shortcut key) opens the manager meanwhile. *Not in Step 20:* `subak-gui --manager` from a link's shortcut key meanwhile *Step 32 audit (2026-11-11):* `gui.show` is in the manifest without a default and not registered yet. *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
+| `CORE-82` Quake-style dropdown window | R: "Optional dockable window with a global spawn hotkey ("Quake console")"; S `appearance.dock`, `dockScreen`, `dockFill`, `dockHideOnBlur`, `dockAlwaysOnTop` | A GUI client docked to a screen edge. It is just another client, so hiding it never touches processes. Not part of Step 18, which shipped the floating icon and Terminal manager instead (ADR 0045) *Step 32 audit (2026-11-11):* not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. *#98 T3 (2026-11-13):* `subak-gui --dropdown`: docked to the top of the monitor with the pointer (full width, `[dropdown] height` 20–100 %), always on top, no caption or taskbar button, `[dropdown] hide_on_blur` (on by default); just another client, so hiding never touches a process; its place is never saved. Remaining: docking to the other edges (Tabby `dock: left/right/bottom`) and a fixed screen. | partial | #98 T3 | T: `crates/subak/src/gui/window.rs::dropdown_tests::the_dropdown_covers_the_top_of_the_work_area`; T: `crates/subak/src/config.rs::tests::the_dropdown_settings_have_bounds_and_defaults`; T: `crates/subak/tests/gui_window.rs::gui_show_is_registered_while_the_window_runs_and_toggles_it`; real desktop (#98 T3): `--dropdown` covered (0, 0, 5120, 352) at 25 %, real Ctrl+Alt+Shift+F22 presses hid and showed it (back in front), and focusing another window hid it; a size bug found there (the content kept its old width) is fixed and covered by the test |
+| `CORE-83` Global show/hide hotkey | S `toggle-window` (`Ctrl-Space`), `hacks.globalHotkey` | Uses `RegisterHotKey`, opt-in (`gui.show`, no default). No default that collides with Chinese IME toggling (`Ctrl+Space`). Not shipped in Step 18 (ADR 0045): `subak-gui --manager` (e.g. a Start-menu link's shortcut key) opens the manager meanwhile. *Not in Step 20:* `subak-gui --manager` from a link's shortcut key meanwhile *Step 32 audit (2026-11-11):* `gui.show` is in the manifest without a default and not registered yet. *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. *#98 T3 (2026-11-13):* `gui.show` (global scope, no default; never `Ctrl+Space`) is registered through `kim_hotkeys::register::GlobalHotkeys` only while a Subak window runs and the binding is enabled, re-synced when `hotkeys.json` is read again, released on close; `taken` is reported. A press shows a hidden/minimized/background window and hides a shown one in front. | implemented | #98 T3 | T: `crates/subak/src/gui/keys.rs::tests::gui_show_is_a_global_binding_without_a_default`; T: `crates/subak/tests/gui_window.rs::gui_show_is_registered_while_the_window_runs_and_toggles_it`; real desktop (#98 T3): bound to Ctrl+Alt+Shift+F22 in a sandbox, real presses toggled the dropdown window |
 
 ## 2. Shells and profiles on Windows
 
@@ -450,16 +450,16 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 71 |
-| `partial` | 85 |
-| `implemented` | 22 |
+| `planned` | 69 |
+| `partial` | 86 |
+| `implemented` | 23 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 23 | 44 | 11 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 21 | 45 | 12 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 14 | 7 | 3 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -488,3 +488,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T2 | Keyboard and line editing: `CORE-57` (line-editing actions in the program's own keys), `CORE-58` (`Alt+Shift+Enter` inserts a new line), `CORE-61` (`[terminal] alt_is_meta`) and `CORE-62` (`[terminal] backspace`) `implemented`, tested in the window and with real keystrokes on the desktop. No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T3 | Background tabs and the bell: `CORE-81` (`[terminal] bell`) `implemented`; `CORE-80` `partial` (tab marks from `terminal.activity`; silence monitoring and the manager/floating-icon marks remain). No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T3 | Progress and notifications: `CORE-79` (opt-in notifications for long commands and ended programs) `implemented`; `CORE-78` `partial` (OSC 9;4 on the tab and the taskbar; percentage heuristics remain). No Tabby re-fetch. |
+| 2026-11-13 | v1.0.238 (2026-10-07) | #98 T3 | The dropdown window and the global hotkey: `CORE-83` (`gui.show`) `implemented`; `CORE-82` `partial` (`--dropdown` at the top edge; the other edges remain). T3 is complete: every row is implemented or partial with its remaining part named. No Tabby re-fetch. |

@@ -176,13 +176,16 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
         ["@prefix @prefix"]
     );
     assert_eq!(keys(action(&list, "client.detach")), ["@prefix char:d"]);
+    // #98 T3: `gui.show` ships, global and without a default.
+    let show = action(&list, "gui.show");
+    assert!(keys(show).is_empty(), "{show}");
     assert!(
         d["actions"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| a["id"] != "gui.show"),
-        "only what this build implements is listed (gui.show is not shipped)"
+            .all(|a| a["id"] != "nope.action"),
+        "only what this build implements is listed"
     );
     // --scope filters.
     let (_, ctx) = p.json(&["list", "--scope", "context"]);
@@ -215,7 +218,7 @@ fn list_show_and_check_report_the_shipped_defaults_without_a_host_or_a_file() {
         show["data"]["conflicts"][0]["code"], "shadows_terminal_input",
         "programs do not receive Ctrl+W: an info with the pass-through hint"
     );
-    let (code, missing) = p.json(&["show", "gui.show"]);
+    let (code, missing) = p.json(&["show", "nope.action"]);
     assert_eq!(code, 3);
     assert_eq!(missing["error"]["code"], "action_not_found");
     // check: no error or warning; the shadowed terminal keys (Ctrl+T, Ctrl+W and, since Step 23,
@@ -354,7 +357,7 @@ fn refused_changes_write_nothing_and_name_the_way_out() {
         (code, e["error"]["code"].as_str()),
         (2, Some("hotkey_invalid"))
     );
-    let (code, e) = p.json(&["set", "gui.show", "Ctrl+Shift+5"]);
+    let (code, e) = p.json(&["set", "nope.action", "Ctrl+Shift+5"]);
     assert_eq!(
         (code, e["error"]["code"].as_str()),
         (3, Some("action_not_found"))

@@ -28,6 +28,15 @@
       },
       "additionalProperties": true
     },
+    "dropdown": {
+      "description": "#98 T3: the dropdown window (subak-gui --dropdown).",
+      "type": "object",
+      "properties": {
+        "height": { "description": "Its height in percent of the monitor's work area (default 40).", "type": "integer", "minimum": 20, "maximum": 100 },
+        "hide_on_blur": { "description": "It hides when another window gets the focus (default true); gui.show brings it back.", "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
     "terminal": {
       "type": "object",
       "properties": {

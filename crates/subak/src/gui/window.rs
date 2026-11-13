@@ -133,6 +133,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 const WM_NET: u32 = WM_APP + 1;
 /// The tab menu's choice (`wParam` the command, `lParam` the tab index or -1).
 const WM_MENU: u32 = WM_APP + 2;
+/// #98 T3: a global hotkey was pressed (posted by the registration thread).
+const WM_GLOBAL: u32 = WM_APP + 3;
 const TIMER_RECONNECT: usize = 1;
 const TIMER_TEST_EXIT: usize = 2;
 const TIMER_SYNC: usize = 3;
@@ -149,6 +151,8 @@ const TIMER_BELL: usize = 8;
 const BELL_FLASH_MS: u32 = 120;
 /// #98 T3: removes a notification's icon after it had time to show.
 const TIMER_NOTICE: usize = 9;
+/// #98 T3: after the focus left the dropdown window, whether it went to another program.
+const TIMER_BLUR: usize = 10;
 const NOTICE_MS: u32 = 15_000;
 /// `WM_MOUSELEAVE` (the pointer left the client area after `TrackMouseEvent`).
 const WM_MOUSELEAVE: u32 = 0x02A3;
@@ -315,6 +319,10 @@ impl From<(u32, String, bool)> for MenuItem {
 enum After {
     /// `SetWindowPos` (screen position and outer size; `None` keeps the position).
     Place(Option<(i32, i32)>, (i32, i32)),
+    /// #98 T3 (`gui.show`): show (at this place, topmost: the dropdown) or hide the window.
+    Shown(bool, Option<(i32, i32, i32, i32)>),
+    /// #98 T3: the test window takes the dropdown's size, off-screen and never activated.
+    TestSize(i32, i32),
     Title(String),
     Destroy,
     /// Come to the front for the user's choice in the Terminal manager (it granted this process
@@ -417,6 +425,11 @@ struct App {
     focused: bool,
     /// #98 T3: the visual bell is showing.
     bell_flash: bool,
+    /// #98 T3 (`CORE-83`): the registered global hotkeys (`gui.show`) and their status.
+    globals: Option<kim_hotkeys::register::GlobalHotkeys>,
+    global_status: Vec<(String, String, String)>,
+    /// #98 T3: the window was hidden by `gui.show` (or the dropdown lost the focus).
+    toggled_hidden: bool,
     /// #98 T3: the taskbar list (not in the test window), and the progress it shows.
     taskbar: Option<super::taskbar::Taskbar>,
     taskbar_shown: Option<subak_term::screen::Progress>,
@@ -655,20 +668,57 @@ pub(super) fn monitors() -> Vec<(Rect, u32)> {
     out
 }
 
-fn style() -> u32 {
-    WS_OVERLAPPEDWINDOW
+fn style(dropdown: bool) -> u32 {
+    if dropdown {
+        // #98 T3: no caption; the bottom edge resizes it.
+        windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP
+            | windows_sys::Win32::UI::WindowsAndMessaging::WS_THICKFRAME
+    } else {
+        WS_OVERLAPPEDWINDOW
+    }
 }
 
-fn ex_style(test: bool) -> u32 {
+fn ex_style(test: bool, dropdown: bool) -> u32 {
     if test {
         WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+    } else if dropdown {
+        WS_EX_TOOLWINDOW | windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST
     } else {
         0
     }
 }
 
+/// #98 T3: the work area of the monitor under the pointer (left, top, right, bottom).
+fn pointer_work_area() -> (i32, i32, i32, i32) {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut p = POINT { x: 0, y: 0 };
+    let mut mi = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..MONITORINFO::default()
+    };
+    // SAFETY: reads the pointer position and that monitor's information.
+    unsafe {
+        GetCursorPos(&raw mut p);
+        GetMonitorInfoW(MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY), &raw mut mi);
+    }
+    let r = mi.rcWork;
+    (r.left, r.top, r.right, r.bottom)
+}
+
+/// #98 T3 (`CORE-82`): the dropdown window's place: the top of `work` (a monitor's work area),
+/// its full width and `percent` of its height.
+fn dropdown_rect(work: (i32, i32, i32, i32), percent: u32) -> (i32, i32, i32, i32) {
+    let (l, t, r, b) = work;
+    let h = i64::from(b - t) * i64::from(percent.clamp(20, 100)) / 100;
+    (l, t, r - l, i32::try_from(h).unwrap_or(b - t))
+}
+
 /// The outer size of a window whose client area is `w × h` at `dpi`.
-fn outer_for(w: u32, h: u32, dpi: u32, test: bool) -> (i32, i32) {
+fn outer_for(w: u32, h: u32, dpi: u32, test: bool, dropdown: bool) -> (i32, i32) {
     let mut rc = RECT {
         left: 0,
         top: 0,
@@ -676,7 +726,15 @@ fn outer_for(w: u32, h: u32, dpi: u32, test: bool) -> (i32, i32) {
         bottom: h as i32,
     };
     // SAFETY: a plain RECT computation.
-    unsafe { AdjustWindowRectExForDpi(&raw mut rc, style(), 0, ex_style(test), dpi) };
+    unsafe {
+        AdjustWindowRectExForDpi(
+            &raw mut rc,
+            style(dropdown),
+            0,
+            ex_style(test, dropdown),
+            dpi,
+        )
+    };
     (rc.right - rc.left, rc.bottom - rc.top)
 }
 
@@ -2704,7 +2762,8 @@ impl App {
         if self.prefs_read_only {
             return;
         }
-        if let Some(n) = self.normal {
+        // #98 T3: the dropdown window's place follows the screen; it is never saved.
+        if let Some(n) = self.normal.filter(|_| !self.opts.dropdown) {
             self.prefs.window = Some(Placement {
                 x: n.left,
                 y: n.top,
@@ -2740,6 +2799,106 @@ impl App {
         if let Some(l) = &self.link {
             l.send(msg);
         }
+    }
+
+    /// #98 T3 (`CORE-83`): registers the enabled global bindings (`gui.show`) while this
+    /// window runs (HOTKEY_CONTRACT §13.1: only while the GUI runs and the binding is enabled),
+    /// releases what is no longer wanted, and reports each status. A chord another program owns
+    /// stays inactive (`taken`).
+    fn sync_globals(&mut self) {
+        let wanted = self.matcher.globals();
+        if wanted.is_empty() && self.globals.is_none() {
+            return;
+        }
+        if self.globals.is_none() {
+            let target = self.hwnd as isize;
+            let waker = Box::new(move || {
+                // SAFETY: posts to our own window (which outlives the registration thread: the
+                // registrar is dropped with the window's state).
+                unsafe { PostMessageW(target as HWND, WM_GLOBAL, 0, 0) };
+            });
+            match kim_hotkeys::register::Registrar::start_with_waker(waker) {
+                Ok(r) => self.globals = Some(kim_hotkeys::register::GlobalHotkeys::new(r)),
+                Err(e) => {
+                    self.global_status = wanted
+                        .iter()
+                        .map(|(a, c)| (a.clone(), c.to_string(), e.code().to_string()))
+                        .collect();
+                    return;
+                }
+            }
+        }
+        let Some(g) = self.globals.as_mut() else {
+            return;
+        };
+        let results = g.sync(&wanted);
+        self.global_status = results
+            .into_iter()
+            .map(|(a, r)| {
+                let keys = wanted
+                    .iter()
+                    .find(|(w, _)| *w == a)
+                    .map_or(String::new(), |(_, c)| c.to_string());
+                let status = match r {
+                    Ok(s) => s.as_str().to_string(),
+                    Err(e) => e.code().to_string(),
+                };
+                (a, keys, status)
+            })
+            .collect();
+        let report: Vec<Value> = self
+            .global_status
+            .iter()
+            .map(|(a, k, s)| json!({"action": a, "keys": k, "status": s}))
+            .collect();
+        self.event(&json!({"event": "globals", "bindings": report}));
+    }
+
+    /// #98 T3: the registration thread saw a press: run its action.
+    fn global_pressed(&mut self) {
+        loop {
+            let Some(g) = &self.globals else {
+                return;
+            };
+            let Some(id) = g.registrar().next_press(Duration::ZERO) else {
+                return;
+            };
+            if g.action_for(id) == Some("gui.show") {
+                self.toggle_shown("hotkey");
+            }
+        }
+    }
+
+    /// #98 T3 (`CORE-83`): `gui.show`: a window that is shown and in front hides (minimized;
+    /// the dropdown window hides), any other comes to the front (the dropdown on the monitor
+    /// with the pointer). Never touches a Terminal.
+    fn toggle_shown(&mut self, why: &str) {
+        let visible = !self.toggled_hidden && !self.minimized;
+        let front = self.focused;
+        self.set_shown(!(visible && front), why);
+    }
+
+    fn set_shown(&mut self, show: bool, why: &str) {
+        self.toggled_hidden = !show;
+        let rect = if self.opts.dropdown {
+            Some(dropdown_rect(
+                pointer_work_area(),
+                self.settings.dropdown.height,
+            ))
+        } else {
+            None
+        };
+        self.event(&json!({"event": "gui_show", "shown": show, "why": why,
+            "dropdown": rect.map(|(x, y, w, h)| json!([x, y, w, h]))}));
+        if self.opts.test {
+            // The size only (the place stays off every monitor): the window must follow it.
+            if let (true, Some((_, _, w, h))) = (show, rect) {
+                self.after.push(After::TestSize(w, h));
+            }
+            return;
+        }
+        // Run with the state free: showing and placing send WM_SIZE and WM_ACTIVATE at once.
+        self.after.push(After::Shown(show, rect));
     }
 
     /// #98 T3 (`CORE-79`): a command or a program finished: a notification when the user asked
@@ -3892,6 +4051,8 @@ impl App {
                     self.redraw();
                 }
             }
+            // #98 T3: `gui.show` is global (registered, not matched here); a menu could run it.
+            Action::GuiShow => self.toggle_shown("action"),
             // The Terminal manager's actions (context `manager`) are never active in a window.
             Action::ManagerOpen
             | Action::ManagerNew
@@ -4660,6 +4821,7 @@ impl App {
             self.reload_settings(false);
             // `subak hotkeys …` may have changed hotkeys.json meanwhile (§8.3 5).
             if self.matcher.reload() {
+                self.sync_globals();
                 self.event(&json!({"event": "hotkeys_reloaded",
                     "state": self.matcher.config_state().as_str(), "problem": self.matcher.problem}));
                 if let Some(p) = self.matcher.problem.clone() {
@@ -4669,6 +4831,12 @@ impl App {
                 self.rebuild_banner();
             }
         } else {
+            // #98 T3: the dropdown hides when another program gets the focus (checked a moment
+            // later, once Windows has a new foreground window).
+            if self.opts.dropdown && self.settings.dropdown.hide_on_blur {
+                // SAFETY: a one-shot timer of our own window.
+                unsafe { SetTimer(self.hwnd, TIMER_BLUR, 50, None) };
+            }
             // Focus loss cancels a pending sequence (§5.3).
             self.matcher.cancel();
             // SAFETY: our own timer.
@@ -5243,6 +5411,14 @@ impl App {
         })));
         dump["active_slot"] = json!(self.model.active_slot().map(|s| s.id.clone()));
         dump["alerts"] = Value::Object(alerts);
+        dump["globals"] = json!(
+            self.global_status
+                .iter()
+                .map(|(a, k, s)| json!({"action": a, "keys": k, "status": s}))
+                .collect::<Vec<_>>()
+        );
+        dump["toggled_hidden"] = json!(self.toggled_hidden);
+        dump["dropdown"] = json!(self.opts.dropdown);
         dump["bell_flash"] = json!(self.bell_flash);
         dump["side"] = Value::Object(
             self.side
@@ -5475,6 +5651,8 @@ impl App {
                     self.type_char(c, false, Mods::NONE);
                 }
             }
+            // #98 T3: a press of the global `gui.show` hotkey (the real one is a test of its own).
+            "gui_show" => self.toggle_shown("test"),
             "key" => {
                 let code = cmd["vk"]
                     .as_u64()
@@ -5577,7 +5755,7 @@ impl App {
                     .as_u64()
                     .and_then(|v| u32::try_from(v).ok())
                     .unwrap_or(600);
-                let outer = outer_for(w, h, self.dpi, true);
+                let outer = outer_for(w, h, self.dpi, true, false);
                 self.after.push(After::Place(None, outer));
             }
             "focus" => self.on_focus(cmd["on"] == true),
@@ -5898,6 +6076,40 @@ fn run_after(hwnd: HWND, after: Vec<After>) {
                     let t = wide(&t);
                     SetWindowTextW(hwnd, t.as_ptr());
                 }
+                After::TestSize(w, h) => {
+                    SetWindowPos(
+                        hwnd,
+                        null_mut(),
+                        OFFSCREEN,
+                        OFFSCREEN,
+                        w,
+                        h,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    );
+                }
+                After::Shown(show, rect) => {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        HWND_TOPMOST, SW_HIDE, SW_MINIMIZE, SW_SHOW, SWP_SHOWWINDOW,
+                        SetForegroundWindow,
+                    };
+                    match (show, rect) {
+                        (false, Some(_)) => {
+                            ShowWindow(hwnd, SW_HIDE);
+                        }
+                        (false, None) => {
+                            ShowWindow(hwnd, SW_MINIMIZE);
+                        }
+                        (true, Some((x, y, w, h))) => {
+                            SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW);
+                            ShowWindow(hwnd, SW_SHOW);
+                            SetForegroundWindow(hwnd);
+                        }
+                        (true, None) => {
+                            ShowWindow(hwnd, SW_RESTORE);
+                            SetForegroundWindow(hwnd);
+                        }
+                    }
+                }
                 After::Destroy => {
                     DestroyWindow(hwnd);
                 }
@@ -6160,6 +6372,10 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
             app.on_net();
             Some(0)
         }
+        WM_GLOBAL => {
+            app.global_pressed();
+            Some(0)
+        }
         WM_MENU => {
             let tab = usize::try_from(lp).ok();
             app.menu_command(wp as u32, tab);
@@ -6178,7 +6394,7 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
         WM_GETMINMAXINFO => {
             let c = app.cells();
             let (w, h) = c.client_for(layout::MIN_GRID.0, layout::MIN_GRID.1);
-            let (ow, oh) = outer_for(w, h + app.top(), app.dpi, app.opts.test);
+            let (ow, oh) = outer_for(w, h + app.top(), app.dpi, app.opts.test, app.opts.dropdown);
             // SAFETY: `lp` points at the MINMAXINFO Windows passes with this message.
             unsafe {
                 let mmi = &mut *(lp as *mut MINMAXINFO);
@@ -6340,6 +6556,22 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
                 }
                 TIMER_MOTION => app.motion_tick(),
                 TIMER_CLAUDE => app.claude_tick(),
+                TIMER_BLUR => {
+                    // SAFETY: our own one-shot timer.
+                    unsafe { KillTimer(hwnd, TIMER_BLUR) };
+                    // SAFETY: reads which process owns the foreground window (no state).
+                    let ours = unsafe {
+                        let mut pid = 0u32;
+                        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                            windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow(),
+                            &raw mut pid,
+                        );
+                        pid == std::process::id()
+                    };
+                    if !ours && !app.focused {
+                        app.set_shown(false, "blur");
+                    }
+                }
                 TIMER_NOTICE => {
                     // SAFETY: our own one-shot timer.
                     unsafe { KillTimer(hwnd, TIMER_NOTICE) };
@@ -6544,10 +6776,10 @@ pub fn run(o: Options) -> ExitCode {
             (false, None) => (CW_USEDEFAULT, CW_USEDEFAULT, 800, 600),
         };
         let hwnd = CreateWindowExW(
-            ex_style(test),
+            ex_style(test, o.dropdown),
             class.as_ptr(),
             title.as_ptr(),
-            style(),
+            style(o.dropdown),
             x,
             y,
             w,
@@ -6611,6 +6843,9 @@ pub fn run(o: Options) -> ExitCode {
         bell_flash: false,
         taskbar: None,
         taskbar_shown: None,
+        globals: None,
+        global_status: Vec::new(),
+        toggled_hidden: false,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,
@@ -6722,7 +6957,7 @@ pub fn run(o: Options) -> ExitCode {
         let (cw, ch) = app
             .cells()
             .client_for(layout::DEFAULT_GRID.0, layout::DEFAULT_GRID.1);
-        Some(outer_for(cw, ch + app.top(), dpi, test))
+        Some(outer_for(cw, ch + app.top(), dpi, test, app.opts.dropdown))
     };
     // Windows 10 20H1+ dark (or, for kim-light, light) title bar; the caption, text and border
     // colours apply on Windows 11 and are ignored on Windows 10. Step 20: the window's icon is
@@ -6784,6 +7019,11 @@ pub fn run(o: Options) -> ExitCode {
                 app.rebuild_state();
                 app.rebuild_banner();
                 app.redraw();
+                // #98 T3: the global hotkeys of this run, and the dropdown's place.
+                app.sync_globals();
+                if app.opts.dropdown {
+                    app.set_shown(true, "start");
+                }
                 app.connect(true);
             }
         });
@@ -6805,6 +7045,27 @@ pub fn run(o: Options) -> ExitCode {
         }
     });
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod dropdown_tests {
+    use super::dropdown_rect;
+
+    /// #98 T3 (`CORE-82`): the dropdown takes the top of the work area, its full width and the
+    /// chosen share of its height (20–100 %), also on a monitor left of the primary one.
+    #[test]
+    fn the_dropdown_covers_the_top_of_the_work_area() {
+        assert_eq!(dropdown_rect((0, 0, 5120, 1400), 40), (0, 0, 5120, 560));
+        assert_eq!(
+            dropdown_rect((-1920, 0, 0, 1040), 100),
+            (-1920, 0, 1920, 1040)
+        );
+        assert_eq!(
+            dropdown_rect((0, 40, 1920, 1080), 5),
+            (0, 40, 1920, 208),
+            "at least 20 %"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -334,8 +334,22 @@ pub struct Profile {
 pub struct Settings {
     pub appearance: Appearance,
     pub terminal: TerminalPrefs,
+    /// #98 T3 (`CORE-82`): the dropdown window (`subak-gui --dropdown`).
+    pub dropdown: DropdownPrefs,
     pub profiles: Vec<Profile>,
 }
+
+/// #98 T3: `[dropdown]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DropdownPrefs {
+    /// Its height, percent of the monitor's work area.
+    pub height: u32,
+    /// It hides when another window gets the focus (it keeps running; `gui.show` brings it).
+    pub hide_on_blur: bool,
+}
+
+/// `dropdown.height` bounds and default, percent.
+pub const DROPDOWN_HEIGHT: (u32, u32, u32) = (20, 100, 40);
 
 /// `appearance.font_size` bounds and default (`size.terminal`).
 pub const FONT_SIZE: (f32, f32, f32) = (8.0, 36.0, 13.0);
@@ -379,6 +393,10 @@ impl Default for Settings {
                 middle_click: MiddleClick::None,
                 word_separators: subak_term::view::WORD_DELIMITERS.to_string(),
                 repeat_time_ms: REPEAT_TIME.2,
+            },
+            dropdown: DropdownPrefs {
+                height: DROPDOWN_HEIGHT.2,
+                hide_on_blur: true,
             },
             profiles: Vec::new(),
         }
@@ -467,7 +485,10 @@ impl Settings {
     pub fn value(&self, k: &Key) -> Value {
         let a = &self.appearance;
         let t = &self.terminal;
+        let d = &self.dropdown;
         match (k.section, k.name) {
+            ("dropdown", "height") => json!(d.height),
+            ("dropdown", "hide_on_blur") => json!(d.hide_on_blur),
             ("appearance", "theme") => json!(a.theme.as_str()),
             ("appearance", "font_family") => json!(a.font_family),
             ("appearance", "font_size") => rounded(a.font_size),
@@ -624,7 +645,7 @@ impl Key {
 }
 
 /// The sections of keys, in file order.
-pub const SECTIONS: &[&str] = &["appearance", "terminal"];
+pub const SECTIONS: &[&str] = &["appearance", "terminal", "dropdown"];
 
 /// Every key, in file order.
 pub const KEYS: &[Key] = &[
@@ -766,6 +787,18 @@ pub const KEYS: &[Key] = &[
         takes: "a whole number from 0 to 2000 (milliseconds; 0: off)",
         kind: Kind::Integer,
     },
+    Key {
+        section: "dropdown",
+        name: "height",
+        takes: "a whole number from 20 to 100 (percent of the screen)",
+        kind: Kind::Integer,
+    },
+    Key {
+        section: "dropdown",
+        name: "hide_on_blur",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
 ];
 
 /// The key `section.name`.
@@ -795,6 +828,7 @@ fn clean_text(s: &str, max: usize) -> Option<String> {
 fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
     let a = &mut s.appearance;
     let t = &mut s.terminal;
+    let d = &mut s.dropdown;
     let text = || v.as_str().ok_or(());
     let num = |lo: f64, hi: f64| as_number(v).filter(|n| (lo..=hi).contains(n)).ok_or(());
     let int = |lo: u32, hi: u32| match v {
@@ -832,6 +866,8 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("terminal", "bell") => t.bell = Bell::parse(text()?).ok_or(())?,
         ("terminal", "notify_command_seconds") => t.notify_command_seconds = int(0, 86_400)?,
         ("terminal", "notify_exit") => t.notify_exit = flag()?,
+        ("dropdown", "height") => d.height = int(DROPDOWN_HEIGHT.0, DROPDOWN_HEIGHT.1)?,
+        ("dropdown", "hide_on_blur") => d.hide_on_blur = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
@@ -2868,5 +2904,24 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         assert!(s.terminal.notify_exit);
         assert!(set_value(&mut s, "terminal.notify_command_seconds", "86401").is_err());
         assert!(set_value(&mut s, "terminal.notify_command_seconds", "-1").is_err());
+    }
+
+    /// #98 T3 (`CORE-82`): the dropdown's height and hide-on-blur.
+    #[test]
+    fn the_dropdown_settings_have_bounds_and_defaults() {
+        let mut s = Settings::default();
+        assert_eq!(s.dropdown.height, 40);
+        assert!(s.dropdown.hide_on_blur);
+        set_value(&mut s, "dropdown.height", "60").unwrap();
+        set_value(&mut s, "dropdown.hide_on_blur", "false").unwrap();
+        assert_eq!(
+            s.dropdown,
+            DropdownPrefs {
+                height: 60,
+                hide_on_blur: false
+            }
+        );
+        assert!(set_value(&mut s, "dropdown.height", "10").is_err());
+        assert!(set_value(&mut s, "dropdown.height", "101").is_err());
     }
 }

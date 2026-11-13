@@ -110,6 +110,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "copy.page-up",
     "client.detach",
     "terminal.rename",
+    "gui.show",
     "clipboard.copy",
     "clipboard.paste",
     "clipboard.copy-html",
@@ -449,8 +450,7 @@ mod tests {
             "bump hotkeys.manifest.json with the crate"
         );
         let fin = final_manifest();
-        // Step 23: the leader and every `@prefix` default ship; copy mode (Step 24) and
-        // `gui.show` (no global registration yet) do not.
+        // Step 23: the leader and every `@prefix` default ship; #98 T3: `gui.show` too.
         let actions: Vec<Value> = fin["actions"]
             .as_array()
             .unwrap()

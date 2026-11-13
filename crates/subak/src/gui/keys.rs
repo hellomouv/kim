@@ -123,6 +123,8 @@ pub enum Action {
     BufferList,
     BufferDelete,
     CopyPageUp,
+    /// #98 T3: show or hide the window (a global hotkey, registered while it runs).
+    GuiShow,
     /// #98 T2.
     InsertNewline,
     /// #98 T2.
@@ -141,7 +143,7 @@ pub enum Action {
 
 impl Action {
     /// Every action with its manifest ID, in manifest order ([`crate::hotkeys::IMPLEMENTED`]).
-    pub const ALL: [(Action, &'static str); 102] = [
+    pub const ALL: [(Action, &'static str); 103] = [
         (Action::NewTerminal, "terminal.new"),
         (Action::CloseTerminal, "terminal.close"),
         (Action::NextTab, "tab.next"),
@@ -216,6 +218,7 @@ impl Action {
         (Action::CopyPageUp, "copy.page-up"),
         (Action::ClientDetach, "client.detach"),
         (Action::RenameTerminal, "terminal.rename"),
+        (Action::GuiShow, "gui.show"),
         (Action::Copy, "clipboard.copy"),
         (Action::Paste, "clipboard.paste"),
         (Action::CopyHtml, "clipboard.copy-html"),
@@ -543,6 +546,21 @@ impl Matcher {
         };
         m.rebuild();
         m
+    }
+
+    /// #98 T3 (`CORE-83`): the enabled global bindings (`gui.show`) as chords to register,
+    /// none while every shortcut is off. A sequence cannot be registered and is skipped.
+    pub fn globals(&self) -> Vec<(String, Chord)> {
+        if self.off.is_some() {
+            return Vec::new();
+        }
+        let state = self.state();
+        analyze(std::slice::from_ref(&state), &[])
+            .active
+            .into_iter()
+            .filter(|b| b.scope == Scope::Global && Action::from_id(&b.action).is_some())
+            .filter_map(|b| Chord::parse(&b.keys).ok().map(|c| (b.action.clone(), c)))
+            .collect()
     }
 
     /// The defaults only (tests, no settings folder).
@@ -1536,5 +1554,38 @@ mod tests {
         assert_eq!(special_key(u32::from(b'A')), None);
         assert_eq!(ctrl_digit(0x32, Mods::CTRL), Some('2'));
         assert_eq!(ctrl_digit(0x30, Mods::CTRL), None);
+    }
+
+    /// #98 T3 (`CORE-83`): `gui.show` has no default; bound, it is a global chord to register
+    /// (never matched in the window), and nothing is registered while every shortcut is off.
+    #[test]
+    fn gui_show_is_a_global_binding_without_a_default() {
+        assert!(Matcher::defaults().globals().is_empty(), "no default");
+        let dir = sandbox(
+            "global",
+            serde_json::json!({
+                "schema": "kim.hotkeys", "schema_version": 1, "tool": "subak",
+                "overrides": [{"action": "gui.show", "bindings": ["Ctrl+Alt+Shift+F22"]}]
+            }),
+        );
+        let mut s = Matcher::load(Some(&dir), None);
+        let g = s.globals();
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].0, "gui.show");
+        assert_eq!(g[0].1.to_string(), "Ctrl+Alt+Shift+F22");
+        assert_eq!(
+            s.press(&press(
+                vk::F1 + 21,
+                Mods {
+                    ctrl: true,
+                    alt: true,
+                    shift: true
+                }
+            )),
+            Outcome::Ignored,
+            "a global chord is not a window shortcut"
+        );
+        assert!(Matcher::load(Some(&dir), Some("off")).globals().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

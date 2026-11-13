@@ -174,6 +174,15 @@ Keys go to the program, in the order of ADR 0009:
    pseudo console passes these sequences on with the program's next screen output, so a
    program that reports progress without printing anything is seen when it next prints.
 
+   **#98 T3 (the dropdown window and `gui.show`).** `subak-gui --dropdown` is a window docked to
+   the top of the monitor with the pointer: its full width and `dropdown.height` percent of the
+   work area, always on top, without a caption or taskbar button (the bottom edge resizes it).
+   With `dropdown.hide_on_blur` (on by default) it hides when another program gets the focus. The
+   global action `gui.show` (no default; bind it with `subak hotkeys set gui.show <chord>`) shows
+   and hides it, or any Subak window (minimized/restored), while that window runs. Hiding or
+   showing only hides a client: every Terminal keeps running. The dropdown never saves its place.
+   Only the top edge is offered.
+
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
    `Ctrl+Space` as NUL, `Ctrl+2`…`Ctrl+8` as the VT220 codes, cursor keys (`SS3` in application
@@ -628,8 +637,8 @@ private endpoint: `set E=--endpoint subak-manual-18`.
 - The watermelon glyph is provisional (Step 44 owns the art and the Claude motion); there is no
   Claude state yet (Steps 26–28), so the badge shows Host and failure states only.
 - No hover tooltip window on the floating icon (its accessible name and the tray tip carry the
-  words); no `gui.show` global hotkey (`subak-gui --manager` with a link's shortcut key instead);
-  no sign-in start.
+  words); the `gui.show` global hotkey (#98 T3) works while a Subak window runs, not from the
+  floating UI alone (`subak-gui --manager` with a link's shortcut key instead); no sign-in start.
 - The manager has no "Stop" (a stopped Terminal cannot be restarted before Step 30) and no
   multi-select.
 - Opening a Terminal picks the frontmost window of the Host; choosing a particular window is
@@ -940,6 +949,10 @@ backspace = "del"        # #98 T2: del (0x7F) | ctrl-h (0x08) | delete (CSI 3 ~)
 bell = "off"             # #98 T3: off | visual (flash; taskbar too when not in front) | audible
 notify_command_seconds = 0   # #98 T3: notify when a command (OSC 133) that ran this long ends; 0: off
 notify_exit = false      # #98 T3: notify when a Terminal's program ends
+
+[dropdown]               # #98 T3: subak-gui --dropdown
+height = 40              # percent of the screen (20–100)
+hide_on_blur = true      # hides when another program gets the focus; gui.show brings it back
 claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
 claude_animation = true  # Step 44: the marks move (false: static; reduced motion is static too)
 right_click = "copy-paste"   # copy-paste | menu | paste | none

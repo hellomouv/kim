@@ -3238,3 +3238,69 @@ fn progress_on_tabs_and_notifications_for_finished_commands() {
         n["text"]
     );
 }
+
+/// #98 T3 (`CORE-82`, `CORE-83`): `gui.show` bound in `hotkeys.json` is registered as a global
+/// hotkey while the window runs (the test binds the unused Ctrl+Alt+Shift+F22), released when
+/// it is unbound; a press shows a window that is not in front and hides one that is; the
+/// dropdown window computes its place at the top of the screen.
+#[test]
+fn gui_show_is_registered_while_the_window_runs_and_toggles_it() {
+    let host = Host::start("gui-show", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "one");
+    let appdata = sandbox("guishow");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let (code, doc) = run_env(&["hotkeys", "set", "gui.show", "Ctrl+Alt+Shift+F22"], &env);
+    assert_eq!(code, 0, "{doc}");
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    let g = gui.dump();
+    assert_eq!(
+        g["globals"],
+        json!([{"action": "gui.show", "keys": "Ctrl+Alt+Shift+F22", "status": "registered"}])
+    );
+    // Not in front: a press shows it; in front: a press hides it.
+    let e = gui.cmd(&json!({"cmd": "gui_show"}));
+    assert_eq!(e["toggled_hidden"], false);
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    let d = gui.cmd(&json!({"cmd": "gui_show"}));
+    assert_eq!(d["toggled_hidden"], true, "hidden while it was in front");
+    let d = gui.cmd(&json!({"cmd": "gui_show"}));
+    assert_eq!(d["toggled_hidden"], false, "shown again");
+    // Unbound: released (read again when the window gets the focus).
+    let (code, doc) = run_env(&["hotkeys", "reset", "gui.show"], &env);
+    assert_eq!(code, 0, "{doc}");
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    let d = gui.cmd(&json!({"cmd": "focus", "on": true}));
+    assert_eq!(d["globals"], json!([]), "released");
+    // The dropdown window: placed at the top of the monitor with the pointer.
+    let drop = Gui::start_with(&ep, Some("one"), &appdata, &["--dropdown"]);
+    drop.state("attached");
+    // (Placed before it connects: read from the history.)
+    let s: Value = drop
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["event"] == "gui_show" && v["why"] == "start")
+        .expect("the dropdown was placed");
+    let r = s["dropdown"].as_array().unwrap();
+    assert_eq!(r.len(), 4);
+    assert!(
+        r[2].as_i64().unwrap() > 0 && r[3].as_i64().unwrap() > 0,
+        "{s}"
+    );
+    // The window follows the new size (it once kept drawing its old width: the size message
+    // came while its state was busy).
+    let d = drop.until("the dropdown's size", |d| {
+        d["client"][0].as_i64().unwrap() >= r[2].as_i64().unwrap() - 32
+    });
+    assert_eq!(d["dropdown"], true);
+    assert!(
+        d["grid"][0].as_u64().unwrap() > 120,
+        "the grid grew: {}",
+        d["grid"]
+    );
+    println!(
+        "EVIDENCE gui.show: registered Ctrl+Alt+Shift+F22, toggled hidden/shown, released when unbound; dropdown placed at {r:?}"
+    );
+}

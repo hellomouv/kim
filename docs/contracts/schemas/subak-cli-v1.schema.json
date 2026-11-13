@@ -4047,7 +4047,7 @@
             "properties": {
               "key": {
                 "type": "string",
-                "pattern": "^(appearance|terminal)\\.[a-z_]+$"
+                "pattern": "^(appearance|terminal|dropdown)\\.[a-z_]+$"
               },
               "value": {
                 "type": [

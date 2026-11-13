@@ -78,6 +78,7 @@ subak-gui — the Subak window (pre-alpha, Steps 16-19)
 
 USAGE:
     subak-gui [<terminal>] [--endpoint <name>] [--no-hotkeys] [--hotkeys-profile <name>]
+              [--dropdown]
     subak-gui --float [--icon] [--tray] [--manager] [--endpoint <name>] [--no-hotkeys]
     subak-gui --manager [--endpoint <name>]
     subak-gui --help | --version
@@ -98,6 +99,11 @@ TABS (docs/SUBAK_GUI.md §2):
     x on a tab, middle click   Hide the tab: a detach; the Terminal keeps running.
     Right click, the Menu key   The tab menu: rename, hide, move, close, new, hidden tabs.
     Tabs follow other clients: `subak new`, `rename`, `stop` and `kill` show up at once.
+
+--dropdown: the window docked to the top of the screen ([dropdown] height, hide_on_blur in
+config.toml), always on top and without a taskbar button. Bind the global action gui.show
+(`subak hotkeys set gui.show Ctrl+Alt+Grave`, no default) to show and hide it, or any window,
+while it runs; hiding it only hides a client, every Terminal keeps running.
 
 Other keys go to the program, except: Ctrl+Shift+C / Ctrl+Insert copy, Ctrl+Shift+V /
 Shift+Insert paste, Ctrl+Plus / Ctrl+Minus / Ctrl+0 text size, Ctrl+Shift+PageUp/PageDown/Up/
@@ -137,6 +143,7 @@ OPTIONS:
     --no-hotkeys        Start with every shortcut off (also KIM_NO_HOTKEYS); keys go to programs.
     --hotkeys-profile <name>   Use the `profiles` overlay <name> of hotkeys.json on top of your
                         bindings for this run (per-profile shortcuts; HOTKEY_CONTRACT §8.2).
+    --dropdown          The dropdown window: docked to the top of the screen (#98 T3).
     -h, --help          This text.
     -V, --version       The version.
 ";
@@ -152,6 +159,9 @@ pub struct Options {
     pub no_hotkeys: bool,
     /// `--hotkeys-profile <name>` (Step 23): the `profiles` overlay of `hotkeys.json` to use.
     pub hotkeys_profile: Option<String>,
+    /// #98 T3 (`CORE-82`): `--dropdown`: the window docked to the top of the screen, always
+    /// on top, without a taskbar button; `gui.show` shows and hides it.
+    pub dropdown: bool,
     /// `--float` / `--manager`: the floating icon and Terminal manager instead of a window.
     pub float: Option<float::FloatOptions>,
     /// Test hooks (debug builds, or the `test-hooks` feature): the window is placed off every
@@ -192,6 +202,7 @@ fn parse(args: &[String]) -> Result<Parsed, String> {
                 o.endpoint = Some(ep.clone());
             }
             "--no-hotkeys" => o.no_hotkeys = true,
+            "--dropdown" => o.dropdown = true,
             "--hotkeys-profile" => {
                 i += 1;
                 let name = args

@@ -81,6 +81,10 @@ backspace = "del"             # #98 T2: del | ctrl-h | delete
 bell = "off"                  # #98 T3: off | visual | audible
 notify_command_seconds = 0    # #98 T3: 0–86400; 0: off
 notify_exit = false           # #98 T3
+
+[dropdown]                    # #98 T3
+height = 40                   # 20–100 (percent)
+hide_on_blur = true
 right_click = "copy-paste"    # copy-paste | menu | paste | none
 middle_click = "none"         # none | paste
 word_separators = "…"         # ≤ 128 characters; default: Windows Terminal's set

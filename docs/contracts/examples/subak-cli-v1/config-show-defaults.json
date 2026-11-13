@@ -168,6 +168,20 @@
         "source": "default",
         "takes": "a whole number from 0 to 2000 (milliseconds; 0: off)",
         "value": 500
+      },
+      {
+        "default": 40,
+        "key": "dropdown.height",
+        "source": "default",
+        "takes": "a whole number from 20 to 100 (percent of the screen)",
+        "value": 40
+      },
+      {
+        "default": true,
+        "key": "dropdown.hide_on_blur",
+        "source": "default",
+        "takes": "true or false",
+        "value": true
       }
     ],
     "state": "missing",

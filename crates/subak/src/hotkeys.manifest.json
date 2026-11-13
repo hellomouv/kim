@@ -82,6 +82,7 @@
     { "id": "copy.page-up", "title": "Copy mode, one page up", "scopes": ["app"], "defaults": ["@prefix PageUp"] },
     { "id": "client.detach", "title": "Detach this client (processes keep running)", "scopes": ["app"], "defaults": ["@prefix char:d"] },
     { "id": "terminal.rename", "title": "Rename Terminal", "scopes": ["app"], "defaults": ["Ctrl+Shift+R", "@prefix char:$"] },
+    { "id": "gui.show", "title": "Show Subak", "scopes": ["global"], "defaults": [] },
     { "id": "clipboard.copy", "title": "Copy the selection", "context": "terminal", "defaults": ["Ctrl+Shift+C", "Ctrl+Insert"] },
     { "id": "clipboard.paste", "title": "Paste", "context": "terminal", "defaults": ["Ctrl+Shift+V", "Shift+Insert"] },
     { "id": "clipboard.copy-html", "title": "Copy the selection with colours (plain text and HTML)", "context": "terminal", "defaults": [] },
