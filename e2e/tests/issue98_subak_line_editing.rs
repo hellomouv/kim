@@ -8,7 +8,7 @@
 //! `hotkeys check` accepts it; `config show` reports `terminal.alt_is_meta` (true) and
 //! `terminal.backspace` (`del`) as defaults; `config set` changes both (`--dry-run` first, which
 //! writes nothing); a value outside `del`/`ctrl-h`/`delete` is refused with a usage error and
-//! changes nothing. The window's use of them is tested in
+//! changes nothing; `terminal.bell` (#98 T3) is `off` until set. The window's use of them is tested in
 //! `crates/subak/tests/gui_window.rs::line_editing_insert_newline_backspace_and_alt_as_meta`.
 #![cfg(windows)]
 
@@ -103,4 +103,10 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     assert_eq!(setting(&show, "terminal.backspace")["value"], "ctrl-h");
     assert_eq!(setting(&show, "terminal.backspace")["source"], "file");
     assert_eq!(setting(&show, "terminal.alt_is_meta")["value"], false);
+    // #98 T3: the bell is off unless chosen.
+    assert_eq!(setting(&show, "terminal.bell")["value"], "off");
+    let (code, doc) = json(&sb, &["config", "set", "terminal.bell", "visual"]);
+    assert_eq!(code, 0, "{doc}");
+    let (_, show) = json(&sb, &["config", "show"]);
+    assert_eq!(setting(&show, "terminal.bell")["value"], "visual");
 }

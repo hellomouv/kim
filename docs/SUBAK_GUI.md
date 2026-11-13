@@ -155,6 +155,13 @@ Keys go to the program, in the order of ADR 0009:
    | `scroll.line-up` / `scroll.line-down` | `Ctrl+Shift+Up` / `Down` | Scroll a line |
    | `scroll.top` / `scroll.bottom` | `Ctrl+Shift+Home` / `End` | Oldest line / live screen |
 
+   **#98 T3 (background tabs and the bell).** A tab that is not shown marks unseen output with
+   `•` and a bell with `♪` (beside its status; a bell wins) until it is shown again, from the
+   Host's `terminal.activity` events. A bell in the shown pane does what `terminal.bell` says:
+   nothing (`off`, the default, as in Tabby), a 120 ms flash of the pane's colours plus a flash of
+   the taskbar button while the window is not in front (`visual`), or the system sound and the
+   flash (`audible`). Bells closer together than the flash ring once.
+
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
    `Ctrl+Space` as NUL, `Ctrl+2`…`Ctrl+8` as the VT220 codes, cursor keys (`SS3` in application
@@ -918,6 +925,7 @@ copy_on_select = false   # copy a mouse selection when the button is released
 smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the program
 alt_is_meta = true       # #98 T2: Alt+key sends ESC first (false: the character alone)
 backspace = "del"        # #98 T2: del (0x7F) | ctrl-h (0x08) | delete (CSI 3 ~)
+bell = "off"             # #98 T3: off | visual (flash; taskbar too when not in front) | audible
 claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
 claude_animation = true  # Step 44: the marks move (false: static; reduced motion is static too)
 right_click = "copy-paste"   # copy-paste | menu | paste | none

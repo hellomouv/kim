@@ -143,6 +143,10 @@ const TIMER_MOTION: usize = 5;
 const TIMER_TOAST: usize = 6;
 /// Step 44: the next Claude mark frame (armed only while a shown mark moves).
 const TIMER_CLAUDE: usize = 7;
+/// #98 T3: ends the visual bell's flash.
+const TIMER_BELL: usize = 8;
+/// #98 T3: how long the visual bell shows.
+const BELL_FLASH_MS: u32 = 120;
 /// `WM_MOUSELEAVE` (the pointer left the client area after `TrackMouseEvent`).
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
@@ -408,6 +412,8 @@ struct App {
     minimized: bool,
     maximized: bool,
     focused: bool,
+    /// #98 T3: the visual bell is showing.
+    bell_flash: bool,
     high_contrast: bool,
     bg_brush: HBRUSH,
     link: Option<Link>,
@@ -1582,6 +1588,8 @@ impl App {
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);
         let connected = self.model.connected();
+        // #98 T3: the shown tab was seen.
+        self.model.seen();
         // Step 44: each mark's motion clock restarts when its Terminal's state changes.
         let now = Instant::now();
         let mode = self.claude_mode();
@@ -1622,6 +1630,11 @@ impl App {
                     tabs::Claude::None
                 },
                 frame: None,
+                alert: if connected {
+                    self.model.alert(&t.id)
+                } else {
+                    None
+                },
             })
             .zip(self.model.tabs())
             .map(|(mut it, t)| {
@@ -2718,6 +2731,40 @@ impl App {
         }
     }
 
+    /// #98 T3 (`CORE-81`): a bell in the shown pane, as `terminal.bell` says: nothing, a flash
+    /// of the pane (and of the taskbar button while the window is not in front), or the system
+    /// sound and the flash. Bells closer than the flash itself ring once.
+    fn ring_bell(&mut self) {
+        let mode = self.settings.terminal.bell;
+        self.event(&json!({"event": "bell", "mode": mode.as_str()}));
+        if mode == config::Bell::Off || self.bell_flash {
+            return;
+        }
+        if mode == config::Bell::Audible && !self.opts.test {
+            // SAFETY: plays the default system sound; no state.
+            unsafe { windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(0) };
+        }
+        self.bell_flash = true;
+        self.renderer.set_flash(true);
+        // SAFETY: a one-shot timer of our own window.
+        unsafe { SetTimer(self.hwnd, TIMER_BELL, BELL_FLASH_MS, None) };
+        if !self.focused && !self.opts.test {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                FLASHW_TIMERNOFG, FLASHW_TRAY, FLASHWINFO, FlashWindowEx,
+            };
+            let fi = FLASHWINFO {
+                cbSize: size_of::<FLASHWINFO>() as u32,
+                hwnd: self.hwnd,
+                dwFlags: FLASHW_TRAY | FLASHW_TIMERNOFG,
+                uCount: 3,
+                dwTimeout: 0,
+            };
+            // SAFETY: flashes our own window's taskbar button until it comes to the front.
+            unsafe { FlashWindowEx(&raw const fi) };
+        }
+        self.redraw();
+    }
+
     fn input(&mut self, bytes: &[u8]) {
         if bytes.is_empty() {
             return;
@@ -3028,9 +3075,13 @@ impl App {
                         }
                     }
                     Data::Feed => {
+                        let bells = self.pane.bells();
                         self.pane.feed(&bytes);
                         self.bytes += bytes.len() as u64;
                         fed = true;
+                        if self.pane.bells() > bells {
+                            self.ring_bell();
+                        }
                     }
                     Data::Reset {
                         cols,
@@ -5067,6 +5118,16 @@ impl App {
             .map(|r| surface.row_at(r).text().trim_end().to_string())
             .collect();
         let m = self.renderer.metrics();
+        // #98 T3: the tabs' alerts by name, and whether the visual bell shows.
+        let alerts: serde_json::Map<String, Value> = self
+            .model
+            .tabs()
+            .iter()
+            .filter_map(|t| {
+                let a = self.model.alert(&t.id)?;
+                Some((t.name.clone(), json!(format!("{a:?}").to_lowercase())))
+            })
+            .collect();
         let mut dump = json!({
             "event": "dump",
             "phase": self.model.phase.name(),
@@ -5125,6 +5186,8 @@ impl App {
                 "cols": s.cols, "rows": s.rows, "visible": s.visible})).collect::<Vec<_>>(),
         })));
         dump["active_slot"] = json!(self.model.active_slot().map(|s| s.id.clone()));
+        dump["alerts"] = Value::Object(alerts);
+        dump["bell_flash"] = json!(self.bell_flash);
         dump["side"] = Value::Object(
             self.side
                 .iter()
@@ -6221,6 +6284,13 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
                 }
                 TIMER_MOTION => app.motion_tick(),
                 TIMER_CLAUDE => app.claude_tick(),
+                TIMER_BELL => {
+                    // SAFETY: our own one-shot timer.
+                    unsafe { KillTimer(hwnd, TIMER_BELL) };
+                    app.renderer.set_flash(false);
+                    app.bell_flash = false;
+                    app.redraw();
+                }
                 TIMER_TOAST => {
                     // SAFETY: our own one-shot timer.
                     unsafe { KillTimer(hwnd, TIMER_TOAST) };
@@ -6472,6 +6542,7 @@ pub fn run(o: Options) -> ExitCode {
         minimized: false,
         maximized: false,
         focused: false,
+        bell_flash: false,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,

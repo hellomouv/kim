@@ -78,6 +78,7 @@ copy_on_select = false
 smart_ctrl_c = false
 alt_is_meta = true            # #98 T2: Alt+key sends ESC first
 backspace = "del"             # #98 T2: del | ctrl-h | delete
+bell = "off"                  # #98 T3: off | visual | audible
 right_click = "copy-paste"    # copy-paste | menu | paste | none
 middle_click = "none"         # none | paste
 word_separators = "…"         # ≤ 128 characters; default: Windows Terminal's set

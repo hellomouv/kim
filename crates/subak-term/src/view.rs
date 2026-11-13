@@ -265,6 +265,11 @@ impl TermView {
     /// Feeds pane output (snapshot frames and live frames alike). A scrolled-back viewport stays
     /// on the lines it shows while new ones arrive; switching screens resets the viewport and
     /// the selection.
+    /// #98 T3: how many bells (BEL controls) the screen has seen.
+    pub fn bells(&self) -> u64 {
+        self.screen.bells()
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) {
         self.screen.feed(bytes);
         let total = self.screen.history().total_lines;

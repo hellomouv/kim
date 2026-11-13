@@ -448,6 +448,16 @@ pub struct Model {
     pre_hidden: Vec<String>,
     /// Step 22: the read-only views of the shown window's other visible panes.
     views: Vec<PaneViewState>,
+    /// #98 T3 (`CORE-80`): Terminals not shown that had output or a bell since they were
+    /// last shown.
+    alerts: HashMap<String, Alert>,
+}
+
+/// #98 T3: what happened in a Terminal that is not shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Alert {
+    Output,
+    Bell,
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -472,6 +482,22 @@ impl Model {
             connected: false,
             pre_hidden: Vec::new(),
             views: Vec::new(),
+            alerts: HashMap::new(),
+        }
+    }
+
+    /// #98 T3: the alert of Terminal `id` (never the shown one: seeing it clears it).
+    pub fn alert(&self, id: &str) -> Option<Alert> {
+        if self.terminal().is_some_and(|t| t.id == id) {
+            return None;
+        }
+        self.alerts.get(id).copied()
+    }
+
+    /// #98 T3: the shown Terminal was seen: its alert goes.
+    pub fn seen(&mut self) {
+        if let Some(id) = self.terminal().map(|t| t.id.clone()) {
+            self.alerts.remove(&id);
         }
     }
 
@@ -1862,6 +1888,19 @@ impl Model {
                     ));
                 }
             }
+            // #98 T3: output or a bell in a Terminal that is not shown marks its tab.
+            "terminal.activity" if !shown && !tid.is_empty() => {
+                let kind = if d["kind"] == "bell" {
+                    Alert::Bell
+                } else {
+                    Alert::Output
+                };
+                let e = self.alerts.entry(tid).or_insert(kind);
+                if kind > *e {
+                    *e = kind;
+                }
+                out.push(Effect::Tabs);
+            }
             "host.stopping" => self.host_stopping = text(&d["reason"]),
             _ => {}
         }
@@ -2705,5 +2744,55 @@ mod tests {
         let fx = m.rename("t-a", "taken");
         let fx = fail(&mut m, sent(&fx)[0].0, "name_conflict", json!({}));
         assert!(matches!(&fx[0], Effect::Renamed(Err(e)) if e.contains("name_conflict")));
+    }
+
+    /// #98 T3 (`CORE-80`, `CORE-81`): output or a bell in a Terminal that is not shown marks
+    /// its tab (a bell wins over output); the shown Terminal never gets a mark and seeing a
+    /// Terminal clears its own.
+    #[test]
+    fn background_output_and_bells_mark_the_tabs_until_seen() {
+        let mut m = Model::new(Want::Any, (80, 24));
+        connect_with(
+            &mut m,
+            json!([
+                term("t-a", "a", "running", 10),
+                term("t-b", "b", "running", 11)
+            ]),
+        );
+        let shown = m.terminal().unwrap().id.clone();
+        let other = if shown == "t-a" { "t-b" } else { "t-a" };
+        let fx = event(
+            &mut m,
+            "terminal.activity",
+            json!({"terminal_id": shown, "pane_id": "p", "kind": "bell"}),
+        );
+        assert!(
+            fx.is_empty() && m.alert(&shown).is_none(),
+            "the shown one: nothing"
+        );
+        let fx = event(
+            &mut m,
+            "terminal.activity",
+            json!({"terminal_id": other, "pane_id": "p", "kind": "output"}),
+        );
+        assert!(fx.iter().any(|e| matches!(e, Effect::Tabs)), "{fx:?}");
+        assert_eq!(m.alert(other), Some(Alert::Output));
+        event(
+            &mut m,
+            "terminal.activity",
+            json!({"terminal_id": other, "pane_id": "p", "kind": "bell"}),
+        );
+        event(
+            &mut m,
+            "terminal.activity",
+            json!({"terminal_id": other, "pane_id": "p", "kind": "output"}),
+        );
+        assert_eq!(m.alert(other), Some(Alert::Bell), "a bell stays a bell");
+        m.seen();
+        assert_eq!(
+            m.alert(other),
+            Some(Alert::Bell),
+            "seeing the shown one clears only it"
+        );
     }
 }

@@ -532,3 +532,29 @@ fn system_fonts_draw_korean_emoji_and_symbols_in_their_cells() {
     assert!(ink_columns(&r, 0, 0) > 0 && ink_columns(&r, 1, 0) > 0);
     assert!(r.glyph_cache().len() >= before.min(5));
 }
+
+/// #98 T3 (`CORE-81`): the visual bell swaps the default colours for a moment, also on a
+/// screen the program reversed (DECSCNM), and back.
+#[test]
+fn the_visual_bell_flashes_the_default_colours() {
+    let t = Theme::kim_dark();
+    let v = view(10, 2, b"ab\x1b[?25l");
+    let mut r = builtin(1.0);
+    r.render(&v);
+    assert_eq!(cell_colors(&r, 0, 0), (t.background, Some(t.foreground)));
+    r.set_flash(true);
+    assert!(r.render(&v).full, "the flash redraws everything");
+    assert_eq!(cell_colors(&r, 0, 0), (t.foreground, Some(t.background)));
+    assert_eq!(r.frame().pixel(0, 0), t.foreground, "the padding too");
+    r.set_flash(false);
+    r.render(&v);
+    assert_eq!(cell_colors(&r, 0, 0), (t.background, Some(t.foreground)));
+    let reversed = view(10, 2, b"\x1b[?5hab\x1b[?25l");
+    r.set_flash(true);
+    r.render(&reversed);
+    assert_eq!(
+        cell_colors(&r, 0, 0),
+        (t.background, Some(t.foreground)),
+        "DECSCNM flashes back"
+    );
+}

@@ -1026,6 +1026,11 @@ fn standin_helper() {
         if t == b"quit" {
             break;
         }
+        // #98 T3: a bell on request.
+        if t == b"bell" {
+            println!("\x07standin-rang");
+            continue;
+        }
         let hex: String = t.iter().map(|b| format!("{b:02x}")).collect();
         println!("standin-got-{hex}");
     }
@@ -3072,5 +3077,79 @@ fn line_editing_insert_newline_backspace_and_alt_as_meta() {
     });
     println!(
         "EVIDENCE line editing: Alt+Shift+Enter 0a, line.home 01, line.delete-previous-word 17, Backspace 7f→08 (ctrl-h), Alt+x 1b78→78 (alt_is_meta off); stand-in got 710177"
+    );
+}
+
+/// #98 T3 (`CORE-80`, `CORE-81`): output and a bell in a background Terminal mark its tab
+/// (`•`, then `♪`) until it is shown; a bell in the shown pane flashes it with
+/// `terminal.bell = "visual"` (and does nothing with the default `off`).
+#[test]
+fn background_activity_and_bells_mark_tabs_and_the_visual_bell_flashes() {
+    let host = Host::start("gui-bell", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "front");
+    new_standin(&ep, "back");
+    let appdata = sandbox("bell");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let gui = Gui::start(&ep, Some("front"), &appdata);
+    gui.state("attached");
+    let send = |target: &str, line: &str| {
+        for keys in [
+            format!("send-keys -l '{line}'"),
+            "send-keys Enter".to_string(),
+        ] {
+            let (code, doc) = sub(&ep, &["--json", "command", "--target", target, &keys]);
+            assert_eq!(code, 0, "{doc}");
+        }
+    };
+    // The default: a bell in the shown pane does nothing.
+    gui.type_text("bell\r");
+    wait_for("the bell rang", || {
+        gui.history().contains(r#""event":"bell","mode":"off""#)
+    });
+    assert_eq!(gui.dump()["bell_flash"], false);
+    // Output in the background Terminal: `•`.
+    send("back", "hello");
+    wait_for("back answered", || {
+        capture(&ep, "back").contains("standin-got-68656c6c6f")
+    });
+    let d = gui.until("back has output", |d| d["alerts"]["back"] == "output");
+    assert!(
+        d["bar"]["text"].as_str().unwrap().contains("• back"),
+        "{}",
+        d["bar"]["text"]
+    );
+    assert!(d["alerts"].get("front").is_none(), "the shown tab never");
+    // A bell there: `♪` (wins over output).
+    std::thread::sleep(Duration::from_millis(1100));
+    send("back", "bell");
+    let d = gui.until("back rang", |d| d["alerts"]["back"] == "bell");
+    assert!(
+        d["bar"]["text"].as_str().unwrap().contains("♪ back"),
+        "{}",
+        d["bar"]["text"]
+    );
+    // The visual bell, read again when the window gets the focus.
+    let (code, doc) = run_env(&["config", "set", "terminal.bell", "visual"], &env);
+    assert_eq!(code, 0, "{doc}");
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    gui.type_text("bell\r");
+    gui.wait("bell", |v| v["mode"] == "visual");
+    let flashed = gui.dump()["bell_flash"] == true;
+    gui.until("the flash ended", |d| d["bell_flash"] == false);
+    // Showing the background Terminal clears its mark.
+    gui.press(VK_TAB, true, false);
+    let d = gui.until("back shown", |d| {
+        d["phase"] == "attached" && shown(d) == "back"
+    });
+    assert!(d["alerts"].get("back").is_none(), "{}", d["alerts"]);
+    assert!(
+        !d["bar"]["text"].as_str().unwrap().contains("♪"),
+        "{}",
+        d["bar"]["text"]
+    );
+    println!(
+        "EVIDENCE background tab marks: output → • back, bell → ♪ back, cleared when shown; visual bell flashed: {flashed}"
     );
 }

@@ -358,7 +358,8 @@ window, and never change a running Terminal. The window's Settings menu changes 
 `appearance.padding` (0–16), `appearance.opacity` (50–100), `appearance.motion` (`system`,
 `reduced`, `full`), `appearance.bold_is_bright`, `terminal.default_profile`,
 `terminal.copy_on_select`, `terminal.smart_ctrl_c`, `terminal.alt_is_meta` and
-`terminal.backspace` (`del`, `ctrl-h`, `delete`; #98 T2), `terminal.claude_indicators` (Step 28),
+`terminal.backspace` (`del`, `ctrl-h`, `delete`; #98 T2), `terminal.bell` (`off`, `visual`,
+`audible`; #98 T3), `terminal.claude_indicators` (Step 28),
 `terminal.claude_animation` (Step 44),
 `terminal.right_click` (`copy-paste`,
 `menu`, `paste`, `none`), `terminal.middle_click` (`none`, `paste`), `terminal.word_separators`.

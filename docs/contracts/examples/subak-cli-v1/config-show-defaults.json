@@ -100,6 +100,13 @@
         "value": "del"
       },
       {
+        "default": "off",
+        "key": "terminal.bell",
+        "source": "default",
+        "takes": "off, visual or audible",
+        "value": "off"
+      },
+      {
         "default": true,
         "key": "terminal.claude_indicators",
         "source": "default",

@@ -90,6 +90,22 @@ pub struct Item<'a> {
     pub claude: Claude,
     /// Step 44: the mark's current motion frame (`None`: the state's resting glyph).
     pub frame: Option<crate::gui::claude_motion::Frame>,
+    /// #98 T3: output or a bell since the tab was last shown.
+    pub alert: Option<crate::gui::model::Alert>,
+}
+
+/// #98 T3: the mark of a tab with unseen output (`•`) or a bell (`♪`), a shape each.
+pub fn alert_mark(a: Option<crate::gui::model::Alert>) -> Option<(char, Rgb, &'static str)> {
+    use crate::gui::model::Alert;
+    Some(match a? {
+        Alert::Output => ('•', ACCENT, "new output"),
+        Alert::Bell => ('♪', WARNING, "bell"),
+    })
+}
+
+/// The columns of a tab's marks (Claude and alert), each with its space.
+fn marks_width(it: &Item<'_>) -> usize {
+    mark_width(it.claude) + alert_mark(it.alert).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
 }
 
 pub use crate::gui::float::art::Claude;
@@ -230,8 +246,8 @@ fn edit_window(e: &Edit<'_>) -> (String, usize, usize) {
 /// The width in cells of tab `i`.
 fn tab_width(it: &Item<'_>, edit: Option<&Edit<'_>>) -> usize {
     match edit {
-        Some(e) => edit_window(e).2 + 6 + mark_width(it.claude),
-        None => (width(it.name) + 6).clamp(TAB_MIN, TAB_MAX) + mark_width(it.claude),
+        Some(e) => edit_window(e).2 + 6 + marks_width(it),
+        None => (width(it.name) + 6).clamp(TAB_MIN, TAB_MAX) + marks_width(it),
     }
 }
 
@@ -342,6 +358,9 @@ pub fn layout_hover(
             };
             put(&mut vt, &mut col, &format!("{fill}{}{on}{g}{off} ", fg(c)));
         }
+        if let Some((g, c, _)) = alert_mark(it.alert) {
+            put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
+        }
         match edit.filter(|_| is_active) {
             Some(e) => {
                 let (shown, at, field) = edit_window(e);
@@ -366,7 +385,7 @@ pub fn layout_hover(
                 put(&mut vt, &mut col, &s);
             }
             None => {
-                let room = w - 6 - mark_width(it.claude);
+                let room = w - 6 - marks_width(it);
                 let name = fit(it.name, room);
                 let pad = " ".repeat(room.saturating_sub(width(&name)));
                 let style = if is_active {
@@ -463,6 +482,7 @@ mod tests {
                 status: Status::Running,
                 claude: Claude::None,
                 frame: None,
+                alert: None,
             })
             .collect()
     }
@@ -686,5 +706,27 @@ mod tests {
         let (a, b) = bar.active.unwrap();
         let caret = bar.caret.unwrap();
         assert!(caret > a && caret < b, "{a} {caret} {b}");
+    }
+
+    /// #98 T3: an unseen tab shows `•` for output and `♪` for a bell, beside its status, and
+    /// the tab grows to keep the whole name.
+    #[test]
+    fn alert_marks_show_beside_the_status() {
+        use crate::gui::model::Alert;
+        let mut list = items(&["build", "logs", "shell"]);
+        list[1].alert = Some(Alert::Output);
+        list[2].alert = Some(Alert::Bell);
+        let bar = layout(&list, Some(0), None, 120, 0);
+        let line = text(&bar, 120);
+        assert!(line.contains("● • logs"), "{line}");
+        assert!(line.contains("● ♪ shell"), "{line}");
+        assert!(
+            !line.contains("● • build") && !line.contains("● ♪ build"),
+            "{line}"
+        );
+        assert_eq!(alert_mark(Some(Alert::Bell)).unwrap().2, "bell");
+        assert!(alert_mark(None).is_none());
+        let plain = tab_width(&items(&["logs"])[0], None);
+        assert_eq!(tab_width(&list[1], None), plain + 2);
     }
 }

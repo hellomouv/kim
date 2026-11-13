@@ -175,8 +175,8 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | --- | --- | --- | --- | --- | --- |
 | `CORE-78` Progress detection | R: "Progress detection"; S `detectProgress: true` | OSC 9;4 progress and percentage heuristics, shown on the tab and the Windows taskbar *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
 | `CORE-79` Notification on process completion | R: "Notification on process completion" | A Windows toast when a command finishes in an unfocused pane, using shell-integration marks. Local only. Complements the Claude `done` state (SUBAK-FR-050). *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
-| `CORE-80` Activity indicator on background tabs | K activity marker on inactive tabs | tmux-style activity and silence monitoring per pane, shown on the tab, the session manager and the floating icon *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
-| `CORE-81` Bell | S `bell` (off, visual, audible), `bellFlashFrame` | The same modes, plus a taskbar flash *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. | planned | #98 T3 | — |
+| `CORE-80` Activity indicator on background tabs | K activity marker on inactive tabs | tmux-style activity and silence monitoring per pane, shown on the tab, the session manager and the floating icon *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. *#98 T3 (2026-11-13):* Output and bells in a Terminal that is not shown mark its tab (`•`, `♪`) until it is shown, from the Host's throttled `terminal.activity` event. Remaining: silence monitoring, and the marks in the Terminal manager and on the floating icon. | partial | #98 T3 | T: `crates/subak/src/gui/model.rs::tests::background_output_and_bells_mark_the_tabs_until_seen`; T: `crates/subak/src/gui/tabs.rs::tests::alert_marks_show_beside_the_status`; T: `crates/subak/src/host.rs::tests::activity_is_announced_at_most_every_two_seconds_and_bells_every_second`; T: `crates/subak/tests/gui_window.rs::background_activity_and_bells_mark_tabs_and_the_visual_bell_flashes`; real desktop (#98 T3): a background Git bash printed (`• back`) then rang (`♪ back`); Ctrl+Tab cleared it |
+| `CORE-81` Bell | S `bell` (off, visual, audible), `bellFlashFrame` | The same modes, plus a taskbar flash *Step 36 (2026-11-11):* not implemented; follow-up #98 T3. *#98 T3 (2026-11-13):* `[terminal] bell` = `off` (default, as in Tabby), `visual` (a 120 ms colour flash of the pane; the taskbar button flashes while the window is not in front) or `audible` (the system sound and the flash). The audible sound and the taskbar flash were not observed by a test (**not tested**: no audio capture; the button flash was not screenshotted). | implemented | #98 T3 | T: `crates/subak/src/config.rs::tests::the_bell_is_off_by_default_and_a_setting`; T: `crates/subak-term/tests/render.rs::the_visual_bell_flashes_the_default_colours`; T: `crates/subak/tests/gui_window.rs::background_activity_and_bells_mark_tabs_and_the_visual_bell_flashes`; real desktop (#98 T3): a typed `printf '\a'` turned the pane centre from `#0E0E12` to `#D8D6E0` and back |
 
 ### 1.9 Quake dropdown and global hotkey
 
@@ -446,20 +446,20 @@ where each area belongs. The named Step confirms or changes the placement.
 
 ## Summary counts
 
-Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T2, 2026-11-13).
+Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T3, 2026-11-13).
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 75 |
-| `partial` | 83 |
-| `implemented` | 20 |
+| `planned` | 73 |
+| `partial` | 84 |
+| `implemented` | 21 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 27 | 42 | 9 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 25 | 43 | 10 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 14 | 7 | 3 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -486,3 +486,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-11 | v1.0.238 (2026-10-07) | Step 35 | Advanced SSH and transfers (ADR 0068): `SSH-17`, `21` `implemented`; `SSH-18`–`20`, `23`–`25`, `XFER-01`–`03` `partial` (the window panel and queue in Step 36; agent and X11 forwarding not tested with a real agent or X server); `SSH-22`, `26`–`28`, `XFER-04`–`07` (Zmodem included) moved to Step 36. Summary counts recomputed. |
 | 2026-11-11 | v1.0.238 (2026-10-07) | Step 36 | Extended features and the parity review (ADR 0069, [TABBY_PARITY_REPORT](TABBY_PARITY_REPORT.md)): `TEL-01`, `02` `implemented`; `TEL-03`, `SER-01`–`04`, `07`, `10`, `SSH-29`, `SHELL-16` `partial` (no serial hardware: not tested with a real port); every other row that targeted Step 36 names a group of follow-up #98 (T1–T6). Summary counts recomputed. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T2 | Keyboard and line editing: `CORE-57` (line-editing actions in the program's own keys), `CORE-58` (`Alt+Shift+Enter` inserts a new line), `CORE-61` (`[terminal] alt_is_meta`) and `CORE-62` (`[terminal] backspace`) `implemented`, tested in the window and with real keystrokes on the desktop. No Tabby re-fetch. |
+| 2026-11-13 | v1.0.238 (2026-10-07) | #98 T3 | Background tabs and the bell: `CORE-81` (`[terminal] bell`) `implemented`; `CORE-80` `partial` (tab marks from `terminal.activity`; silence monitoring and the manager/floating-icon marks remain). No Tabby re-fetch. |

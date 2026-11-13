@@ -156,6 +156,33 @@ impl Motion {
     }
 }
 
+/// #98 T3 (`CORE-81`, Tabby `bell`): what a bell (BEL) in the shown pane does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bell {
+    /// Nothing (Tabby's default; no notification without opt-in).
+    Off,
+    /// The pane flashes; the taskbar button flashes while the window is not in front.
+    Visual,
+    /// The system sound, and the visual bell.
+    Audible,
+}
+
+impl Bell {
+    pub const ALL: [Self; 3] = [Self::Off, Self::Visual, Self::Audible];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Visual => "visual",
+            Self::Audible => "audible",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.as_str() == s)
+    }
+}
+
 /// What a right click in the pane does (`terminal.right_click`, Tabby `rightClick`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RightClick {
@@ -243,6 +270,8 @@ pub struct TerminalPrefs {
     pub alt_is_meta: bool,
     /// #98 T2 (`CORE-62`): what Backspace sends.
     pub backspace: subak_term::input::BackspaceMode,
+    /// #98 T3 (`CORE-81`): what a bell in the shown pane does (off by default).
+    pub bell: Bell,
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
@@ -333,6 +362,7 @@ impl Default for Settings {
                 smart_ctrl_c: false,
                 alt_is_meta: true,
                 backspace: subak_term::input::BackspaceMode::Del,
+                bell: Bell::Off,
                 claude_indicators: true,
                 claude_animation: true,
                 detect_shells: true,
@@ -442,6 +472,7 @@ impl Settings {
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
             ("terminal", "alt_is_meta") => json!(t.alt_is_meta),
             ("terminal", "backspace") => json!(t.backspace.as_str()),
+            ("terminal", "bell") => json!(t.bell.as_str()),
             ("terminal", "claude_indicators") => json!(t.claude_indicators),
             ("terminal", "claude_animation") => json!(t.claude_animation),
             ("terminal", "detect_shells") => json!(t.detect_shells),
@@ -666,6 +697,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "bell",
+        takes: "off, visual or audible",
+        kind: Kind::Text,
+    },
+    Key {
+        section: "terminal",
         name: "claude_indicators",
         takes: "true or false",
         kind: Kind::Bool,
@@ -769,6 +806,7 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("terminal", "backspace") => {
             t.backspace = subak_term::input::BackspaceMode::parse(text()?).ok_or(())?;
         }
+        ("terminal", "bell") => t.bell = Bell::parse(text()?).ok_or(())?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
@@ -2779,5 +2817,17 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
             BackspaceMode::CtrlH,
             "a refused value changes nothing"
         );
+    }
+
+    /// #98 T3 (`CORE-81`): the bell is off unless chosen.
+    #[test]
+    fn the_bell_is_off_by_default_and_a_setting() {
+        let mut s = Settings::default();
+        assert_eq!(s.terminal.bell, Bell::Off);
+        for b in Bell::ALL {
+            set_value(&mut s, "terminal.bell", b.as_str()).unwrap();
+            assert_eq!(s.terminal.bell, b);
+        }
+        assert!(set_value(&mut s, "terminal.bell", "loud").is_err());
     }
 }

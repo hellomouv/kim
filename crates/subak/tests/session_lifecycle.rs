@@ -915,7 +915,8 @@ fn detach_disconnect_and_client_crash_never_stop_a_terminal() {
     // Nothing in all of this changed the Terminal's state.
     let mut stray = Vec::new();
     while let Got::Control(m) = watcher.next_control(Duration::from_millis(500)) {
-        if m["type"] == "event" {
+        // (#98 T3: `terminal.activity` reports output for the tabs; it is not a lifecycle event.)
+        if m["type"] == "event" && m["event"] != "terminal.activity" {
             stray.push(m);
         }
     }

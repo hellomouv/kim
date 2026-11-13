@@ -476,6 +476,8 @@ struct State {
     claude: HashMap<String, BTreeMap<String, ClaudeSession>>,
     /// Step 28: the Claude state last announced per Terminal (`terminal.claude_changed`).
     claude_told: HashMap<String, &'static str>,
+    /// #98 T3: when `terminal.activity` was last sent per Terminal: (output, bell).
+    activity_told: HashMap<String, (Option<Instant>, Option<Instant>)>,
     /// Step 29 (ADR 0063): the durable state. `saved`: Terminals of an earlier Host run, kept
     /// as records (never started here); `restore`: the policy of live Terminals.
     persist: Persist,
@@ -836,7 +838,8 @@ impl State {
     /// as the change it reports.
     fn notify(&mut self, topic: &str, name: &str, data: &Value) {
         // Step 29: what Terminals, windows, panes and Claude references look like changed.
-        if matches!(topic, "terminals" | "claude") {
+        // (#98 T3: `terminal.activity` changes nothing that is saved.)
+        if matches!(topic, "terminals" | "claude") && name != "terminal.activity" {
             self.mark_dirty();
         }
         for c in self.conns.values_mut() {
@@ -1054,6 +1057,7 @@ pub fn serve(opts: &ServeOpts) -> Result<Value, CliError> {
             in_hook: false,
             claude: HashMap::new(),
             claude_told: HashMap::new(),
+            activity_told: HashMap::new(),
             persist: Persist::default(),
             initial: None,
         }),
@@ -2105,6 +2109,17 @@ impl Host {
                 let data = json!({"terminal_id": tid, "window_id": wid, "pane_id": rt.pane_id, "kind": kind});
                 st.notify("terminals", "window.alert", &data);
             }
+            // #98 T3: output or a bell in a Terminal, for the windows' background tabs (a bell
+            // at most once a second, output at most every two seconds per Terminal).
+            let told = st
+                .activity_told
+                .entry(rt.terminal_id.clone())
+                .or_insert((None, None));
+            if let Some(kind) = activity_kind(told, rang, Instant::now()) {
+                let data =
+                    json!({"terminal_id": rt.terminal_id, "pane_id": rt.pane_id, "kind": kind});
+                st.notify("terminals", "terminal.activity", &data);
+            }
             if moved {
                 st.mark_dirty();
             }
@@ -2765,9 +2780,12 @@ impl Host {
             })
             .collect::<Option<_>>()
             .ok_or_else(bad)?;
-        if let Some(c) = self.lock().conns.get_mut(&conn) {
+        let mut st = self.lock();
+        if let Some(c) = st.conns.get_mut(&conn) {
             c.topics.clone_from(&topics);
         }
+        // #98 T3: a new listener hears the next output of every Terminal.
+        st.activity_told.clear();
         Ok(json!({ "topics": topics }))
     }
 
@@ -2828,6 +2846,8 @@ impl Host {
         // live output continues at `seq`: nothing lost, duplicated or reordered (ADR 0030).
         let mut guard = self.lock();
         let st = &mut *guard;
+        // #98 T3: what the windows show changed: the next output of every Terminal is heard.
+        st.activity_told.clear();
         // Re-checked under the lock that ends attachments, so no client stays attached to a
         // pane that ended between the check above and here.
         if !st.rt.contains_key(&rt.pane_id) {
@@ -3125,6 +3145,8 @@ impl Host {
 
     fn detach(&self, conn: u64, params: &Value) -> Result<Value, IpcError> {
         let mut st = self.lock();
+        // #98 T3: what the windows show changed (see `attach`).
+        st.activity_told.clear();
         let known = |st: &State, s: u32| st.reg.pane_of_stream(s).is_some();
         match &params["stream_id"] {
             Value::Null => {
@@ -5777,10 +5799,55 @@ fn saved_summary(t: &Value) -> Value {
     json!({"id": t["id"], "name": t["name"], "restore": t["restore"], "windows": windows, "panes": panes})
 }
 
+/// #98 T3: whether output (`rang`: with a bell) is announced as `terminal.activity` now, and
+/// as what: a bell at most once a second, other output at most every two seconds.
+fn activity_kind(
+    told: &mut (Option<Instant>, Option<Instant>),
+    rang: bool,
+    now: Instant,
+) -> Option<&'static str> {
+    let due =
+        |at: Option<Instant>, every: Duration| at.is_none_or(|t| now.duration_since(t) >= every);
+    if rang && due(told.1, Duration::from_secs(1)) {
+        told.1 = Some(now);
+        told.0 = Some(now);
+        Some("bell")
+    } else if due(told.0, Duration::from_secs(2)) {
+        told.0 = Some(now);
+        Some("output")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicU32;
+
+    /// #98 T3: `terminal.activity` is throttled per Terminal; a bell is never hidden behind
+    /// output for longer than a second.
+    #[test]
+    fn activity_is_announced_at_most_every_two_seconds_and_bells_every_second() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut told = (None, None);
+        assert_eq!(activity_kind(&mut told, false, at(0)), Some("output"));
+        assert_eq!(activity_kind(&mut told, false, at(500)), None);
+        assert_eq!(activity_kind(&mut told, true, at(600)), Some("bell"));
+        assert_eq!(
+            activity_kind(&mut told, true, at(900)),
+            None,
+            "a second between bells"
+        );
+        assert_eq!(
+            activity_kind(&mut told, false, at(2000)),
+            None,
+            "the bell counted as output"
+        );
+        assert_eq!(activity_kind(&mut told, true, at(1700)), Some("bell"));
+        assert_eq!(activity_kind(&mut told, false, at(3800)), Some("output"));
+    }
 
     /// A pane whose root has exited but whose job still counts it for the next `lag` queries, as
     /// the kernel does for a moment (it takes an exiting process out of its job only after

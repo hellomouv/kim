@@ -468,6 +468,7 @@ subscribes and then lists sees every later change exactly once, after its list.
 | `pane.removed` | `terminals` | `{terminal_id, window_id, pane_id, reason}`; `reason` is `exited` or `killed`; after the pane's `pane.exited` | 21 |
 | `pane.selected` | `terminals` | `{terminal_id, window_id, pane_id}`: a window's active pane changed | 21 |
 | `window.alert` | `terminals` | `{terminal_id, window_id, pane_id, kind: "activity" \| "bell"}`: a window that is not shown had output or a bell (once until it is shown) | 25 |
+| `terminal.activity` | `terminals` | `{terminal_id, pane_id, kind: "output" \| "bell"}`: a Terminal had output or a bell, for the windows' background tabs; per Terminal at most every 2 s for output and every second for a bell, and again at once after any `events.subscribe`, `pane.attach` or `pane.detach` (what a window shows changed). Never saved (#98 T3) | #98 |
 | `window.options` | `terminals` | `{terminal_id, window_id, options}`: `window.set_option` changed an option | 25 |
 
 | `terminal.claude_changed` | `terminals` | `{terminal_id, claude_state, previous}`: a Terminal's aggregate Claude state changed ([ADR 0062](../adr/0062-claude-code-status-indicators.md)); Terminal objects carry `claude_state` | 28 |

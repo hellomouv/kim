@@ -152,6 +152,7 @@
         {"$ref": "#/$defs/event_pane_selected"},
         {"$ref": "#/$defs/event_window_layout"},
         {"$ref": "#/$defs/event_window_alert"},
+        {"$ref": "#/$defs/event_terminal_activity"},
         {"$ref": "#/$defs/event_window_options"},
         {"$ref": "#/$defs/event_claude_state_changed"},
         {"$ref": "#/$defs/event_terminal_claude_changed"},
@@ -187,6 +188,7 @@
               "window.layout",
               "window.alert",
               "window.options",
+              "terminal.activity",
               "claude.state_changed",
               "terminal.claude_changed"
             ]
@@ -212,6 +214,26 @@
             "window_id": {"$ref": "#/$defs/window_id"},
             "pane_id": {"$ref": "#/$defs/pane_id"},
             "kind": {"enum": ["activity", "bell"]}
+          }
+        }
+      }
+    },
+    "event_terminal_activity": {
+      "description": "#98 T3: a Terminal had output or a bell (for the windows' background tabs); throttled per Terminal, again at once after events.subscribe, pane.attach or pane.detach.",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "terminal.activity"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "pane_id", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "kind": {"enum": ["output", "bell"]}
           }
         }
       }

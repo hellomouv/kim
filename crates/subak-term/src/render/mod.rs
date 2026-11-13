@@ -273,6 +273,8 @@ pub struct Renderer {
     cache: GlyphCache,
     focused: bool,
     reverse: bool,
+    /// #98 T3: a visual bell is showing.
+    flash: bool,
     full: bool,
     stats: RenderStats,
     /// Per-cell foreground colours of the row being drawn (kept to avoid an allocation per row).
@@ -302,6 +304,7 @@ impl Renderer {
             cache: GlyphCache::default(),
             focused: true,
             reverse: false,
+            flash: false,
             full: true,
             stats: RenderStats::default(),
             fgs: Vec::new(),
@@ -482,6 +485,12 @@ impl Renderer {
         self.raster.face_for(ch)
     }
 
+    /// #98 T3: the visual bell: while on, the default colours are swapped (the next
+    /// [`Renderer::render`] redraws everything).
+    pub fn set_flash(&mut self, on: bool) {
+        self.flash = on;
+    }
+
     /// Draws what changed in `view` since the last frame.
     pub fn render(&mut self, view: &TermView) -> Damage {
         let (cols, rows) = view.size();
@@ -494,8 +503,10 @@ impl Renderer {
             self.hashes = vec![0; usize::from(rows)];
             self.full = true;
         }
-        if modes.reverse_video != self.reverse {
-            self.reverse = modes.reverse_video;
+        // #98 T3: a visual bell swaps the colours too (on top of the program's DECSCNM).
+        let reverse = modes.reverse_video != self.flash;
+        if reverse != self.reverse {
+            self.reverse = reverse;
             self.full = true;
         }
         let full = std::mem::take(&mut self.full);
