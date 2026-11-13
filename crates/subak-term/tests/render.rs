@@ -606,3 +606,21 @@ fn the_minimum_contrast_lifts_faint_text() {
         ink(&floored)
     );
 }
+
+/// #98 T4 (`PLUG-08`): text matching a keyword rule is drawn in its colour; other text keeps
+/// its own; a selected cell keeps the selection's look.
+#[test]
+fn keyword_rules_colour_the_text_they_match() {
+    let t = Theme::kim_dark();
+    let red = Rgb(0xE0, 0x4F, 0x5F);
+    let v = view(20, 1, b"ok ERROR ok\x1b[?25l");
+    let mut r = builtin(1.0);
+    r.set_keywords(vec![(regex::Regex::new("ERROR").unwrap(), red)]);
+    r.render(&v);
+    let has = |col: u16, c: Rgb| cell_pixels(&r, col, 0).contains(&c);
+    for col in 3..8 {
+        assert!(has(col, red), "E-R-R-O-R in red at {col}");
+    }
+    assert!(!has(0, red) && !has(9, red), "the rest keeps its colour");
+    assert!(has(0, t.foreground));
+}

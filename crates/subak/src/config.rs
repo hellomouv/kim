@@ -351,6 +351,8 @@ pub struct Settings {
     pub tabs: TabsPrefs,
     /// #98 T4 (`PLUG-07`): saved snippets the window sends as input (`[[quick_commands]]`).
     pub quick_commands: Vec<QuickCommand>,
+    /// #98 T4 (`PLUG-08`): keyword rules the window draws (`[[highlights]]`).
+    pub highlights: Vec<Highlight>,
     pub profiles: Vec<Profile>,
 }
 
@@ -372,6 +374,97 @@ pub struct QuickCommand {
     pub text: String,
     /// Enter after it (the default), so the command runs.
     pub enter: bool,
+}
+
+/// #98 T4 (`PLUG-08`): one `[[highlights]]` table: text matching `pattern` (a regular
+/// expression) is drawn in `color`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Highlight {
+    pub pattern: String,
+    /// A colour name (red, orange, yellow, green, teal, blue, purple, pink) or `#rrggbb`.
+    pub color: String,
+    /// Its colour as RGB.
+    pub rgb: (u8, u8, u8),
+}
+
+/// The most keyword rules used.
+pub const MAX_HIGHLIGHTS: usize = 32;
+
+/// The colour of a `[[highlights]]` rule: a name or `#rrggbb`.
+pub fn highlight_color(s: &str) -> Option<(u8, u8, u8)> {
+    const NAMED: [(&str, (u8, u8, u8)); 8] = [
+        ("red", (0xE0, 0x4F, 0x5F)),
+        ("orange", (0xE8, 0x8A, 0x3C)),
+        ("yellow", (0xD9, 0xB4, 0x2C)),
+        ("green", (0x4C, 0xB0, 0x6C)),
+        ("teal", (0x2E, 0xA8, 0xA8)),
+        ("blue", (0x4A, 0x86, 0xE0)),
+        ("purple", (0x9A, 0x6C, 0xE0)),
+        ("pink", (0xE0, 0x6C, 0xB4)),
+    ];
+    if let Some((_, c)) = NAMED.iter().find(|(n, _)| *n == s) {
+        return Some(*c);
+    }
+    let h = s.strip_prefix('#').filter(|h| h.len() == 6)?;
+    let b = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+    Some((b(0)?, b(2)?, b(4)?))
+}
+
+/// #98 T4 (`PLUG-08`): `[[highlights]]`: `pattern` (1-256 characters; the window compiles it
+/// as a regular expression, the headless code never does) and `color`; a bad one is left out
+/// with a problem naming it.
+fn parse_highlights(v: &toml::Value, out: &mut Parsed) {
+    let Some(list) = v.as_array() else {
+        out.problems.push(Problem {
+            key: "highlights".into(),
+            line: None,
+            severity: Severity::Error,
+            message: "`highlights` must be an array of tables ([[highlights]])".into(),
+        });
+        return;
+    };
+    for (i, item) in list.iter().enumerate() {
+        let problem = |m: String| Problem {
+            key: format!("highlights[{i}]"),
+            line: None,
+            severity: Severity::Error,
+            message: m,
+        };
+        if out.settings.highlights.len() >= MAX_HIGHLIGHTS {
+            out.problems.push(problem(format!(
+                "at most {MAX_HIGHLIGHTS} keyword rules are used; this one is left out"
+            )));
+            continue;
+        }
+        let t = item.as_table();
+        let pattern = t
+            .and_then(|t| t.get("pattern"))
+            .and_then(toml::Value::as_str);
+        let color = t.and_then(|t| t.get("color")).and_then(toml::Value::as_str);
+        let extra = t.and_then(|t| {
+            t.keys()
+                .find(|k| !["pattern", "color"].contains(&k.as_str()))
+        });
+        match (pattern, color, extra) {
+            (_, _, Some(bad)) => out.problems.push(problem(format!(
+                "`{bad}` is not a keyword rule field (pattern, color); it is left out"
+            ))),
+            (Some(p), Some(c), None)
+                if (1..=256).contains(&p.chars().count())
+                    && highlight_color(c).is_some() =>
+            {
+                out.settings.highlights.push(Highlight {
+                    pattern: p.to_string(),
+                    color: c.to_string(),
+                    rgb: highlight_color(c).unwrap_or((255, 255, 255)),
+                });
+            }
+            _ => out.problems.push(problem(
+                "a keyword rule needs `pattern` (a regular expression, 1-256 characters) and `color` (red, orange, yellow, green, teal, blue, purple, pink or #rrggbb); it is left out"
+                    .into(),
+            )),
+        }
+    }
 }
 
 /// The most quick commands used.
@@ -450,6 +543,7 @@ impl Default for Settings {
                 hide_on_blur: true,
             },
             quick_commands: Vec::new(),
+            highlights: Vec::new(),
             tabs: TabsPrefs {
                 close_buttons: true,
                 cycle: true,
@@ -1285,6 +1379,7 @@ pub fn parse(text: &str) -> Parsed {
             "config_version" => {}
             "profiles" => parse_profiles(text, v, &mut out),
             "quick_commands" => parse_quick_commands(v, &mut out),
+            "highlights" => parse_highlights(v, &mut out),
             s if SECTIONS.contains(&s) => {
                 let Some(t) = v.as_table() else {
                     out.problems.push(Problem {
@@ -3204,5 +3299,29 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         );
         let problems: Vec<String> = l.parsed.problems.iter().map(|p| p.key.clone()).collect();
         assert_eq!(problems, ["quick_commands[2]", "quick_commands[3]"]);
+    }
+
+    /// #98 T4 (`PLUG-08`): keyword rules are read from `[[highlights]]`; a bad pattern or
+    /// colour is left out with a problem.
+    #[test]
+    fn keyword_rules_are_read_and_checked() {
+        let d = sandbox("highlights");
+        std::fs::write(
+            d.join(FILE),
+            "config_version = 1\n\n[[highlights]]\npattern = \"ERROR|FAIL\"\ncolor = \"red\"\n\n[[highlights]]\npattern = \"ok\"\ncolor = \"#00ff7f\"\n\n[[highlights]]\npattern = \"(\"\ncolor = \"red\"\n\n[[highlights]]\npattern = \"x\"\ncolor = \"mauve\"\n",
+        )
+        .unwrap();
+        let l = load(&d);
+        let h = &l.settings().highlights;
+        assert_eq!(
+            h.len(),
+            3,
+            "the pattern is compiled by the window, not here"
+        );
+        assert_eq!(h[0].rgb, (0xE0, 0x4F, 0x5F));
+        assert_eq!(h[1].rgb, (0x00, 0xFF, 0x7F));
+        let keys: Vec<String> = l.parsed.problems.iter().map(|p| p.key.clone()).collect();
+        assert_eq!(keys, ["highlights[3]"]);
+        assert_eq!(highlight_color("#12345"), None);
     }
 }

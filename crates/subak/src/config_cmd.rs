@@ -573,6 +573,7 @@ fn profile(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
         dropdown: s.dropdown.clone(),
         tabs: s.tabs.clone(),
         quick_commands: Vec::new(),
+        highlights: Vec::new(),
     };
     Ok(Outcome {
         data: json!({"path": path_text(&l.path), "profile": p.to_json(default)}),

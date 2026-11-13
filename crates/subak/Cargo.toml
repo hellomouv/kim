@@ -47,6 +47,9 @@ unicode-normalization = "0.1.25"
 # `subak-gui` draws with. The Host never calls the renderer, so the linker leaves it out of
 # `subak.exe` (ADR 0039).
 subak-term = { path = "../subak-term", features = ["render"] }
+# #98 T4: the window's keyword rules (`[[highlights]]`); already built for subak-term's search,
+# with the same features.
+regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
 # The key syntax of the Kim hotkey contract (docs/HOTKEY_CONTRACT.md): `subak-gui` declares its
 # window shortcuts in that syntax and checks them against the reserved keys (ADR 0039).
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }

@@ -222,7 +222,8 @@ Keys go to the program, in the order of ADR 0009:
    `[[quick_commands]]` in `config.toml` (`name`, `text`, `enter` default true) are palette
    entries: "Quick command: build" sends the text (and Enter) to the shown Terminal, "Quick
    command to every tab: build" to each running tab of the window (the Host's
-   `pane.send_keys`).
+   `pane.send_keys`). `[[highlights]]` (`pattern`, a regular expression, and `color`) draw the
+   output text they match in that colour (later rules win; a selection keeps its look).
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,

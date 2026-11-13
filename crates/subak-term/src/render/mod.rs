@@ -286,6 +286,8 @@ pub struct Renderer {
     fgs: Vec<Rgb>,
     /// The search highlights of the row being drawn.
     marks: Vec<(u16, u16, bool)>,
+    /// #98 T4 (`PLUG-08`): keyword rules: text matching a pattern is drawn in its colour.
+    keywords: Vec<(regex::Regex, Rgb)>,
 }
 
 impl Renderer {
@@ -314,6 +316,7 @@ impl Renderer {
             stats: RenderStats::default(),
             fgs: Vec::new(),
             marks: Vec::new(),
+            keywords: Vec::new(),
         };
         r.configure();
         r
@@ -490,6 +493,12 @@ impl Renderer {
         self.raster.face_for(ch)
     }
 
+    /// #98 T4 (`PLUG-08`): the keyword rules (the next [`Renderer::render`] redraws everything).
+    pub fn set_keywords(&mut self, rules: Vec<(regex::Regex, Rgb)>) {
+        self.keywords = rules;
+        self.full = true;
+    }
+
     /// #98 T3: the visual bell: while on, the default colours are swapped (the next
     /// [`Renderer::render`] redraws everything).
     pub fn set_flash(&mut self, on: bool) {
@@ -623,6 +632,31 @@ impl Renderer {
             }
             self.frame.fill(x0 + x as u32 * cw, y0, cw, ch, bg);
             self.fgs.push(fg);
+        }
+        // #98 T4 (`PLUG-08`): keyword rules colour the text they match (later rules win).
+        if !self.keywords.is_empty() {
+            let mut text = String::new();
+            let mut at: Vec<usize> = Vec::with_capacity(cols);
+            for x in 0..cols {
+                at.push(text.len());
+                let c = row.cell(x);
+                if c.width != CellWidth::Tail {
+                    text.push(c.ch);
+                }
+            }
+            for (re, color) in &self.keywords {
+                for m in re.find_iter(&text) {
+                    let lo = at.partition_point(|&b| b < m.start());
+                    let hi = at.partition_point(|&b| b < m.end());
+                    for x in lo..hi.min(cols) {
+                        let selected = sel
+                            .is_some_and(|(a, b)| (usize::from(a)..=usize::from(b)).contains(&x));
+                        if !selected {
+                            self.fgs[x] = *color;
+                        }
+                    }
+                }
+            }
         }
         // 2. Glyphs, clipped to the row (italic and fallback glyphs may overhang a neighbour).
         let clip = [

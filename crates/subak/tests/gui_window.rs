@@ -3846,3 +3846,36 @@ fn quick_commands_go_to_one_tab_or_all() {
     });
     println!("EVIDENCE quick commands: `hello` reached one, then every tab (two too)");
 }
+
+/// #98 T4 (`PLUG-08`): a `[[highlights]]` rule changes how matching output is drawn (the
+/// window's picture), and removing it (read again on focus) draws it as before.
+#[test]
+fn keyword_rules_change_the_drawing() {
+    let host = Host::start("gui-highlights", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "one");
+    let appdata = sandbox("highlights");
+    let cfg = appdata.join("mouv").join("subak");
+    std::fs::create_dir_all(&cfg).unwrap();
+    let with = "config_version = 1\n\n[[highlights]]\npattern = \"standin\"\ncolor = \"red\"\n";
+    std::fs::write(cfg.join("config.toml"), with).unwrap();
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    gui.until("the screen", |d| screen_text(d).contains("standin-ready"));
+    std::thread::sleep(Duration::from_millis(300));
+    let shot = |name: &str| {
+        let path = appdata.join(name);
+        gui.cmd(&json!({"cmd": "shot", "path": path.to_str().unwrap()}))["hash"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let coloured = shot("with.bmp");
+    std::fs::write(cfg.join("config.toml"), "config_version = 1\n").unwrap();
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    std::thread::sleep(Duration::from_millis(300));
+    let plain = shot("without.bmp");
+    assert_ne!(coloured, plain, "the rule changed the drawing");
+    println!("EVIDENCE keyword rules: `standin` in red changed the frame ({coloured} vs {plain})");
+}

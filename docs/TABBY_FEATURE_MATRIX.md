@@ -335,7 +335,7 @@ ssh-keymap `SSH-30` and serial-timestamp `SER-13`.
 | `PLUG-05` Theme and color-scheme files | R: "Theming and color schemes"; S `customColorSchemes` | Plain data files (no code) in the config folder, plus import from common scheme formats. *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 | `PLUG-06` MCP server for AI assistants | R plugin: "mcp-server - …Model Context Protocol server integration for Tabby…" | Subak's own opt-in local MCP server (SUBAK-FR-062, KIM-FR-021) | planned | Step 37 | — |
 | `PLUG-07` Quick commands to one or all tabs | R plugin: "quick-cmds - quickly send commands to one or all terminal tabs" | Saved snippets sent as input to one or many Terminals, also from the CLI *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-14):* `[[quick_commands]]` (`name`, `text`, `enter`) are command-palette entries sent to the shown Terminal or to every running tab of the window (the Host's `pane.send_keys`). Remaining: running a saved snippet from the CLI (the CLI sends text with `subak command --target <t> "send-keys -l …"`). | partial | #98 T4 | T: `crates/subak/src/config.rs::tests::quick_commands_are_read_and_checked`; T: `crates/subak/tests/gui_window.rs::quick_commands_go_to_one_tab_or_all`; real desktop (#98 T4): real Ctrl+Shift+P "every tab greet" Enter made both Command Prompts print `quick-ok` |
-| `PLUG-08` Keyword highlighting | R plugin: "highlight - Tabby terminal keyword highlight plugin" | Regex highlight rules in the config, drawn by the GUI *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
+| `PLUG-08` Keyword highlighting | R plugin: "highlight - Tabby terminal keyword highlight plugin" | Regex highlight rules in the config, drawn by the GUI *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-14):* `[[highlights]]` (`pattern` a regular expression of 1–256 characters, `color` a name or `#rrggbb`, at most 32) are drawn by the window's renderer: matching text in that colour, later rules winning, a selection keeping its look. No plugin. | implemented | #98 T4 | T: `crates/subak-term/tests/render.rs::keyword_rules_colour_the_text_they_match`; T: `crates/subak/src/config.rs::tests::keyword_rules_are_read_and_checked`; T: `crates/subak/tests/gui_window.rs::keyword_rules_change_the_drawing` (the off-screen window); the real desktop was not used (the maintainer was at the PC) |
 | `PLUG-09` Example plugin | R plugin: "clippy - an example plugin which annoys you all the time" | Excluded: a demo of the plugin API (`PLUG-02`) | excluded | — | — |
 
 ## 10. Web app and self-hosting
@@ -450,9 +450,9 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 45 |
+| `planned` | 44 |
 | `partial` | 92 |
-| `implemented` | 41 |
+| `implemented` | 42 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
@@ -467,7 +467,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 6. Telnet (`TEL`) | 4 | 0 | 0 | 0 | 0 | 4 |
 | 7. Secrets (`VAULT`) | 4 | 0 | 0 | 4 | 0 | 8 |
 | 8. Configuration and sync (`CFG`) | 3 | 3 | 0 | 2 | 0 | 8 |
-| 9. Plugins and themes (`PLUG`) | 3 | 1 | 0 | 5 | 0 | 9 |
+| 9. Plugins and themes (`PLUG`) | 2 | 1 | 1 | 5 | 0 | 9 |
 | 10. Web app (`WEB`) | 0 | 0 | 0 | 3 | 0 | 3 |
 | 11. Application and platforms (`APP`) | 5 | 3 | 0 | 6 | 1 | 15 |
 
@@ -499,3 +499,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Profiles in the window: `SHELL-19` (switch in place), `SHELL-21` (copy current path) `implemented`; `SHELL-16` stays `partial` (now the menu tree; manager and settings remain). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | The minimum contrast: `CORE-39` `implemented`. No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Quick commands: `PLUG-07` `partial` (the window; a CLI runner remains). No Tabby re-fetch. |
+| 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Keyword highlighting: `PLUG-08` `implemented`. No Tabby re-fetch. |

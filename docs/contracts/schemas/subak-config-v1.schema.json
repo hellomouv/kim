@@ -73,6 +73,20 @@
       },
       "additionalProperties": true
     },
+    "highlights": {
+      "description": "#98 T4: keyword rules the window draws: text matching pattern (a regular expression) in color.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["pattern", "color"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "color": { "description": "red, orange, yellow, green, teal, blue, purple, pink or #rrggbb.", "type": "string", "pattern": "^(red|orange|yellow|green|teal|blue|purple|pink|#[0-9A-Fa-f]{6})$" }
+        }
+      }
+    },
     "quick_commands": {
       "description": "#98 T4: saved snippets the window sends as input (palette: to this tab or to every tab).",
       "type": "array",

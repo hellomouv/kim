@@ -98,6 +98,10 @@ middle_click = "none"         # none | paste
 word_separators = "…"         # ≤ 128 characters; default: Windows Terminal's set
 repeat_time_ms = 500          # 0–2000; tmux repeat-time for Ctrl+B Ctrl+Arrow (Step 23); 0: off
 
+[[highlights]]                # #98 T4: ≤ 32 keyword rules the window draws
+pattern = "ERROR|FAIL"        # a regular expression, 1-256 characters
+color = "red"                 # red orange yellow green teal blue purple pink, or #rrggbb
+
 [[quick_commands]]            # #98 T4: ≤ 64 snippets the window sends as input
 name = "build"                # 1-64 characters
 text = "cargo build"          # 1-4096 characters

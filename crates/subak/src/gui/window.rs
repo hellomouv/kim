@@ -612,6 +612,32 @@ fn make_renderer(theme: Theme, font_size: f32, scale: f32, padding: f32) -> Rend
 }
 
 /// A renderer with the user's terminal font chain (`appearance.font_family` first, Step 20).
+/// #98 T4 (`PLUG-08`): the keyword rules of `[[highlights]]` for a renderer.
+fn keyword_rules(h: &[config::Highlight]) -> Vec<(regex::Regex, Rgb)> {
+    h.iter()
+        .filter_map(|r| {
+            let (red, green, blue) = r.rgb;
+            keyword_regex(&r.pattern).map(|re| (re, Rgb(red, green, blue)))
+        })
+        .collect()
+}
+
+/// A keyword pattern compiled with a bounded size; `None`: not a regular expression.
+fn keyword_regex(pattern: &str) -> Option<regex::Regex> {
+    regex::RegexBuilder::new(pattern)
+        .size_limit(1 << 20)
+        .build()
+        .ok()
+}
+
+/// #98 T4: the keyword patterns that are not regular expressions (said in a notice).
+fn bad_keyword_patterns(h: &[config::Highlight]) -> Vec<String> {
+    h.iter()
+        .filter(|r| keyword_regex(&r.pattern).is_none())
+        .map(|r| r.pattern.clone())
+        .collect()
+}
+
 fn make_term_renderer(theme: Theme, opts: RenderOptions, family: &str) -> Renderer {
     let chain = subak_term::render::font_chain(family);
     Renderer::with_font_chain(theme.clone(), opts, &chain)
@@ -1691,6 +1717,7 @@ impl App {
                 .map_or((80, 24), |s| (s.cols, s.rows));
             if !self.side.contains_key(&id) {
                 let mut r = make_term_renderer(theme.clone(), opts, &self.face);
+                r.set_keywords(keyword_rules(&self.settings.highlights));
                 r.set_focused(false);
                 self.side.insert(
                     id,
@@ -2551,6 +2578,23 @@ impl App {
         self.model.set_wrap(self.settings.tabs.cycle);
         self.model
             .set_close_on_exit(self.settings.tabs.close_on_exit);
+        if old.highlights != self.settings.highlights {
+            let bad = bad_keyword_patterns(&self.settings.highlights);
+            if !bad.is_empty() {
+                self.notice = Some(format!(
+                    "These keyword patterns are not regular expressions and are not used: {}",
+                    bad.join(", ")
+                ));
+            }
+            self.renderer
+                .set_keywords(keyword_rules(&self.settings.highlights));
+            for v in self.side.values_mut() {
+                v.renderer
+                    .set_keywords(keyword_rules(&self.settings.highlights));
+            }
+            self.split_frame = None;
+            self.redraw();
+        }
         if old.terminal.pane_labels != self.settings.terminal.pane_labels {
             self.split_frame = None;
             self.redraw();
@@ -2575,6 +2619,7 @@ impl App {
             || a.minimum_contrast != b.minimum_contrast;
         if a.font_family != b.font_family {
             let mut r = make_term_renderer(self.theme(), self.term_opts(), &b.font_family);
+            r.set_keywords(keyword_rules(&self.settings.highlights));
             r.set_focused(self.focused);
             self.face = r.face_for('A').family;
             self.renderer = r;
@@ -7736,6 +7781,9 @@ pub fn run(o: Options) -> ExitCode {
         &app.settings.appearance.font_family,
     );
     app.renderer.set_focused(false);
+    // #98 T4 (`PLUG-08`): the keyword rules of config.toml.
+    app.renderer
+        .set_keywords(keyword_rules(&app.settings.highlights));
     app.face = app.renderer.face_for('A').family;
     app.pane
         .set_word_delimiters(&app.settings.terminal.word_separators);
