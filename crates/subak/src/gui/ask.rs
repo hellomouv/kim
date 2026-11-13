@@ -239,9 +239,13 @@ impl Question {
         let fg = |c: Rgb| format!("\x1b[38;2;{};{};{}m", c.0, c.1, c.2);
         let bg = |c: Rgb| format!("\x1b[48;2;{};{};{}m", c.0, c.1, c.2);
         let reset = "\x1b[0m";
-        let usable = usize::from(cols).saturating_sub(2);
-        let buttons: usize = self.buttons.iter().map(|b| width(&b.0) + 3).sum::<usize>() + 2;
-        let words = fit(&self.words(), usable.saturating_sub(buttons).max(10));
+        // What the row takes, exactly as drawn below: one column of margin, the words, two
+        // spaces, then each button as `[ label ]` (or padded) and a space. The words get what
+        // is left, leaving the last column free; a row wider than the banner wrapped and the
+        // one-row banner showed only its overflow, `y…` (found by the real-desktop check of #19).
+        let buttons: usize = self.buttons.iter().map(|b| width(&b.0) + 5).sum();
+        let budget = usize::from(cols).saturating_sub(1 + 2 + buttons + 1);
+        let words = fit(&self.words(), budget.max(1));
         let mut s = format!(
             "\x1b[?25l\x1b[2J\x1b[1;2H{}{words}{reset}  ",
             fg(TEXT_PRIMARY)
@@ -313,6 +317,20 @@ fn fit(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #19: a question with three buttons fits its row at any width; the words are cut, the
+    /// buttons stay whole (it used to wrap and show only `y…`).
+    #[test]
+    fn a_long_question_with_three_buttons_fits_its_row() {
+        for cols in [160u16, 120, 100, 80, 70] {
+            let mut q = Question::export(2030, 52075, 1, "work".into());
+            let line = row(&mut q, cols);
+            assert!(line.trim_start().starts_with("Sav"), "{cols}: {line}");
+            assert!(line.contains("Cancel (Esc)"), "{cols}: {line}");
+            assert!(line.contains("Save exactly…"), "{cols}: {line}");
+            assert!(width(&line) < usize::from(cols), "{cols}: {line}");
+        }
+    }
 
     fn row(q: &mut Question, cols: u16) -> String {
         let mut v = subak_term::TermView::new(cols, 1, 0);

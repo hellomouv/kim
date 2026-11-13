@@ -692,7 +692,15 @@ impl TermView {
                 }
             }
             Motion::Right => {
-                if h.col < last_col {
+                // Off a wide character's first cell, past its second cell too: one press is
+                // one character (the caret cell is already selected, so stepping onto its own
+                // second cell changed nothing; found by the real-desktop check of #19).
+                let on_wide = self
+                    .line(h.line)
+                    .is_some_and(|r| r.cell(usize::from(h.col)).width == CellWidth::Wide);
+                if on_wide && h.col + 1 < last_col {
+                    h.col += 2;
+                } else if h.col < last_col {
                     h.col += 1;
                 } else if h.line < bottom {
                     h.line += 1;

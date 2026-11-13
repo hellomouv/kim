@@ -56,7 +56,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::ptr::{null, null_mut};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use subak_term::links::{self, Kind};
 use subak_term::render::{Frame, RenderOptions, Renderer, Rgb, Theme, html};
 use subak_term::{
@@ -1600,7 +1600,7 @@ impl App {
         let since = |id: &str| {
             self.claude_since
                 .get(id)
-                .map_or(std::time::Duration::ZERO, |(_, at)| now.duration_since(*at))
+                .map_or(Duration::ZERO, |(_, at)| now.duration_since(*at))
         };
         let items: Vec<tabs::Item<'_>> = self
             .model
@@ -2395,7 +2395,7 @@ impl App {
 
     /// Step 44: arms the one Claude frame timer at `next` (rounded up to whole milliseconds),
     /// or kills it — when no shown mark moves, or the window is minimized.
-    fn arm_claude_timer(&mut self, next: Option<std::time::Duration>) {
+    fn arm_claude_timer(&mut self, next: Option<Duration>) {
         let next = next
             .filter(|_| !self.minimized)
             .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX).max(10));
@@ -5492,6 +5492,36 @@ impl App {
 // The system clipboard, link opener and save dialog (never used by the test hooks, which use the
 // fakes of `clip`).
 
+/// Opens something that another process may hold for a moment: tries `open` up to `tries`
+/// times, `wait` apart. The clipboard is briefly held by every clipboard watcher (Windows
+/// clipboard history, clipboard managers, remote desktop) right after each copy, so a paste
+/// straight after a copy failed with "access denied" (found by the real-desktop check of #19).
+fn open_with_retries(mut open: impl FnMut() -> bool, tries: u32, wait: Duration) -> bool {
+    for i in 0..tries.max(1) {
+        if open() {
+            return true;
+        }
+        if i + 1 < tries {
+            std::thread::sleep(wait);
+        }
+    }
+    false
+}
+
+/// `OpenClipboard` for our window, retried for up to about 150 ms.
+fn open_clipboard(hwnd: HWND) -> Result<(), String> {
+    let open = || {
+        // SAFETY: opens the clipboard for our own window; callers close it on every path.
+        let r = unsafe { OpenClipboard(hwnd) };
+        r != 0
+    };
+    if open_with_retries(open, 10, Duration::from_millis(15)) {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
 /// The Windows clipboard, opened by the window for each read or write.
 #[derive(Debug)]
 struct SystemClipboard {
@@ -5500,12 +5530,10 @@ struct SystemClipboard {
 
 impl Clipboard for SystemClipboard {
     fn read_text(&mut self) -> Result<Option<String>, String> {
+        open_clipboard(self.hwnd)?;
         // SAFETY: the clipboard is opened by our window and closed on every path; the data is
         // read while its handle is locked.
         unsafe {
-            if OpenClipboard(self.hwnd) == 0 {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
             let h = GetClipboardData(u32::from(CF_UNICODETEXT));
             let text = if h.is_null() {
                 None
@@ -5551,12 +5579,10 @@ impl Clipboard for SystemClipboard {
             .chain([0])
             .flat_map(u16::to_le_bytes)
             .collect();
+        open_clipboard(self.hwnd)?;
         // SAFETY: the clipboard is opened by our window and closed on every path; ownership of
         // each block passes to the clipboard when SetClipboardData succeeds.
         unsafe {
-            if OpenClipboard(self.hwnd) == 0 {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
             EmptyClipboard();
             let ok = !SetClipboardData(u32::from(CF_UNICODETEXT), block(&units)).is_null();
             if let Some(h) = html {
@@ -6572,4 +6598,45 @@ pub fn run(o: Options) -> ExitCode {
         }
     });
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod clipboard_open_tests {
+    use super::open_with_retries;
+    use std::time::{Duration, Instant};
+
+    /// #19: a clipboard another process holds for a moment opens on a later try.
+    #[test]
+    fn a_briefly_held_clipboard_opens_on_a_later_try() {
+        let mut calls = 0;
+        let ok = open_with_retries(
+            || {
+                calls += 1;
+                calls >= 3
+            },
+            10,
+            Duration::from_millis(1),
+        );
+        assert!(ok);
+        assert_eq!(calls, 3);
+    }
+
+    /// The retries are bounded: a clipboard held for good fails after `tries` attempts.
+    #[test]
+    fn a_clipboard_held_for_good_fails_after_the_bounded_tries() {
+        let mut calls = 0;
+        let t = Instant::now();
+        let ok = open_with_retries(
+            || {
+                calls += 1;
+                false
+            },
+            4,
+            Duration::from_millis(5),
+        );
+        assert!(!ok);
+        assert_eq!(calls, 4);
+        // Three waits between four tries, no wait after the last.
+        assert!(t.elapsed() < Duration::from_millis(200));
+    }
 }

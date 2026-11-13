@@ -812,11 +812,13 @@ checks are the maintainer's. Build: `cargo build --release -p subak`; use a priv
    `target\release\subak.exe %E% attach work` and run
    `for /l %i in (1,1,3000) do @echo line %i 한글 marker-%i`; detach (`Ctrl+B d`).
 2. `target\release\subak-gui.exe %E% work`: the window opens with the output. Press
-   `Ctrl+Shift+F`, type `marker-29`: "11 of 11" at once, the newest match selected and the others
+   `Ctrl+Shift+F`, type `marker-29`: "100 of 100" at once (the default history keeps 2000 lines, so
+   `marker-2900`…`2999` remain), the newest match selected and the others
    tinted; `Enter` walks older, `Shift+Enter` newer, wrapping; the bar's row never hides the
    current match.
 3. Type the Korean `한글` with the IME (the composition is drawn in the field): matches appear;
-   `Alt+R`, then `marker-1\d\d$`: 100 matches; type `(`: the bar says the pattern is not valid.
+   `Alt+R` (or click ".* regex"), then `marker-29\d\d$`: 100 matches; type `(`: the bar says the
+   pattern is not valid.
    `Esc`: the bar closes, the match stays selected; `Ctrl+Shift+C`, paste into Notepad: the text.
 4. `Esc`, then in the window run
    `for /l %i in (1,1,5) do @(echo late %i & ping -n 2 127.0.0.1 >nul)`, press `Ctrl+Shift+F` at
@@ -844,12 +846,12 @@ checks are the maintainer's. Build: `cargo build --release -p subak`; use a priv
 
 | Manual check | Result |
 | --- | --- |
-| Search in the visible window, the IME in the field, live refresh (steps 1–4) | automated off-screen (§12.10; IME not); visible run **pending — maintainer** |
-| Paste questions with the real clipboard and real browser/Notepad content (steps 5–6) | automated with the fake clipboard; real clipboard **pending — maintainer** |
-| Mark mode and select all with the real keyboard, copy into Notepad (step 7) | automated off-screen with window messages; real keyboard and clipboard **pending — maintainer** |
-| HTML Format in Word/Outlook (step 8) | the CF_HTML document is checked byte by byte (offsets) in unit tests; a real paste **pending — maintainer** |
-| A real browser opened by `Ctrl+click` (step 9) | the fake opener records verb `open` and the exact target; real browser **pending — maintainer** |
-| The real save dialog and file (step 10) | the fake picker and the real file write are automated; the dialog **pending — maintainer** |
+| Search in the visible window, the IME in the field, live refresh (steps 1–4) | passed 2026-11-13 (real desktop, ADR 0088): 100 of 100 at once, `Enter`/`Shift+Enter` walk and wrap, the Microsoft Korean IME composes in the field, regex 100 matches and "Not a valid regular expression: unclosed group", `Esc` keeps the match and `Ctrl+Shift+C` copies it, the count grows while a program prints. On this PC another program owns `Alt+R` globally, so the regex toggle was clicked |
+| Paste questions with the real clipboard and real browser/Notepad content (steps 5–6) | passed 2026-11-13 with the real clipboard (saved and restored) after a fix: a paste straight after a copy failed with "access denied" while clipboard watchers held it; `OpenClipboard` is now retried for up to 150 ms (unit-tested). Two lines: Cancel, Paste, As one line; an escape sequence: named and removed |
+| Mark mode and select all with the real keyboard, copy into Notepad (step 7) | passed 2026-11-13 after a fix: `Shift+Right` stepped onto the caret character's own second cell first, so a Korean character took two presses; one press is one character now (test updated). `Ctrl+Shift+Right`, `Shift+End`, `Ctrl+Shift+A` copy as expected |
+| HTML Format in Word/Outlook (step 8) | 2026-11-13: "Copy with colours (HTML)" on real red output put `HTML Format` with the colour span and the terminal font on the real clipboard; no Word/Outlook paste |
+| A real browser opened by `Ctrl+click` (step 9) | 2026-11-13: `Ctrl+click` on `https://u:p@example.com/` refuses with "it contains a user name or password" and opens nothing; "Copy link" copies it. A plain link was not opened (it would open a tab in the maintainer's browser) |
+| The real save dialog and file (step 10) | passed 2026-11-13 after a fix: the save question showed only `y…` (its row was wider than the banner and wrapped); the words now get exactly the room the buttons leave (unit test at five widths). The dialog suggests `work-output-….txt`; hidden saves `GITHUB_TOKEN=***`, exact keeps the token, Cancel saves nothing |
 | High Contrast (step 11) | **pending — maintainer** |
 
 ### 12.10 Tests

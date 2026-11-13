@@ -301,11 +301,18 @@ fn keyboard_selection_moves_by_cells_words_lines_and_pages() {
     assert_eq!(v.selected_text().as_deref(), Some(""));
     v.mark_move(Motion::Up, false);
     v.mark_move(Motion::LineStart, false);
-    // Shift+Right over a wide character takes both its cells at once.
-    v.mark_move(Motion::Right, true);
+    // The caret's cell is selected: the whole wide character.
     assert_eq!(v.selected_text().as_deref(), Some("한"));
+    // Shift+Right takes the next character, both cells of a wide one, in one press (#19: the
+    // first press used to step onto the caret character's own second cell and change nothing).
     v.mark_move(Motion::Right, true);
     assert_eq!(v.selected_text().as_deref(), Some("한글"));
+    // Without Shift, Right moves the caret one character, not one cell.
+    v.mark_move(Motion::LineStart, false);
+    v.mark_move(Motion::Right, false);
+    assert_eq!(v.selected_text().as_deref(), Some("글"));
+    v.mark_move(Motion::LineStart, false);
+    v.mark_move(Motion::Right, true);
     v.mark_move(Motion::WordRight, true);
     assert_eq!(v.selected_text().as_deref(), Some("한글 word"));
     v.mark_move(Motion::LineEnd, true);
