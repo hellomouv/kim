@@ -124,6 +124,7 @@
     { "id": "tab.pin", "title": "Pin or unpin the tab (pinned tabs come first and ask before closing)", "scopes": ["app"], "defaults": [] },
     { "id": "tab.duplicate", "title": "Duplicate the Terminal (the same program in the same folder; never its process)", "scopes": ["app"], "defaults": [] },
     { "id": "tab.restart", "title": "Restart the Terminal (asks when busy)", "scopes": ["app"], "defaults": [] },
-    { "id": "gui.new-window", "title": "New window (another client of the same Host, with a new Terminal)", "scopes": ["app"], "defaults": ["Ctrl+Shift+N"] }
+    { "id": "gui.new-window", "title": "New window (another client of the same Host, with a new Terminal)", "scopes": ["app"], "defaults": ["Ctrl+Shift+N"] },
+    { "id": "command.palette", "title": "Command palette (every action, Terminal and profile, filtered as you type)", "scopes": ["app"], "defaults": ["Ctrl+Shift+P"] }
   ]
 }

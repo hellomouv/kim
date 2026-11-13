@@ -64,6 +64,8 @@ mod net;
 #[cfg_attr(not(windows), allow(dead_code))]
 #[cfg_attr(windows, allow(unsafe_code))]
 mod notify;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod palette;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod taskbar;

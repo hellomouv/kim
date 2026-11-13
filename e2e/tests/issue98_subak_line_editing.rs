@@ -166,6 +166,7 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     assert_eq!(code, 0, "{doc}");
     // #98 T1: tab titles, behaviour on exit, density, new windows.
     assert_eq!(keys_of(&list, "gui.new-window"), ["Ctrl+Shift+N"]);
+    assert_eq!(keys_of(&list, "command.palette"), ["Ctrl+Shift+P"]);
     assert_eq!(setting(&show, "tabs.title")["value"], "{name}");
     assert_eq!(setting(&show, "tabs.on_exit")["value"], "keep");
     assert_eq!(setting(&show, "appearance.density")["value"], "regular");

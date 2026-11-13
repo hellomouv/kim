@@ -3564,3 +3564,59 @@ fn tab_titles_density_new_window_and_close_on_exit() {
         tab_names(&d)
     );
 }
+
+/// #98 T1 (`CORE-63`): Ctrl+Shift+P opens the command palette; typing filters actions,
+/// Terminals and profiles; Enter runs the chosen one (an action as its keys would, a Terminal
+/// shown); Esc closes it without running anything.
+#[test]
+fn the_command_palette_filters_and_runs_actions_and_terminals() {
+    let host = Host::start("gui-palette", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "one");
+    new_terminal(&ep, "two");
+    let appdata = sandbox("palette");
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    // (Typed characters are posted; wait until this query was drawn before pressing Enter.)
+    let seen = |query: &str| {
+        gui.history()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| v["event"] == "palette" && v["query"] == query)
+            .count()
+    };
+    let palette = |query: &str| {
+        let before = seen(query);
+        gui.cmd(&json!({"cmd": "key", "vk": u32::from(b'P'), "ctrl": true, "shift": true}));
+        gui.type_text(query);
+        gui.until("the palette filtered", |_| seen(query) > before);
+    };
+    // Esc: closed, nothing ran.
+    palette("split");
+    let top = gui
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .rfind(|v| v["event"] == "palette" && v["query"] == "split")
+        .unwrap();
+    assert_eq!(top["top"][0], "Split pane left/right", "{top}");
+    gui.press(VK_ESCAPE, false, false);
+    assert!(gui.dump()["layout"].is_null(), "nothing ran");
+    // Enter: the action runs (the pane splits).
+    palette("split");
+    gui.cmd(&json!({"cmd": "key", "vk": VK_RETURN}));
+    gui.until("split by the palette", |d| {
+        d["layout"]["slots"]
+            .as_array()
+            .is_some_and(|s| s.len() == 2)
+    });
+    // A Terminal by name.
+    palette("terminal: two");
+    gui.cmd(&json!({"cmd": "key", "vk": VK_RETURN}));
+    gui.until("two shown", |d| {
+        d["phase"] == "attached" && shown(d) == "two"
+    });
+    println!(
+        "EVIDENCE command palette: `split` → Split pane left/right (Esc ran nothing, Enter split), `terminal: two` showed two"
+    );
+}

@@ -148,7 +148,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `CORE-60` Clear terminal | S `clear` | Clears the screen and the pane's Host scrollback, on request *Step 32 audit (2026-11-11):* *Partial:* `subak clear-history` clears the Host scrollback; there is no window action yet. | partial | Step 13 | T: `crates/subak/tests/scrollback_replay.rs::history_is_bounded_evicts_the_oldest_lines_and_clears_on_request` (Step 32 audit) |
 | `CORE-61` Alt as Meta | S `altIsMeta`, `switch-meta-option` | A per-profile setting with a toggle action. *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T2. *#98 T2 (2026-11-13):* `[terminal] alt_is_meta` (default true, as in Windows Terminal): Alt+key sends `ESC` first; false: the character alone. A setting, not a toggle action. | implemented | #98 T2 | T: `crates/subak/src/config.rs::tests::alt_as_meta_and_the_backspace_mode_are_settings`; T: `crates/subak/tests/gui_window.rs::line_editing_insert_newline_backspace_and_alt_as_meta` (`1b78` → `78`); real desktop (#98 T2): Git `cat -v` showed `a^[x`, then `cx` with the setting off |
 | `CORE-62` Backspace mode | S input `backspace` (`ctrl-h`, `ctrl-?`, `delete`) | Per-profile setting, mainly for SSH and serial. *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T2. *#98 T2 (2026-11-13):* `[terminal] backspace` = `del` (default, 0x7F), `ctrl-h` (0x08) or `delete` (`CSI 3 ~`); Ctrl+Backspace sends the other of DEL/BS. One setting for the window, not per profile. | implemented | #98 T2 | T: `crates/subak-term/tests/view.rs::backspace_modes_send_del_bs_or_the_delete_sequence`; T: `crates/subak/tests/gui_window.rs::line_editing_insert_newline_backspace_and_alt_as_meta` (`7f` → `08`); real desktop (#98 T2): Git `cat -v` showed `de^H` with `ctrl-h`; `delete` sent `CSI 3 ~` |
-| `CORE-63` Command palette | S `command-selector` | Fuzzy palette over all actions, profiles and Terminals *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. | planned | #98 T1 | — |
+| `CORE-63` Command palette | S `command-selector` | Fuzzy palette over all actions, profiles and Terminals *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `command.palette` (`Ctrl+Shift+P`): one fuzzy list over every window action (with its current keys), the window's Terminals (hidden ones too) and the shell profiles; Enter runs, Esc closes. | implemented | #98 T1 | T: `crates/subak/src/gui/palette.rs::tests::fuzzy_ranking_prefers_word_starts_and_runs`; T: `crates/subak/src/gui/palette.rs::tests::the_palette_text_shows_the_query_matches_and_selection`; T: `crates/subak/tests/gui_window.rs::the_command_palette_filters_and_runs_actions_and_terminals`; real desktop (#98 T1): real Ctrl+Shift+P, `split`, Enter split the pane |
 
 ### 1.7 Search, selection, clipboard, paste and links
 
@@ -450,16 +450,16 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 57 |
+| `planned` | 56 |
 | `partial` | 90 |
-| `implemented` | 31 |
+| `implemented` | 32 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
 | **Total** | **209** |
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 9 | 49 | 20 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 8 | 49 | 21 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 14 | 7 | 3 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -492,3 +492,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Tabs and the window (first batch): `CORE-14` (pin), `CORE-15` (MRU), `CORE-25` (fullscreen), `CORE-30` (focus follows mouse), `CORE-75` (dropped files) `implemented`; `CORE-10` `partial` (close buttons and wrap; width and fullscreen visibility remain). No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Duplicate and restart: `CORE-12` `implemented`; `CORE-17` `partial` (one-pane Terminals; no environment values). No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Titles, density, new windows, on exit: `CORE-23`, `CORE-48` `implemented`; `CORE-20` (reconnect remains), `CORE-21` (per-window sets remain) `partial`. No Tabby re-fetch. |
+| 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | The command palette: `CORE-63` `implemented`. No Tabby re-fetch. |

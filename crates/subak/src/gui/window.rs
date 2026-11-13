@@ -435,6 +435,8 @@ struct App {
     global_status: Vec<(String, String, String)>,
     /// #98 T3: the window was hidden by `gui.show` (or the dropdown lost the focus).
     toggled_hidden: bool,
+    /// #98 T1 (`CORE-63`): the command palette, while it is open.
+    palette: Option<PaletteUi>,
     /// #98 T1 (`CORE-25`): fullscreen, with the style and place to go back to.
     fullscreen: Option<(isize, Placed)>,
     /// #98 T1 (`CORE-30`): the pane focus-follows-mouse last asked for (no repeats).
@@ -534,6 +536,15 @@ struct App {
     /// Step 24: copy mode (`Ctrl+B [`), and whether a selection has begun (Space).
     copy_mode: bool,
     copy_selecting: bool,
+}
+
+/// #98 T1 (`CORE-63`): the command palette's query and its entries.
+#[derive(Debug, Clone, Default)]
+struct PaletteUi {
+    text: String,
+    cursor: usize,
+    selected: usize,
+    entries: Vec<super::palette::Entry>,
 }
 
 /// The command prompt's line (Step 24).
@@ -2875,6 +2886,195 @@ impl App {
         }
     }
 
+    /// #98 T1 (`CORE-63`): opens the command palette over the pane: every window action (with
+    /// the keys that run it now), every Terminal of this window (hidden ones too) and every
+    /// shell profile, filtered as the user types.
+    fn open_palette(&mut self) {
+        use super::palette::{Entry, Target};
+        self.matcher.cancel();
+        let m = crate::hotkeys::manifest();
+        let prefix = self
+            .matcher
+            .leader()
+            .map_or_else(String::new, ToString::to_string);
+        let bindings = self.matcher.bindings();
+        let mut entries = Vec::new();
+        for (a, id) in Action::ALL {
+            // Not for this surface: the manager's, copy mode's and the global ones, and itself.
+            if id.starts_with("manager.")
+                || id.starts_with("copy.")
+                || matches!(a, Action::GuiShow | Action::CommandPalette)
+            {
+                continue;
+            }
+            let title = m.action(id).map_or(id, |d| d.title.as_str());
+            let keys = bindings
+                .iter()
+                .find(|(b, _, _)| *b == id)
+                .map(|(_, k, _)| {
+                    k.split(' ')
+                        .map(|p| {
+                            if p == "@prefix" {
+                                prefix.clone()
+                            } else {
+                                p.strip_prefix("char:").unwrap_or(p).to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default();
+            entries.push(Entry {
+                target: Target::Action(id.to_string()),
+                label: title.to_string(),
+                keys,
+            });
+        }
+        for t in self.model.tabs().iter().chain(self.model.hidden()) {
+            entries.push(Entry {
+                target: Target::Terminal(t.id.clone()),
+                label: format!("Terminal: {}", t.name),
+                keys: String::new(),
+            });
+        }
+        for (k, p) in self.settings.all_profiles().iter().enumerate().take(64) {
+            entries.push(Entry {
+                target: Target::Profile(k),
+                label: format!("New Terminal: {}", p.name),
+                keys: String::new(),
+            });
+        }
+        self.palette = Some(PaletteUi {
+            entries,
+            ..PaletteUi::default()
+        });
+        self.event(&json!({"event": "palette", "open": true}));
+        self.show_palette();
+    }
+
+    /// Draws the palette into the help overlay's view (the pane stays as it is underneath).
+    fn show_palette(&mut self) {
+        let Some(p) = &self.palette else {
+            return;
+        };
+        let (cols, rows) = self.grid;
+        let hits = super::palette::rank(&p.text, &p.entries);
+        let selected = p.selected.min(hits.len().saturating_sub(1));
+        let vt = super::palette::vt(&p.text, p.cursor, &hits, selected, cols, rows);
+        let shown: Vec<String> = hits.iter().take(5).map(|e| e.label.clone()).collect();
+        let mut v = TermView::new(cols, rows, 0);
+        v.feed(&self.themed_vt(&vt));
+        self.state_view = v;
+        self.help = Some(0);
+        self.event(
+            &json!({"event": "palette", "query": p.text, "hits": hits.len(),
+            "selected": selected, "top": shown}),
+        );
+        self.renderer.render(&self.state_view);
+        self.invalidate_all();
+    }
+
+    fn palette_key(&mut self, code: u32, m: Mods) -> bool {
+        let Some(p) = &mut self.palette else {
+            return false;
+        };
+        let n = p.text.chars().count();
+        let at = |p: &PaletteUi, i: usize| {
+            p.text
+                .char_indices()
+                .nth(i)
+                .map_or(p.text.len(), |(b, _)| b)
+        };
+        let page = usize::from(self.grid.1.saturating_sub(2).max(1));
+        match code {
+            vk::ESCAPE => {
+                self.palette = None;
+                self.event(&json!({"event": "palette", "open": false}));
+                self.close_help();
+                return true;
+            }
+            vk::RETURN => {
+                let hits = super::palette::rank(&p.text, &p.entries);
+                let chosen = hits
+                    .get(p.selected.min(hits.len().saturating_sub(1)))
+                    .map(|e| e.target.clone());
+                self.palette = None;
+                self.close_help();
+                if let Some(t) = chosen {
+                    self.event(
+                        &json!({"event": "palette", "open": false, "run": format!("{t:?}")}),
+                    );
+                    self.run_palette(t);
+                }
+                return true;
+            }
+            vk::UP => p.selected = p.selected.saturating_sub(1),
+            vk::DOWN => p.selected += 1,
+            vk::PRIOR => p.selected = p.selected.saturating_sub(page),
+            vk::NEXT => p.selected += page,
+            vk::BACK if p.cursor > 0 => {
+                let (a, b) = (at(p, p.cursor - 1), at(p, p.cursor));
+                p.text.replace_range(a..b, "");
+                p.cursor -= 1;
+                p.selected = 0;
+            }
+            vk::DELETE if p.cursor < n => {
+                let (a, b) = (at(p, p.cursor), at(p, p.cursor + 1));
+                p.text.replace_range(a..b, "");
+                p.selected = 0;
+            }
+            vk::LEFT => p.cursor = p.cursor.saturating_sub(1),
+            vk::RIGHT => p.cursor = (p.cursor + 1).min(n),
+            vk::HOME => p.cursor = 0,
+            vk::END => p.cursor = n,
+            vk::BACK | vk::DELETE | vk::TAB => {}
+            _ if m.ctrl || m.alt || keys::special_key(code).is_some() => {}
+            // A character: its WM_CHAR goes into the query.
+            _ => return false,
+        }
+        let hits = super::palette::rank(&p.text, &p.entries).len();
+        p.selected = p.selected.min(hits.saturating_sub(1));
+        self.show_palette();
+        true
+    }
+
+    fn palette_char(&mut self, c: char) {
+        if let Some(p) = &mut self.palette
+            && !c.is_control()
+        {
+            let at = p
+                .text
+                .char_indices()
+                .nth(p.cursor)
+                .map_or(p.text.len(), |(b, _)| b);
+            p.text.insert(at, c);
+            p.cursor += 1;
+            p.selected = 0;
+            self.show_palette();
+        }
+    }
+
+    /// Runs a palette entry: an action as its keys would, a Terminal shown, a profile started.
+    fn run_palette(&mut self, t: super::palette::Target) {
+        use super::palette::Target;
+        match t {
+            Target::Action(id) => {
+                if let Some(a) = Action::from_id(&id) {
+                    self.run(a);
+                }
+            }
+            Target::Terminal(id) => {
+                if let Some(i) = self.model.tabs().iter().position(|t| t.id == id) {
+                    self.select_tab(i);
+                } else {
+                    let fx = self.model.unhide(&id);
+                    self.apply(fx);
+                }
+            }
+            Target::Profile(k) => self.new_terminal(Some(k)),
+        }
+    }
+
     /// #98 T1 (`CORE-21`): starts another `subak-gui` for the same Host with a new Terminal
     /// (it is just another client: closing either window ends nothing). The test window only
     /// reports it.
@@ -3523,6 +3723,10 @@ impl App {
         if !self.composition.is_empty() || code == vk::PROCESSKEY {
             return false;
         }
+        // #98 T1: the command palette takes the keys while it is open.
+        if self.palette.is_some() {
+            return self.palette_key(code, m);
+        }
         // Step 24: the command prompt takes the keys while it is open.
         if self.prompt.is_some() {
             return self.prompt_key(code, m);
@@ -3886,6 +4090,12 @@ impl App {
             }
             return;
         }
+        if self.palette.is_some() {
+            if !alt {
+                self.palette_char(c);
+            }
+            return;
+        }
         if self.prompt.is_some() {
             if !alt {
                 self.prompt_char(c);
@@ -4227,6 +4437,7 @@ impl App {
             }
             // #98 T1 (`CORE-21`): another window of the same Host, with a new Terminal.
             Action::GuiNewWindow => self.new_window(),
+            Action::CommandPalette => self.open_palette(),
             Action::TabDuplicate | Action::TabRestart => {
                 let fx = self.model.duplicate(a == Action::TabRestart, false);
                 self.apply(fx);
@@ -7129,6 +7340,7 @@ pub fn run(o: Options) -> ExitCode {
         toggled_hidden: false,
         fullscreen: None,
         hover_pane: None,
+        palette: None,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,

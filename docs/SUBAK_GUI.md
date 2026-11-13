@@ -204,6 +204,10 @@ Keys go to the program, in the order of ADR 0009:
    `keep` shows its last screen). `appearance.density = "compact"` lowers the tab bar (24 px
    instead of 32). `gui.new-window` (`Ctrl+Shift+N`) opens another window of the same Host
    with a new Terminal (`subak-gui --new-terminal`); every window is just another client.
+   `command.palette` (`Ctrl+Shift+P`) opens one list over every window action (with the keys
+   that run it now), every Terminal of the window (hidden ones too) and every shell profile;
+   typing filters it (fuzzy: the letters in order, word starts and runs first), Up/Down choose,
+   Enter runs the entry as its keys would, Esc closes it without running anything.
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
