@@ -184,6 +184,9 @@ pub struct FakeState {
     pub log: Vec<String>,
     /// Whether the last `set_text` was marked as excluded from history.
     pub excluded: bool,
+    /// The contents changed while open: closing adds the formats Windows synthesizes, which
+    /// moves the sequence number again (as `CloseClipboard` does, measured on Windows 10).
+    pub changed_while_open: bool,
 }
 
 /// `CF_UNICODETEXT`.
@@ -226,6 +229,9 @@ impl Clipboard for FakeClipboard {
     fn close(&mut self) {
         self.with(|s| {
             s.open = false;
+            if std::mem::take(&mut s.changed_while_open) {
+                s.seq += 3;
+            }
             s.log.push("close".into());
         });
     }
@@ -255,6 +261,7 @@ impl Clipboard for FakeClipboard {
             assert!(s.open);
             s.formats = vec![(CF_UNICODETEXT, ClipData::Bytes(text.as_bytes().to_vec()))];
             s.seq += 1;
+            s.changed_while_open = true;
             s.excluded = true;
             s.log.push("set".into());
             true
@@ -265,6 +272,7 @@ impl Clipboard for FakeClipboard {
             assert!(s.open);
             s.formats = snap.formats.clone();
             s.seq += 1;
+            s.changed_while_open = true;
             s.log.push("restore".into());
             true
         })
@@ -687,8 +695,11 @@ impl Run {
                         env.clipboard.close();
                         return self.finish("clipboard_busy", true, inj, env, shared);
                     }
-                    let seq = env.clipboard.sequence();
+                    // The number is read after closing: `CloseClipboard` adds the synthesized
+                    // formats and moves it again, so a number read before never matched and the
+                    // copy was never put back (#74, found on the real desktop).
                     env.clipboard.close();
+                    let seq = env.clipboard.sequence();
                     self.clip = Some((snap, seq));
                 }
                 Piece::ClipRestore => {
