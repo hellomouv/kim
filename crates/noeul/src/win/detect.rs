@@ -29,8 +29,8 @@
 //!   unresponsive program is abandoned, never waited for.
 
 use crate::detect::{
-    Affinity, ElementAnswer, ElementRequest, Fallback, Snapshot, TargetRights, WindowFacts,
-    uia_permission,
+    Affinity, ElementAnswer, ElementRequest, Fallback, Parents, Snapshot, TargetRights,
+    WindowFacts, uia_permission,
 };
 use crate::frame::Rect;
 use crate::win::Handle;
@@ -526,19 +526,24 @@ impl Uia {
         if Uia::bounds(&current).is_none() {
             return ElementAnswer::Failed(Fallback::Unavailable);
         }
-        let mut best: Option<Rect> = None;
+        // Every element passed on the way down, outermost first (#99, `DET-03`: the wheel steps
+        // to a parent); the last one is the deepest.
+        let mut chain: Vec<Rect> = Vec::new();
+        let found = |chain: &[Rect]| -> Option<ElementAnswer> {
+            let (deepest, around) = chain.split_last()?;
+            Some(ElementAnswer::Found(
+                *deepest,
+                Parents::from_descent(around),
+            ))
+        };
         for _ in 0..MAX_DEPTH {
             if Instant::now() > deadline {
-                return best.map_or(
-                    ElementAnswer::Failed(Fallback::Timeout),
-                    ElementAnswer::Found,
-                );
+                return found(&chain).unwrap_or(ElementAnswer::Failed(Fallback::Timeout));
             }
             let children = match self.children(&current) {
                 Ok(c) => c,
                 Err(hr) => {
-                    return best
-                        .map_or(ElementAnswer::Failed(fallback_of(hr)), ElementAnswer::Found);
+                    return found(&chain).unwrap_or(ElementAnswer::Failed(fallback_of(hr)));
                 }
             };
             let area = |r: &Rect| u64::from(r.width) * u64::from(r.height);
@@ -549,10 +554,10 @@ impl Uia {
             else {
                 break;
             };
-            best = Some(r);
+            chain.push(r);
             current = child;
         }
-        best.map_or(ElementAnswer::WindowOnly, ElementAnswer::Found)
+        found(&chain).unwrap_or(ElementAnswer::WindowOnly)
     }
 }
 
@@ -905,6 +910,33 @@ mod tests {
             assert!(!h.is_null());
             kids.push(h);
         }
+        // #99 (`DET-03`): a panel holding a button, so the button has a parent to step to.
+        let make = |class: &str, text: &str, parent: HWND, r: (i32, i32, i32, i32)| {
+            let (class, text) = (wide(class), wide(text));
+            // SAFETY: a standard child control of our own window.
+            let h = unsafe {
+                CreateWindowExW(
+                    0,
+                    class.as_ptr(),
+                    text.as_ptr(),
+                    WS_CHILD | WS_VISIBLE,
+                    r.0,
+                    r.1,
+                    r.2,
+                    r.3,
+                    parent,
+                    std::ptr::null_mut(),
+                    GetModuleHandleW(std::ptr::null()),
+                    std::ptr::null(),
+                )
+            };
+            assert!(!h.is_null());
+            h
+        };
+        let panel = make("STATIC", "", top.0, (200, 20, 180, 140));
+        let inner = make("BUTTON", "NOEUL-SECRET-INNER", panel, (20, 30, 120, 50));
+        kids.push(inner);
+        kids.push(panel);
         // Realized: every window is visible and has its frame before UI Automation is asked.
         let realized = |h: HWND| {
             // SAFETY: a plain query of our own window.
@@ -968,10 +1000,20 @@ mod tests {
         let a = ask(2, centre);
         assert_eq!(
             a,
-            ElementAnswer::Found(second),
+            ElementAnswer::Found(second, Parents::default()),
             "the button under the point"
         );
         assert!(!format!("{a:?}").contains("NOEUL-SECRET"), "no text");
+        // #99 (`DET-03`): the button inside the panel comes with the panel as its parent.
+        let (inner_r, panel_r) = (frame_bounds(inner).unwrap(), frame_bounds(panel).unwrap());
+        let nested = ask(4, (inner_r.x + 60, inner_r.y + 25));
+        match nested {
+            ElementAnswer::Found(r, around) => {
+                assert_eq!(r, inner_r, "the inner button");
+                assert_eq!(around.as_slice(), [panel_r], "its panel, innermost first");
+            }
+            other => panic!("the inner button is found: {other:?}"),
+        }
         let empty = ask(3, (window.x + 350, window.y + 250));
         assert_eq!(empty, ElementAnswer::WindowOnly, "no control there");
         drop(worker);

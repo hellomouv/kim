@@ -622,6 +622,10 @@ Step 52 ships detection, the magnifier, the precision keys, snapping and the rec
    until then). A click without a drag, or `Space`, selects what is shown; that click is not the
    first press of a double-click. With a selection, nothing is detected; a right-click outside it
    clears it and detection comes back.
+   #99 (`DET-03`): in element mode the mouse wheel steps from the element shown to the element
+   around it (away from the user, one notch per step; past the outermost, the window) and back
+   (towards the user); a new element under the pointer starts again at itself. With a tool or an
+   annotation selected the wheel changes the line width instead.
 2. **What is detected.** The windows are listed right after the picture is frozen, as rectangles
    and flags only; hidden, minimized, cloaked (other virtual desktops), click-through and fully
    transparent layered windows are not offered, nor windows excluded from capture

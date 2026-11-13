@@ -276,11 +276,49 @@ impl Fallback {
     }
 }
 
-/// UI Automation's answer: a rectangle only.
+/// #99 (`DET-03`): the rectangles of the elements around the found one under the point,
+/// innermost first, at most [`Parents::MAX`] (the window itself is not one of them). The mouse
+/// wheel steps through them during element detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Parents {
+    rects: [Rect; Parents::MAX],
+    len: u8,
+}
+
+impl Default for Parents {
+    fn default() -> Parents {
+        Parents {
+            rects: [Rect::new(0, 0, 0, 0); Parents::MAX],
+            len: 0,
+        }
+    }
+}
+
+impl Parents {
+    pub const MAX: usize = 8;
+
+    /// From the descent's rectangles, outermost first (the window's first child first): the
+    /// innermost [`Parents::MAX`] of them, innermost first.
+    pub fn from_descent(outer_first: &[Rect]) -> Parents {
+        let mut p = Parents::default();
+        for r in outer_first.iter().rev().take(Parents::MAX) {
+            p.rects[usize::from(p.len)] = *r;
+            p.len += 1;
+        }
+        p
+    }
+
+    pub fn as_slice(&self) -> &[Rect] {
+        &self.rects[..usize::from(self.len)]
+    }
+}
+
+/// UI Automation's answer: rectangles only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElementAnswer {
-    /// The deepest element under the point (device pixels, as reported).
-    Found(Rect),
+    /// The deepest element under the point (device pixels, as reported), and the elements
+    /// around it (#99, `DET-03`).
+    Found(Rect, Parents),
     /// No element smaller than the window lies under the point.
     WindowOnly,
     Failed(Fallback),

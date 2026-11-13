@@ -6983,7 +6983,10 @@ pub(crate) mod tests {
         let req = *a.shell.element_requests.last().expect("an element request");
         assert_eq!((req.token, req.at), (11, (160, 160)));
         let button = Rect::new(150, 150, 40, 20);
-        a.overlay_event(OverlayEvent::Element(req, ElementAnswer::Found(button)));
+        a.overlay_event(OverlayEvent::Element(
+            req,
+            ElementAnswer::Found(button, crate::detect::Parents::default()),
+        ));
         let ov = overlay_status(&a);
         assert_eq!(ov["detection"]["mode"], "element");
         assert_eq!(ov["detection"]["target"]["kind"], "element");

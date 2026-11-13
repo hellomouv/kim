@@ -95,7 +95,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `DET-01` | Detect the window under the pointer and select it with a click | H, P | Same; geometry only, nothing read or stored. Step 52: the windows are listed with the frozen picture (extended frame bounds and flags only, ADR 0035), the one under the pointer is shown undimmed with the border and its size, a click or `Space` selects it; hidden, minimized, cloaked, click-through, transparent and capture-excluded windows are not offered; missing: the manual check on the visible desktop (UX spec §4.8) | partial | NOEUL-FR-040, NOEUL-SEC-007 | N1 | T, M | T: `crates/noeul/src/overlay.rs` detection_highlights_the_window_under_the_pointer_and_a_click_selects_it, protected_absent_and_undetectable_windows_fall_back_to_the_plain_region; T: `crates/noeul/src/win/detect.rs` own_windows_of_every_kind_are_classified_and_the_topmost_wins, detection_never_asks_for_text; T: `crates/noeul/tests/smart_selection.rs` detection_magnifier_pointer_keys_and_history_through_the_real_binary |
 | `DET-02` | Detect UI elements; `Tab` toggles window or element detection | K, P | Element detection through UI Automation rectangles; `detect.cycle` (`E`) cycles window, element, off ◆ (`Tab` stays keyboard navigation). Step 52: `E` and `[capture] detection`; a worker thread walks the control view for bounding rectangles only (300 ms budget), the window rectangle shows until it answers; missing: the manual check on the visible desktop (UX spec §4.8) | partial | NOEUL-FR-040 | N1 | T, M | T: `crates/noeul/src/overlay.rs` element_detection_asks_off_thread_and_falls_back_to_the_window; T: `crates/noeul/src/win/detect.rs` ui_automation_finds_a_child_control_of_our_own_window_and_reads_no_text; T: `crates/noeul/tests/smart_selection.rs` detection_magnifier_pointer_keys_and_history_through_the_real_binary |
-| `DET-03` | Step to the parent or child element with the mouse wheel (Pro) | P | Planned refinement | planned | NOEUL-FR-046 | N4 | T | — |
+| `DET-03` | Step to the parent or child element with the mouse wheel (Pro) | P | In element detection the wheel steps from the element shown to the elements around it (the UI Automation descent's own rectangles, up to 8, each checked like the element) and past them to the window, and back; a click or `Space` selects what is shown; a new element starts again at itself; with a tool or a selected annotation the wheel keeps changing the width (#99). | supported | NOEUL-FR-046 | N4 | T, M | T: `crates/noeul/src/overlay.rs` tests::the_wheel_steps_to_the_parent_and_back_to_the_child; T: `crates/noeul/src/win/detect.rs` tests::ui_automation_finds_a_child_control_of_our_own_window_and_reads_no_text (a button inside a panel comes with the panel as its parent); M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, Notepad's status bar: part 254 × 21 → wheel up: the status bar 684 × 23 → the window 686 × 443 → two notches down: the part again; a click one level up selected 684 × 23 |
 | `DET-04` | Exclude programs from detection; fallback algorithm for problem programs | A | Exclusion list; a window that does not answer UI Automation in time falls back to its window rectangle. Step 52: an elevated (UIPI), unresponsive (300 ms) or UI-Automation-less window, or an answer outside its window, falls back to the window rectangle and is not asked again during the capture; missing: the exclusion list (N4) and a real elevated program (manual) | partial | NOEUL-FR-046, NOEUL-FR-040 | N4 | T | T: `crates/noeul/src/overlay.rs` element_detection_asks_off_thread_and_falls_back_to_the_window; T: `crates/noeul/src/detect.rs` uipi_skips_elevated_windows_unless_noeul_is_elevated_too, element_rectangles_must_fit_the_point_and_the_window_with_one_dpi_retry |
 | `DET-05` | Browser content needs accessibility support for element detection | T | Same OS limitation, documented; falls back to the window rectangle. Step 52: an element tree without an element under the point answers "window only" and the window rectangle stays (UX spec §4.8 rule 2); missing: the manual check with a real browser (§4.8 step 4) | partial | NOEUL-FR-040 | N1 | M, D | T: `crates/noeul/src/win/detect.rs` ui_automation_finds_a_child_control_of_our_own_window_and_reads_no_text; D: `docs/NOEUL_UX_SPEC.md` §4.8 |
 | `DET-06` | Magnifier appears when useful; hold `Alt` to show it | G, K | Shown while selecting; `magnifier.toggle` (`M`) ◆ (the hotkey contract has no bare-modifier keys). Step 52: 15 × 15 frozen pixels at 8 logical pixels each, a centre crosshair, the device-pixel position and HEX/RGB, while selecting and next to a selection; `M` toggles it. Step 59: the readout writes what `C` copies (`rgb(…)`, HSL when chosen) with the chosen format marked, and the overlay's accessible name carries it; missing: the manual check on the visible desktop (UX spec §4.8, §4.14) | partial | NOEUL-FR-041 | N1 | T, M | T: `crates/noeul/src/overlay.rs` the_magnifier_enlarges_exact_pixels_with_a_crosshair_and_reads_the_colour; T: `crates/noeul/src/win/overlay.rs` the_real_window_draws_the_magnifier_reports_key_positions_and_keeps_the_cursor |
@@ -321,16 +321,16 @@ picture.
 
 | Status | Rows |
 | --- | --- |
-| `supported` | 6 |
+| `supported` | 7 |
 | `partial` | 111 |
-| `planned` | 30 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `planned` | 29 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
 | Group | supported | partial | planned | not intended | Total |
 | --- | --- | --- | --- | --- | --- |
 | 1. Starting and selecting (`SNIP`) | 2 | 12 | 0 | 8 | 22 |
-| 2. Detection and precision (`DET`) | 0 | 11 | 1 | 0 | 12 |
+| 2. Detection and precision (`DET`) | 1 | 11 | 0 | 0 | 12 |
 | 3. Color picker (`COLOR`) | 0 | 7 | 0 | 0 | 7 |
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 1 | 9 | 1 | 1 | 12 |
@@ -369,6 +369,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-12` (typed size and fixed ratio, `T`) is `supported` after the real-desktop check. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `DET-03` (the wheel steps to the parent element and back) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

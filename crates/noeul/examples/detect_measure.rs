@@ -188,7 +188,7 @@ fn main() {
                 .into_iter()
                 .find(|(r, _)| r.seq == seq)
             {
-                if a == ElementAnswer::Found(target) {
+                if matches!(a, ElementAnswer::Found(r, _) if r == target) {
                     found += 1;
                 }
                 break;

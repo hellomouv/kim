@@ -53,9 +53,9 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 Each is tracked in [#99](https://github.com/madebymouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
 `SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06`, `DET-09` and `SNIP-10` to *partial*, and
-`SNIP-12` (typed size and fixed ratio) to *supported*.
+`SNIP-12` (typed size and fixed ratio) and `DET-03` (the wheel steps to a parent element) to
+*supported*.
 
-- `DET-03` Step to the parent or child element with the mouse wheel (Pro)
 - `ANN-12` Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro)
 - `ANN-13` Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro)
 - `ANN-14` Right-click marks the detected element in rectangle, ellipse or fill modes

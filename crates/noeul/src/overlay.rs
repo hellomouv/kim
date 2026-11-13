@@ -901,6 +901,11 @@ struct Detection {
     suspended: bool,
     /// The last accepted element: its window's token and rectangle.
     element: Option<(u64, Rect)>,
+    /// #99 (`DET-03`): the accepted elements around it, innermost first (checked like it).
+    parents: Vec<Rect>,
+    /// #99 (`DET-03`): how many steps the wheel went up from the element (0: the element;
+    /// past the last parent: the window).
+    level: usize,
     /// The last request issued (its window and point are not asked again).
     asked: Option<ElementRequest>,
     seq: u64,
@@ -1341,8 +1346,22 @@ impl Overlay {
             && token == w.token
             && r.contains(&at)
         {
+            // #99 (`DET-03`): the wheel went up to a parent, or past the last one to the window.
+            let rect = match self.detect.level {
+                0 => r,
+                n => match self.detect.parents.get(n - 1) {
+                    Some(p) => *p,
+                    None => {
+                        return Some(Detected {
+                            rect: w.rect,
+                            kind: DetectKind::Window,
+                            protected: false,
+                        });
+                    }
+                },
+            };
             return Some(Detected {
-                rect: r,
+                rect,
                 kind: DetectKind::Element,
                 protected: false,
             });
@@ -1352,6 +1371,22 @@ impl Overlay {
             kind: DetectKind::Window,
             protected: false,
         })
+    }
+
+    /// #99 (`DET-03`): the wheel steps between an element and its parents while element
+    /// detection shows one under the pointer and nothing is selected or dragged.
+    fn stepping_elements(&self) -> bool {
+        self.detect.mode == DetectMode::Element
+            && self.state == State::Hover
+            && self.selection.is_none()
+            && self
+                .detected()
+                .is_some_and(|d| !d.protected && self.detect.element.is_some())
+    }
+
+    /// #99 (`DET-03`): how many steps the wheel went up from the element.
+    pub fn element_level(&self) -> usize {
+        self.detect.level
     }
 
     /// The detected target a click or `selection.mark` selects (never a protected window).
@@ -1394,11 +1429,22 @@ impl Overlay {
         let current = self.detect.asked.is_some_and(|a| a.seq == request.seq);
         let window = self.hover_window().map(|w| w.token);
         match answer {
-            ElementAnswer::Found(r) => match check_element(r, &request, &self.monitors) {
+            ElementAnswer::Found(r, around) => match check_element(r, &request, &self.monitors) {
                 Some(r) => {
                     let at = Rect::new(self.pointer.0, self.pointer.1, 1, 1);
                     if current || (window == Some(request.token) && r.contains(&at)) {
+                        // A different element starts again at itself (#99, `DET-03`).
+                        if self.detect.element != Some((request.token, r)) {
+                            self.detect.level = 0;
+                        }
                         self.detect.element = Some((request.token, r));
+                        self.detect.parents = around
+                            .as_slice()
+                            .iter()
+                            .filter_map(|p| check_element(*p, &request, &self.monitors))
+                            .filter(|p| p.contains(&r) && *p != r)
+                            .collect();
+                        self.detect.parents.dedup();
                         self.detect.fallback = None;
                     }
                 }
@@ -1774,6 +1820,20 @@ impl Overlay {
                     while self.wheel.abs() >= 120 {
                         let up = self.wheel > 0;
                         self.ann.step_width(up);
+                        self.wheel -= if up { 120 } else { -120 };
+                    }
+                } else if self.stepping_elements() {
+                    // #99 (`DET-03`): away from the user to the parent, towards the user back
+                    // to the child, one notch per step.
+                    self.wheel += delta;
+                    while self.wheel.abs() >= 120 {
+                        let up = self.wheel > 0;
+                        let top = self.detect.parents.len() + 1;
+                        self.detect.level = if up {
+                            (self.detect.level + 1).min(top)
+                        } else {
+                            self.detect.level.saturating_sub(1)
+                        };
                         self.wheel -= if up { 120 } else { -120 };
                     }
                 }
@@ -5643,6 +5703,86 @@ mod tests {
         );
     }
 
+    /// #99 (`DET-03`): the wheel steps from the detected element to its parents (away from the
+    /// user), past the last one to the window, and back (towards the user); a click selects
+    /// what is shown; a different element starts again at itself; parents that do not contain
+    /// the element or leave the window are dropped.
+    #[test]
+    fn the_wheel_steps_to_the_parent_and_back_to_the_child() {
+        let mut o = detecting(windows());
+        act(&mut o, Action::DetectCycle);
+        o.pointer = (5, 5);
+        o.take_element_request();
+        mv(&mut o, 150, 150);
+        let req = o.take_element_request().unwrap();
+        let button = Rect::new(120, 130, 80, 30);
+        let toolbar = Rect::new(110, 120, 200, 50);
+        let pane = Rect::new(105, 110, 250, 150);
+        let stray = Rect::new(900, 900, 10, 10);
+        // Outermost first, as the descent passes them; the found element is the last.
+        let around = crate::detect::Parents::from_descent(&[pane, stray, toolbar]);
+        assert_eq!(around.as_slice(), [toolbar, stray, pane], "innermost first");
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::Found(button, around),
+        });
+        let shown = |o: &Overlay| o.detected().map(|d| (d.rect, d.kind));
+        assert_eq!(shown(&o), Some((button, DetectKind::Element)));
+        o.handle(Input::Wheel(120));
+        assert_eq!(
+            shown(&o),
+            Some((toolbar, DetectKind::Element)),
+            "the parent"
+        );
+        o.handle(Input::Wheel(60));
+        o.handle(Input::Wheel(60));
+        assert_eq!(
+            shown(&o),
+            Some((pane, DetectKind::Element)),
+            "two half notches"
+        );
+        o.handle(Input::Wheel(120));
+        assert_eq!(
+            shown(&o),
+            Some((Rect::new(100, 100, 300, 200), DetectKind::Window)),
+            "past the last parent: the window"
+        );
+        o.handle(Input::Wheel(120));
+        assert_eq!(o.element_level(), 3, "not beyond the window");
+        o.handle(Input::Wheel(-240));
+        assert_eq!(shown(&o), Some((toolbar, DetectKind::Element)), "back down");
+        click(&mut o, 150, 150, 0);
+        assert_eq!(
+            o.selection(),
+            Some(toolbar),
+            "a click selects what is shown"
+        );
+        // With a selection the wheel leaves the detection alone.
+        o.handle(Input::Wheel(-120));
+        assert_eq!(o.element_level(), 1);
+        // A different element starts again at itself.
+        let mut o = detecting(windows());
+        act(&mut o, Action::DetectCycle);
+        o.pointer = (5, 5);
+        o.take_element_request();
+        mv(&mut o, 150, 150);
+        let req = o.take_element_request().unwrap();
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::Found(button, around),
+        });
+        o.handle(Input::Wheel(120));
+        mv(&mut o, 300, 250);
+        let req = o.take_element_request().unwrap();
+        let other = Rect::new(280, 240, 40, 20);
+        o.handle(Input::Element {
+            request: req,
+            answer: ElementAnswer::Found(other, crate::detect::Parents::default()),
+        });
+        assert_eq!(o.element_level(), 0);
+        assert_eq!(shown(&o), Some((other, DetectKind::Element)));
+    }
+
     #[test]
     fn element_detection_asks_off_thread_and_falls_back_to_the_window() {
         let mut o = detecting(windows());
@@ -5668,7 +5808,7 @@ mod tests {
         let button = Rect::new(120, 130, 80, 30);
         o.handle(Input::Element {
             request: req,
-            answer: ElementAnswer::Found(button),
+            answer: ElementAnswer::Found(button, crate::detect::Parents::default()),
         });
         assert_eq!(
             o.detected(),
@@ -5690,7 +5830,7 @@ mod tests {
         assert!(second.seq > first.seq);
         o.handle(Input::Element {
             request: first,
-            answer: ElementAnswer::Found(button),
+            answer: ElementAnswer::Found(button, crate::detect::Parents::default()),
         });
         assert_eq!(
             o.detected().map(|d| d.kind),
@@ -5711,7 +5851,10 @@ mod tests {
         let third = o.take_element_request().unwrap();
         o.handle(Input::Element {
             request: third,
-            answer: ElementAnswer::Found(Rect::new(700, 500, 10, 10)),
+            answer: ElementAnswer::Found(
+                Rect::new(700, 500, 10, 10),
+                crate::detect::Parents::default(),
+            ),
         });
         assert_eq!(o.detect_fallback(), Some(Fallback::InvalidRect));
         assert_eq!(o.detected().map(|d| d.kind), Some(DetectKind::Window));
