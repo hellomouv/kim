@@ -162,6 +162,18 @@ Keys go to the program, in the order of ADR 0009:
    the taskbar button while the window is not in front (`visual`), or the system sound and the
    flash (`audible`). Bells closer together than the flash ring once.
 
+   **#98 T3 (progress and notifications).** A program's progress (OSC 9;4, as ConEmu and Windows
+   Terminal read it) shows on its tab as `42%`, `42%!` (failed), `‖42%` (paused) or `…` (busy),
+   and the shown Terminal's progress on the window's taskbar button (green, red, yellow or
+   moving). With `terminal.notify_command_seconds` above 0, a shell-integration command (OSC 133
+   `C`…`D`) that ran at least that long notifies when it finishes, and with
+   `terminal.notify_exit` a Terminal's program ending does, but only while its tab is not shown
+   or the window is not in front. The notification is a Windows notification from an icon
+   that exists only while it shows (removed after 15 s and when the window closes); it respects
+   Windows' quiet hours and never leaves the PC. Both are off by default. Windows 10's
+   pseudo console passes these sequences on with the program's next screen output, so a
+   program that reports progress without printing anything is seen when it next prints.
+
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,
    `Ctrl+Space` as NUL, `Ctrl+2`…`Ctrl+8` as the VT220 codes, cursor keys (`SS3` in application
@@ -926,6 +938,8 @@ smart_ctrl_c = false     # Ctrl+C copies a selection; without one it reaches the
 alt_is_meta = true       # #98 T2: Alt+key sends ESC first (false: the character alone)
 backspace = "del"        # #98 T2: del (0x7F) | ctrl-h (0x08) | delete (CSI 3 ~)
 bell = "off"             # #98 T3: off | visual (flash; taskbar too when not in front) | audible
+notify_command_seconds = 0   # #98 T3: notify when a command (OSC 133) that ran this long ends; 0: off
+notify_exit = false      # #98 T3: notify when a Terminal's program ends
 claude_indicators = true # Step 28: Claude Code states on the tabs and in the title
 claude_animation = true  # Step 44: the marks move (false: static; reduced motion is static too)
 right_click = "copy-paste"   # copy-paste | menu | paste | none

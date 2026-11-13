@@ -8,7 +8,8 @@
 //! `hotkeys check` accepts it; `config show` reports `terminal.alt_is_meta` (true) and
 //! `terminal.backspace` (`del`) as defaults; `config set` changes both (`--dry-run` first, which
 //! writes nothing); a value outside `del`/`ctrl-h`/`delete` is refused with a usage error and
-//! changes nothing; `terminal.bell` (#98 T3) is `off` until set. The window's use of them is tested in
+//! changes nothing; `terminal.bell` (#98 T3) is `off` and the notifications
+//! (`terminal.notify_command_seconds`, `terminal.notify_exit`) are off until set. The window's use of them is tested in
 //! `crates/subak/tests/gui_window.rs::line_editing_insert_newline_backspace_and_alt_as_meta`.
 #![cfg(windows)]
 
@@ -109,4 +110,28 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
     assert_eq!(code, 0, "{doc}");
     let (_, show) = json(&sb, &["config", "show"]);
     assert_eq!(setting(&show, "terminal.bell")["value"], "visual");
+    // #98 T3: notifications are off unless asked for.
+    assert_eq!(
+        setting(&show, "terminal.notify_command_seconds")["value"],
+        0
+    );
+    assert_eq!(setting(&show, "terminal.notify_exit")["value"], false);
+    for (k, v) in [
+        ("terminal.notify_command_seconds", "30"),
+        ("terminal.notify_exit", "true"),
+    ] {
+        let (code, doc) = json(&sb, &["config", "set", k, v]);
+        assert_eq!(code, 0, "{doc}");
+    }
+    let (code, doc) = json(
+        &sb,
+        &["config", "set", "terminal.notify_command_seconds", "99999"],
+    );
+    assert_ne!(code, 0, "{doc}");
+    let (_, show) = json(&sb, &["config", "show"]);
+    assert_eq!(
+        setting(&show, "terminal.notify_command_seconds")["value"],
+        30
+    );
+    assert_eq!(setting(&show, "terminal.notify_exit")["value"], true);
 }

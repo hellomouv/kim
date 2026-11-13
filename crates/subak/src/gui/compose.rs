@@ -393,6 +393,7 @@ mod tests {
                 claude: Claude::None,
                 frame: None,
                 alert: None,
+                progress: None,
             },
             Item {
                 name: "claude",
@@ -400,6 +401,7 @@ mod tests {
                 claude: Claude::None,
                 frame: None,
                 alert: None,
+                progress: None,
             },
             Item {
                 name: "kept",
@@ -407,6 +409,7 @@ mod tests {
                 claude: Claude::None,
                 frame: None,
                 alert: None,
+                progress: None,
             },
         ];
         for (scale, pct) in [(1.0f32, 100), (2.0, 200)] {

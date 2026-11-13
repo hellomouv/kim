@@ -92,6 +92,21 @@ pub struct Item<'a> {
     pub frame: Option<crate::gui::claude_motion::Frame>,
     /// #98 T3: output or a bell since the tab was last shown.
     pub alert: Option<crate::gui::model::Alert>,
+    /// #98 T3: the progress the Terminal's program reports.
+    pub progress: Option<subak_term::screen::Progress>,
+}
+
+/// #98 T3 (`CORE-78`): a tab's progress: `42%` (accent), `42%!` (failed, danger), `‖42%`
+/// (paused, warning) or `…` (busy without a value); text and shape, never colour alone.
+pub fn progress_mark(p: Option<subak_term::screen::Progress>) -> Option<(String, Rgb)> {
+    use subak_term::screen::ProgressState as S;
+    let p = p?;
+    Some(match p.state {
+        S::Normal => (format!("{}%", p.value), ACCENT),
+        S::Error => (format!("{}%!", p.value), DANGER),
+        S::Paused => (format!("\u{2016}{}%", p.value), WARNING),
+        S::Indeterminate => ("\u{2026}".to_string(), ACCENT),
+    })
 }
 
 /// #98 T3: the mark of a tab with unseen output (`•`) or a bell (`♪`), a shape each.
@@ -105,7 +120,9 @@ pub fn alert_mark(a: Option<crate::gui::model::Alert>) -> Option<(char, Rgb, &'s
 
 /// The columns of a tab's marks (Claude and alert), each with its space.
 fn marks_width(it: &Item<'_>) -> usize {
-    mark_width(it.claude) + alert_mark(it.alert).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
+    mark_width(it.claude)
+        + alert_mark(it.alert).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
+        + progress_mark(it.progress).map_or(0, |(t, _)| width(&t) + 1)
 }
 
 pub use crate::gui::float::art::Claude;
@@ -361,6 +378,9 @@ pub fn layout_hover(
         if let Some((g, c, _)) = alert_mark(it.alert) {
             put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
         }
+        if let Some((t, c)) = progress_mark(it.progress) {
+            put(&mut vt, &mut col, &format!("{fill}{}{t} ", fg(c)));
+        }
         match edit.filter(|_| is_active) {
             Some(e) => {
                 let (shown, at, field) = edit_window(e);
@@ -483,6 +503,7 @@ mod tests {
                 claude: Claude::None,
                 frame: None,
                 alert: None,
+                progress: None,
             })
             .collect()
     }
@@ -728,5 +749,24 @@ mod tests {
         assert!(alert_mark(None).is_none());
         let plain = tab_width(&items(&["logs"])[0], None);
         assert_eq!(tab_width(&list[1], None), plain + 2);
+    }
+
+    /// #98 T3 (`CORE-78`): the tab shows its program's progress in text (`42%`, `7%!`,
+    /// `‖9%`, `…`).
+    #[test]
+    fn progress_shows_on_the_tab() {
+        use subak_term::screen::{Progress, ProgressState};
+        let p = |state, value| Some(Progress { state, value });
+        let mut list = items(&["a", "b", "c", "d"]);
+        list[0].progress = p(ProgressState::Normal, 42);
+        list[1].progress = p(ProgressState::Error, 7);
+        list[2].progress = p(ProgressState::Paused, 9);
+        list[3].progress = p(ProgressState::Indeterminate, 0);
+        let line = text(&layout(&list, Some(0), None, 160, 0), 160);
+        for want in ["● 42% a", "● 7%! b", "● \u{2016}9% c", "● \u{2026} d"] {
+            assert!(line.contains(want), "{want} in {line}");
+        }
+        assert_eq!(progress_mark(None), None);
+        assert_eq!(progress_mark(p(ProgressState::Error, 7)).unwrap().1, DANGER);
     }
 }

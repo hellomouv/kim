@@ -147,6 +147,9 @@ const TIMER_CLAUDE: usize = 7;
 const TIMER_BELL: usize = 8;
 /// #98 T3: how long the visual bell shows.
 const BELL_FLASH_MS: u32 = 120;
+/// #98 T3: removes a notification's icon after it had time to show.
+const TIMER_NOTICE: usize = 9;
+const NOTICE_MS: u32 = 15_000;
 /// `WM_MOUSELEAVE` (the pointer left the client area after `TrackMouseEvent`).
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
@@ -414,6 +417,9 @@ struct App {
     focused: bool,
     /// #98 T3: the visual bell is showing.
     bell_flash: bool,
+    /// #98 T3: the taskbar list (not in the test window), and the progress it shows.
+    taskbar: Option<super::taskbar::Taskbar>,
+    taskbar_shown: Option<subak_term::screen::Progress>,
     high_contrast: bool,
     bg_brush: HBRUSH,
     link: Option<Link>,
@@ -1635,6 +1641,11 @@ impl App {
                 } else {
                     None
                 },
+                progress: if connected {
+                    self.model.progress(&t.id)
+                } else {
+                    None
+                },
             })
             .zip(self.model.tabs())
             .map(|(mut it, t)| {
@@ -2731,6 +2742,49 @@ impl App {
         }
     }
 
+    /// #98 T3 (`CORE-79`): a command or a program finished: a notification when the user asked
+    /// for one and is not looking at that Terminal (the test window reports it instead).
+    fn finished(&mut self, f: &super::model::Finished) {
+        let shown = self.model.terminal().is_some_and(|t| t.id == f.terminal_id);
+        let wanted = super::notify::wanted(f, &self.settings.terminal, shown, self.focused);
+        self.event(
+            &json!({"event": "finished", "terminal": f.name, "command": f.command,
+            "exit_code": f.exit_code, "duration_ms": f.duration_ms, "notified": wanted}),
+        );
+        if !wanted {
+            return;
+        }
+        let n = super::notify::notice(f);
+        self.event(&json!({"event": "notification", "title": n.title, "text": n.text}));
+        if !self.opts.test && super::notify::show(self.hwnd, &n) {
+            // SAFETY: a one-shot timer of our own window.
+            unsafe { SetTimer(self.hwnd, TIMER_NOTICE, NOTICE_MS, None) };
+        }
+    }
+
+    /// #98 T3 (`CORE-78`): the shown Terminal's progress on the taskbar button (changes only).
+    fn sync_taskbar(&mut self) {
+        let p = self
+            .model
+            .terminal()
+            .and_then(|t| self.model.progress(&t.id));
+        if p == self.taskbar_shown {
+            return;
+        }
+        self.taskbar_shown = p;
+        let (flag, value) = super::taskbar::flags(p);
+        self.event(&json!({"event": "taskbar_progress", "flag": flag, "value": value}));
+        if self.opts.test {
+            return;
+        }
+        if self.taskbar.is_none() {
+            self.taskbar = super::taskbar::Taskbar::new();
+        }
+        if let Some(t) = &self.taskbar {
+            t.set(self.hwnd, p);
+        }
+    }
+
     /// #98 T3 (`CORE-81`): a bell in the shown pane, as `terminal.bell` says: nothing, a flash
     /// of the pane (and of the taskbar button while the window is not in front), or the system
     /// sound and the flash. Bells closer than the flash itself ring once.
@@ -2831,6 +2885,7 @@ impl App {
                 }
                 Effect::Views => self.sync_side(),
                 Effect::Show { method, result } => self.show_answer(method, &result),
+                Effect::Finished(f) => self.finished(&f),
                 Effect::Renamed(r) => {
                     self.event(&json!({"event": "renamed", "ok": r.is_ok(),
                         "error": r.as_ref().err()}));
@@ -2848,6 +2903,7 @@ impl App {
         if tabs {
             self.on_tabs();
         }
+        self.sync_taskbar();
         // Hidden tabs are kept across runs (Step 18), once the Host's list is known.
         if self.model.connected() {
             let hidden = self.model.hidden_ids();
@@ -6284,6 +6340,11 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
                 }
                 TIMER_MOTION => app.motion_tick(),
                 TIMER_CLAUDE => app.claude_tick(),
+                TIMER_NOTICE => {
+                    // SAFETY: our own one-shot timer.
+                    unsafe { KillTimer(hwnd, TIMER_NOTICE) };
+                    super::notify::hide(hwnd);
+                }
                 TIMER_BELL => {
                     // SAFETY: our own one-shot timer.
                     unsafe { KillTimer(hwnd, TIMER_BELL) };
@@ -6336,6 +6397,11 @@ fn handle(app: &mut App, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> Option
         }
         WM_DESTROY => {
             app.event(&json!({"event": "exit"}));
+            // #98 T3: no notification icon and no taskbar progress stay behind.
+            super::notify::hide(hwnd);
+            if let Some(t) = &app.taskbar {
+                t.set(hwnd, None);
+            }
             // SAFETY: ends this thread's message loop.
             unsafe { PostQuitMessage(0) };
             Some(0)
@@ -6543,6 +6609,8 @@ pub fn run(o: Options) -> ExitCode {
         maximized: false,
         focused: false,
         bell_flash: false,
+        taskbar: None,
+        taskbar_shown: None,
         high_contrast: hc,
         bg_brush: null_mut(),
         link: None,

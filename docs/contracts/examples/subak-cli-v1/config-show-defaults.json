@@ -107,6 +107,20 @@
         "value": "off"
       },
       {
+        "default": 0,
+        "key": "terminal.notify_command_seconds",
+        "source": "default",
+        "takes": "a whole number from 0 to 86400 (seconds; 0: off)",
+        "value": 0
+      },
+      {
+        "default": false,
+        "key": "terminal.notify_exit",
+        "source": "default",
+        "takes": "true or false",
+        "value": false
+      },
+      {
         "default": true,
         "key": "terminal.claude_indicators",
         "source": "default",

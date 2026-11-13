@@ -153,6 +153,8 @@
         {"$ref": "#/$defs/event_window_layout"},
         {"$ref": "#/$defs/event_window_alert"},
         {"$ref": "#/$defs/event_terminal_activity"},
+        {"$ref": "#/$defs/event_terminal_progress"},
+        {"$ref": "#/$defs/event_terminal_command_done"},
         {"$ref": "#/$defs/event_window_options"},
         {"$ref": "#/$defs/event_claude_state_changed"},
         {"$ref": "#/$defs/event_terminal_claude_changed"},
@@ -189,6 +191,8 @@
               "window.alert",
               "window.options",
               "terminal.activity",
+              "terminal.progress",
+              "terminal.command_done",
               "claude.state_changed",
               "terminal.claude_changed"
             ]
@@ -234,6 +238,48 @@
             "terminal_id": {"$ref": "#/$defs/terminal_id"},
             "pane_id": {"$ref": "#/$defs/pane_id"},
             "kind": {"enum": ["output", "bell"]}
+          }
+        }
+      }
+    },
+    "event_terminal_progress": {
+      "description": "#98 T3: a pane's program reported progress (OSC 9;4) or ended it (state none); sent on every change, and to a new listener of terminals for every progress showing.",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "terminal.progress"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "pane_id", "state", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "state": {"enum": ["none", "normal", "error", "indeterminate", "paused"]},
+            "value": {"type": "integer", "minimum": 0, "maximum": 100}
+          }
+        }
+      }
+    },
+    "event_terminal_command_done": {
+      "description": "#98 T3: a shell-integration command finished (OSC 133 D); duration_ms from its C mark, null without one.",
+      "type": "object",
+      "required": ["type", "seq", "event", "data"],
+      "properties": {
+        "type": {"const": "event"},
+        "seq": {"$ref": "#/$defs/u64"},
+        "event": {"const": "terminal.command_done"},
+        "data": {
+          "type": "object",
+          "required": ["terminal_id", "pane_id", "exit_code", "duration_ms"],
+          "additionalProperties": false,
+          "properties": {
+            "terminal_id": {"$ref": "#/$defs/terminal_id"},
+            "pane_id": {"$ref": "#/$defs/pane_id"},
+            "exit_code": {"type": ["integer", "null"]},
+            "duration_ms": {"anyOf": [{"$ref": "#/$defs/u64"}, {"type": "null"}]}
           }
         }
       }

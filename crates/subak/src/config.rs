@@ -272,6 +272,13 @@ pub struct TerminalPrefs {
     pub backspace: subak_term::input::BackspaceMode,
     /// #98 T3 (`CORE-81`): what a bell in the shown pane does (off by default).
     pub bell: Bell,
+    /// #98 T3 (`CORE-79`): a notification when a shell-integration command that ran at least
+    /// this many seconds finishes while its tab is not shown or the window is not in front
+    /// (0, the default: never).
+    pub notify_command_seconds: u32,
+    /// #98 T3 (`CORE-79`): a notification when a Terminal's program ends while its tab is not
+    /// shown or the window is not in front (off by default).
+    pub notify_exit: bool,
     /// Step 28: tabs and the title show each Terminal's Claude Code state (on by default; only
     /// ever from hooks the user installed).
     pub claude_indicators: bool,
@@ -363,6 +370,8 @@ impl Default for Settings {
                 alt_is_meta: true,
                 backspace: subak_term::input::BackspaceMode::Del,
                 bell: Bell::Off,
+                notify_command_seconds: 0,
+                notify_exit: false,
                 claude_indicators: true,
                 claude_animation: true,
                 detect_shells: true,
@@ -473,6 +482,8 @@ impl Settings {
             ("terminal", "alt_is_meta") => json!(t.alt_is_meta),
             ("terminal", "backspace") => json!(t.backspace.as_str()),
             ("terminal", "bell") => json!(t.bell.as_str()),
+            ("terminal", "notify_command_seconds") => json!(t.notify_command_seconds),
+            ("terminal", "notify_exit") => json!(t.notify_exit),
             ("terminal", "claude_indicators") => json!(t.claude_indicators),
             ("terminal", "claude_animation") => json!(t.claude_animation),
             ("terminal", "detect_shells") => json!(t.detect_shells),
@@ -703,6 +714,18 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "terminal",
+        name: "notify_command_seconds",
+        takes: "a whole number from 0 to 86400 (seconds; 0: off)",
+        kind: Kind::Integer,
+    },
+    Key {
+        section: "terminal",
+        name: "notify_exit",
+        takes: "true or false",
+        kind: Kind::Bool,
+    },
+    Key {
+        section: "terminal",
         name: "claude_indicators",
         takes: "true or false",
         kind: Kind::Bool,
@@ -807,6 +830,8 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
             t.backspace = subak_term::input::BackspaceMode::parse(text()?).ok_or(())?;
         }
         ("terminal", "bell") => t.bell = Bell::parse(text()?).ok_or(())?,
+        ("terminal", "notify_command_seconds") => t.notify_command_seconds = int(0, 86_400)?,
+        ("terminal", "notify_exit") => t.notify_exit = flag()?,
         ("terminal", "claude_indicators") => t.claude_indicators = flag()?,
         ("terminal", "claude_animation") => t.claude_animation = flag()?,
         ("terminal", "detect_shells") => t.detect_shells = flag()?,
@@ -2829,5 +2854,19 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
             assert_eq!(s.terminal.bell, b);
         }
         assert!(set_value(&mut s, "terminal.bell", "loud").is_err());
+    }
+
+    /// #98 T3 (`CORE-79`): no notification unless asked for.
+    #[test]
+    fn notifications_are_off_by_default_and_settings() {
+        let mut s = Settings::default();
+        assert_eq!(s.terminal.notify_command_seconds, 0);
+        assert!(!s.terminal.notify_exit);
+        set_value(&mut s, "terminal.notify_command_seconds", "30").unwrap();
+        set_value(&mut s, "terminal.notify_exit", "true").unwrap();
+        assert_eq!(s.terminal.notify_command_seconds, 30);
+        assert!(s.terminal.notify_exit);
+        assert!(set_value(&mut s, "terminal.notify_command_seconds", "86401").is_err());
+        assert!(set_value(&mut s, "terminal.notify_command_seconds", "-1").is_err());
     }
 }

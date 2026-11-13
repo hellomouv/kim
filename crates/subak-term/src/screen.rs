@@ -53,6 +53,82 @@ fn clean_cwd(raw: &str) -> Option<String> {
     (!t.is_empty() && t.len() <= 1024 && !t.chars().any(char::is_control)).then(|| t.to_string())
 }
 
+/// #98 T3: what a program reports with OSC 9;4 (ConEmu, Windows Terminal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressState {
+    /// A value from 0 to 100.
+    Normal,
+    /// Failed (with the last value).
+    Error,
+    /// Busy, no value.
+    Indeterminate,
+    /// Paused (with the last value).
+    Paused,
+}
+
+impl ProgressState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Error => "error",
+            Self::Indeterminate => "indeterminate",
+            Self::Paused => "paused",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        [Self::Normal, Self::Error, Self::Indeterminate, Self::Paused]
+            .into_iter()
+            .find(|p| p.as_str() == s)
+    }
+}
+
+/// #98 T3: a program's progress (OSC 9;4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub state: ProgressState,
+    /// 0–100.
+    pub value: u8,
+}
+
+/// #98 T3: shell-integration command marks (OSC 133) seen so far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Commands {
+    /// `C`: a command started.
+    pub started: u64,
+    /// `D`: a command finished.
+    pub finished: u64,
+    /// The exit code the last `D` carried, if any.
+    pub last_exit: Option<i32>,
+}
+
+/// OSC 9;4 `state[;value]` after `9;4;`: 0 clears, 1 normal, 2 error, 3 indeterminate, 4 paused.
+/// Error and paused without a value keep the last one. Anything else changes nothing.
+fn parse_progress(rest: &[u8], last: Option<Progress>) -> Option<Progress> {
+    let text = String::from_utf8_lossy(rest);
+    let mut parts = text.split(';');
+    let state = parts.next().and_then(|s| s.trim().parse::<u8>().ok());
+    let value = parts
+        .next()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .map(|v| u8::try_from(v.min(100)).unwrap_or(100));
+    let keep = last.map_or(0, |p| p.value);
+    let state = match state {
+        Some(0) => return None,
+        Some(1) => ProgressState::Normal,
+        Some(2) => ProgressState::Error,
+        Some(3) => ProgressState::Indeterminate,
+        Some(4) => ProgressState::Paused,
+        _ => return last,
+    };
+    let value = match state {
+        ProgressState::Indeterminate => 0,
+        ProgressState::Normal => value.unwrap_or(0),
+        _ => value.unwrap_or(keep),
+    };
+    Some(Progress { state, value })
+}
+
 /// OSC 7 `file://host/C:/path%20x`: the path part, percent-decoded, with Windows separators.
 fn cwd_from_osc7(rest: &[u8]) -> Option<String> {
     let s = std::str::from_utf8(rest).ok()?;
@@ -873,6 +949,10 @@ pub struct Screen {
     /// Step 33: the working directory the shell reported (OSC 7 `file://host/path`, or OSC
     /// 9;9 `path`), when an optional shell integration sends it.
     cwd: Option<String>,
+    /// #98 T3: the progress the program reported (OSC 9;4), if any.
+    progress: Option<Progress>,
+    /// #98 T3: shell-integration command marks seen (OSC 133 `C` started, `D` finished).
+    commands: Commands,
     cursor_style: u8,
     last_char: Option<char>,
     /// The OSC 8 hyperlink printed characters get.
@@ -906,6 +986,8 @@ impl Screen {
             title: String::new(),
             bells: 0,
             cwd: None,
+            progress: None,
+            commands: Commands::default(),
             cursor_style: 0,
             last_char: None,
             link: None,
@@ -991,6 +1073,16 @@ impl Screen {
     /// Step 33: the working directory the shell last reported (OSC 7 or OSC 9;9), if any.
     pub fn cwd(&self) -> Option<&str> {
         self.cwd.as_deref()
+    }
+
+    /// #98 T3: the progress the program last reported (OSC 9;4; `None` after state 0).
+    pub fn progress(&self) -> Option<Progress> {
+        self.progress
+    }
+
+    /// #98 T3: the shell-integration command marks seen so far (OSC 133).
+    pub fn commands(&self) -> Commands {
+        self.commands
     }
 
     /// The hyperlink that characters printed now get (OSC 8).
@@ -1418,8 +1510,23 @@ impl Screen {
                     && let Some(d) = clean_cwd(&String::from_utf8_lossy(rest))
                 {
                     self.cwd = Some(d);
+                } else if let Some(rest) = osc[sep + 1..].strip_prefix(b"4;") {
+                    self.progress = parse_progress(rest, self.progress);
                 }
             }
+            // #98 T3: FinalTerm/VS Code shell-integration marks: C a command starts, D[;exit]
+            // it finished.
+            b"133" => match osc[sep + 1..].split(|&c| c == b';').collect::<Vec<_>>()[..] {
+                [b"C", ..] => self.commands.started += 1,
+                [b"D", ref rest @ ..] => {
+                    self.commands.finished += 1;
+                    self.commands.last_exit = rest
+                        .first()
+                        .and_then(|e| std::str::from_utf8(e).ok())
+                        .and_then(|e| e.parse().ok());
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -3308,5 +3415,54 @@ mod tests {
         s.feed(b"\x1b]7;http://x/y\x07\x1b]9;4;1;50\x07");
         assert_eq!(s.cwd(), Some("D:\\작업"));
         assert_eq!(s.bells(), 0, "OSC terminators are no bells");
+    }
+
+    /// #98 T3 (`CORE-78`, `CORE-79`): OSC 9;4 progress (set, error and paused keep the value,
+    /// indeterminate has none, 0 clears, junk changes nothing) and OSC 133 command marks; the
+    /// working directory of OSC 9;9 still works beside them.
+    #[test]
+    fn progress_and_command_marks() {
+        let mut s = Screen::new(20, 2, Limits::default());
+        assert_eq!(s.progress(), None);
+        let p = |state, value| Some(Progress { state, value });
+        s.feed(b"\x1b]9;4;1;42\x07");
+        assert_eq!(s.progress(), p(ProgressState::Normal, 42));
+        s.feed(b"\x1b]9;4;2\x1b\\");
+        assert_eq!(
+            s.progress(),
+            p(ProgressState::Error, 42),
+            "error keeps the value"
+        );
+        s.feed(b"\x1b]9;4;4;250\x07");
+        assert_eq!(s.progress(), p(ProgressState::Paused, 100), "clamped");
+        s.feed(b"\x1b]9;4;3\x07");
+        assert_eq!(s.progress(), p(ProgressState::Indeterminate, 0));
+        s.feed(b"\x1b]9;4;9;5\x07\x1b]9;4;x\x07");
+        assert_eq!(
+            s.progress(),
+            p(ProgressState::Indeterminate, 0),
+            "junk: unchanged"
+        );
+        s.feed(b"\x1b]9;4;0;0\x07");
+        assert_eq!(s.progress(), None);
+        s.feed(b"\x1b]9;9;C:/work\x07");
+        assert_eq!(s.cwd(), Some("C:/work"), "9;9 still sets the directory");
+        assert_eq!(s.bells(), 0, "OSC terminators are not bells");
+        assert_eq!(s.commands(), Commands::default());
+        s.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07make\r\n\x1b]133;C\x07");
+        assert_eq!(s.commands().started, 1);
+        s.feed(b"\x1b]133;D;2\x07");
+        assert_eq!(
+            s.commands(),
+            Commands {
+                started: 1,
+                finished: 1,
+                last_exit: Some(2)
+            }
+        );
+        s.feed(b"\x1b]133;C\x07\x1b]133;D\x07");
+        assert_eq!(s.commands().finished, 2);
+        assert_eq!(s.commands().last_exit, None, "no code given");
+        assert_eq!(ProgressState::parse("paused"), Some(ProgressState::Paused));
     }
 }

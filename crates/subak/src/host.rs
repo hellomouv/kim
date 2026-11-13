@@ -43,7 +43,7 @@ use crate::proto::{
 };
 use crate::pty::{self, EnvOverrides, Pty};
 use crate::redact::{self, Redactor};
-use crate::screen::{self, HistoryRange, Limits, Pos, Screen};
+use crate::screen::{self, HistoryRange, Limits, Pos, Progress, Screen};
 use crate::session::{self, Command, EndCause, LastExit, Level, Registry, Spec, Transition};
 use crate::state;
 use crate::win::pipe::{self, Listener, Pipe};
@@ -339,6 +339,8 @@ struct PaneOut {
     terminal_id: String,
     seq: u64,
     input_bytes: u64,
+    /// #98 T3: when the running command started (OSC 133 `C`), for `terminal.command_done`.
+    command_started: Option<Instant>,
 }
 
 /// The OS side of one running pane: its pseudo console and job, its reader thread, and the
@@ -838,8 +840,13 @@ impl State {
     /// as the change it reports.
     fn notify(&mut self, topic: &str, name: &str, data: &Value) {
         // Step 29: what Terminals, windows, panes and Claude references look like changed.
-        // (#98 T3: `terminal.activity` changes nothing that is saved.)
-        if matches!(topic, "terminals" | "claude") && name != "terminal.activity" {
+        // (#98 T3: activity, progress and finished commands change nothing that is saved.)
+        if matches!(topic, "terminals" | "claude")
+            && !matches!(
+                name,
+                "terminal.activity" | "terminal.progress" | "terminal.command_done"
+            )
+        {
             self.mark_dirty();
         }
         for c in self.conns.values_mut() {
@@ -1695,6 +1702,7 @@ impl Host {
                     terminal_id: tid.clone(),
                     seq: 0,
                     input_bytes: 0,
+                    command_started: None,
                 },
             );
             st.rt.insert(pane_id.clone(), Arc::clone(&rt));
@@ -2061,9 +2069,25 @@ impl Host {
             };
             let mark = pane.screen.history().total_lines;
             let bells = pane.screen.bells();
+            let (progress_before, commands_before) =
+                (pane.screen.progress(), pane.screen.commands());
             let cwd_before = pane.screen.cwd().map(String::from);
             pane.screen.feed(&buf[..n]);
             let rang = pane.screen.bells() > bells;
+            // #98 T3: progress (OSC 9;4) and command marks (OSC 133) for the windows.
+            let progress = pane.screen.progress();
+            let progress_changed = progress != progress_before;
+            let commands = pane.screen.commands();
+            if commands.started > commands_before.started {
+                pane.command_started = Some(Instant::now());
+            }
+            let done = (commands.finished > commands_before.finished).then(|| {
+                let ms = pane
+                    .command_started
+                    .take()
+                    .map(|t| u64::try_from(t.elapsed().as_millis()).unwrap_or(u64::MAX));
+                (commands.last_exit, ms)
+            });
             // Step 33: a shell that reports its directory changed it: the state keeps it.
             let moved = pane.screen.cwd() != cwd_before.as_deref();
             let seq = pane.seq;
@@ -2119,6 +2143,18 @@ impl Host {
                 let data =
                     json!({"terminal_id": rt.terminal_id, "pane_id": rt.pane_id, "kind": kind});
                 st.notify("terminals", "terminal.activity", &data);
+            }
+            if progress_changed {
+                st.notify(
+                    "terminals",
+                    "terminal.progress",
+                    &progress_json(&rt.terminal_id, &rt.pane_id, progress),
+                );
+            }
+            if let Some((exit, ms)) = done {
+                let data = json!({"terminal_id": rt.terminal_id, "pane_id": rt.pane_id,
+                    "exit_code": exit, "duration_ms": ms});
+                st.notify("terminals", "terminal.command_done", &data);
             }
             if moved {
                 st.mark_dirty();
@@ -2781,8 +2817,23 @@ impl Host {
             .collect::<Option<_>>()
             .ok_or_else(bad)?;
         let mut st = self.lock();
+        // #98 T3: a new listener of `terminals` learns the progress that is showing now.
+        let shown: Vec<Value> = if topics.iter().any(|t| t == "terminals") {
+            st.out
+                .iter()
+                .filter_map(|(pane, o)| {
+                    let p = o.screen.progress()?;
+                    Some(progress_json(&o.terminal_id, pane, Some(p)))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         if let Some(c) = st.conns.get_mut(&conn) {
             c.topics.clone_from(&topics);
+            for data in &shown {
+                c.event("terminal.progress", data);
+            }
         }
         // #98 T3: a new listener hears the next output of every Terminal.
         st.activity_told.clear();
@@ -3891,6 +3942,7 @@ impl Host {
                     terminal_id: tid.clone(),
                     seq: 0,
                     input_bytes: 0,
+                    command_started: None,
                 },
             );
             st.rt.insert(pane_id.clone(), Arc::clone(&rt));
@@ -5797,6 +5849,13 @@ fn saved_summary(t: &Value) -> Value {
             .sum()
     });
     json!({"id": t["id"], "name": t["name"], "restore": t["restore"], "windows": windows, "panes": panes})
+}
+
+/// #98 T3: the data of `terminal.progress` (state `none` when the progress ended).
+fn progress_json(terminal_id: &str, pane_id: &str, p: Option<Progress>) -> Value {
+    json!({"terminal_id": terminal_id, "pane_id": pane_id,
+        "state": p.map_or("none", |p| p.state.as_str()),
+        "value": p.map_or(0, |p| p.value)})
 }
 
 /// #98 T3: whether output (`rang`: with a bell) is announced as `terminal.activity` now, and

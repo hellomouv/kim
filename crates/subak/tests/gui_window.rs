@@ -1026,6 +1026,18 @@ fn standin_helper() {
         if t == b"quit" {
             break;
         }
+        // #98 T3: progress (OSC 9;4) and a shell-integration command (OSC 133) on request.
+        if let Some(v) = t.strip_prefix(b"progress ") {
+            print!("\x1b]9;4;1;{}\x07", String::from_utf8_lossy(v));
+            println!("standin-progress");
+            continue;
+        }
+        if t == b"cmd" {
+            println!("\x1b]133;C\x07standin-cmd-start");
+            std::thread::sleep(Duration::from_millis(1200));
+            println!("\x1b]133;D;3\x07standin-cmd-done");
+            continue;
+        }
         // #98 T3: a bell on request.
         if t == b"bell" {
             println!("\x07standin-rang");
@@ -3151,5 +3163,78 @@ fn background_activity_and_bells_mark_tabs_and_the_visual_bell_flashes() {
     );
     println!(
         "EVIDENCE background tab marks: output → • back, bell → ♪ back, cleared when shown; visual bell flashed: {flashed}"
+    );
+}
+
+/// #98 T3 (`CORE-78`, `CORE-79`): a background Terminal's progress shows on its tab (and is
+/// reported for the taskbar when it is the shown one); with `notify_command_seconds = 1` a
+/// shell-integration command of 1.2 s in a background Terminal notifies, and with
+/// `notify_exit` its program's end does; without them nothing notifies.
+#[test]
+fn progress_on_tabs_and_notifications_for_finished_commands() {
+    let host = Host::start("gui-progress", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "front");
+    new_standin(&ep, "back");
+    let appdata = sandbox("progress");
+    let env = [("APPDATA", appdata.to_str().unwrap())];
+    let gui = Gui::start(&ep, Some("front"), &appdata);
+    gui.state("attached");
+    let send = |target: &str, line: &str| {
+        for keys in [
+            format!("send-keys -l '{line}'"),
+            "send-keys Enter".to_string(),
+        ] {
+            let (code, doc) = sub(&ep, &["--json", "command", "--target", target, &keys]);
+            assert_eq!(code, 0, "{doc}");
+        }
+    };
+    // Progress in the background Terminal: on its tab.
+    send("back", "progress 42");
+    let d = gui.until("back shows 42%", |d| {
+        d["bar"]["text"].as_str().unwrap().contains("42% back")
+    });
+    println!("bar: {}", d["bar"]["text"]);
+    // Without opt-in, a finished command notifies nothing.
+    send("back", "cmd");
+    let f = gui.wait("finished", |_| true);
+    assert_eq!(f["command"], true);
+    assert_eq!(f["exit_code"], 3);
+    assert!(f["duration_ms"].as_u64().unwrap() >= 1100, "{f}");
+    assert_eq!(f["notified"], false, "off by default");
+    // Opted in (read again when the window gets the focus).
+    for (k, v) in [
+        ("terminal.notify_command_seconds", "1"),
+        ("terminal.notify_exit", "true"),
+    ] {
+        let (code, doc) = run_env(&["config", "set", k, v], &env);
+        assert_eq!(code, 0, "{doc}");
+    }
+    gui.cmd(&json!({"cmd": "focus", "on": false}));
+    gui.cmd(&json!({"cmd": "focus", "on": true}));
+    send("back", "cmd");
+    let n = gui.wait("notification", |_| true);
+    assert_eq!(n["title"], "Subak \u{2014} back");
+    assert!(
+        n["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("A command finished after 1 s (exit code 3)"),
+        "{n}"
+    );
+    // The program in the background Terminal ends: notified too.
+    send("back", "quit");
+    let n = gui.wait("notification", |_| true);
+    assert!(
+        n["text"].as_str().unwrap().starts_with("Its program ended"),
+        "{n}"
+    );
+    // Progress in the shown Terminal reaches the taskbar (reported by the test window).
+    gui.type_text("progress 7\r");
+    let t = gui.wait("taskbar_progress", |v| v["value"] == 7);
+    assert_eq!(t["flag"], 2, "TBPF_NORMAL");
+    println!(
+        "EVIDENCE progress and notifications: back tab showed 42%, a 1.2 s OSC 133 command notified only when opted in, the program's end notified ({}), the shown Terminal's 7% went to the taskbar",
+        n["text"]
     );
 }

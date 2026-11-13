@@ -469,6 +469,8 @@ subscribes and then lists sees every later change exactly once, after its list.
 | `pane.selected` | `terminals` | `{terminal_id, window_id, pane_id}`: a window's active pane changed | 21 |
 | `window.alert` | `terminals` | `{terminal_id, window_id, pane_id, kind: "activity" \| "bell"}`: a window that is not shown had output or a bell (once until it is shown) | 25 |
 | `terminal.activity` | `terminals` | `{terminal_id, pane_id, kind: "output" \| "bell"}`: a Terminal had output or a bell, for the windows' background tabs; per Terminal at most every 2 s for output and every second for a bell, and again at once after any `events.subscribe`, `pane.attach` or `pane.detach` (what a window shows changed). Never saved (#98 T3) | #98 |
+| `terminal.progress` | `terminals` | `{terminal_id, pane_id, state: "none" \| "normal" \| "error" \| "indeterminate" \| "paused", value: 0–100}`: a pane's program reported progress with OSC 9;4 (`none`: it ended); on every change, and to a connection that subscribes to `terminals` for each progress showing. Never saved (#98 T3) | #98 |
+| `terminal.command_done` | `terminals` | `{terminal_id, pane_id, exit_code: int \| null, duration_ms: u64 \| null}`: a shell-integration command finished (OSC 133 `D`, timed from its `C`). Never saved (#98 T3) | #98 |
 | `window.options` | `terminals` | `{terminal_id, window_id, options}`: `window.set_option` changed an option | 25 |
 
 | `terminal.claude_changed` | `terminals` | `{terminal_id, claude_state, previous}`: a Terminal's aggregate Claude state changed ([ADR 0062](../adr/0062-claude-code-status-indicators.md)); Terminal objects carry `claude_state` | 28 |

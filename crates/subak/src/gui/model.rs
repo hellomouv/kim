@@ -356,6 +356,20 @@ pub enum Effect {
     Views,
     /// Step 24: the answer of a command-prompt query (`list-panes`, `show-buffer`, …) to show.
     Show { method: &'static str, result: Value },
+    /// #98 T3 (`CORE-79`): a command or a Terminal's program finished (the window decides
+    /// whether that is worth a notification).
+    Finished(Finished),
+}
+
+/// #98 T3: what finished, for [`Effect::Finished`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finished {
+    pub terminal_id: String,
+    pub name: String,
+    /// A shell-integration command (OSC 133) rather than the Terminal's program.
+    pub command: bool,
+    pub exit_code: Option<i64>,
+    pub duration_ms: Option<u64>,
 }
 
 /// What a data frame is for.
@@ -451,6 +465,8 @@ pub struct Model {
     /// #98 T3 (`CORE-80`): Terminals not shown that had output or a bell since they were
     /// last shown.
     alerts: HashMap<String, Alert>,
+    /// #98 T3 (`CORE-78`): the progress each Terminal's program reports (OSC 9;4).
+    progress: HashMap<String, subak_term::screen::Progress>,
 }
 
 /// #98 T3: what happened in a Terminal that is not shown.
@@ -483,7 +499,22 @@ impl Model {
             pre_hidden: Vec::new(),
             views: Vec::new(),
             alerts: HashMap::new(),
+            progress: HashMap::new(),
         }
+    }
+
+    /// #98 T3: the progress Terminal `id` reports, if any.
+    pub fn progress(&self, id: &str) -> Option<subak_term::screen::Progress> {
+        self.progress.get(id).copied()
+    }
+
+    /// The tab name of Terminal `id` (its id when it is not a tab).
+    fn name_of(&self, id: &str) -> String {
+        self.tabs
+            .iter()
+            .chain(self.hidden.iter())
+            .find(|t| t.id == id)
+            .map_or_else(|| id.to_string(), |t| t.name.clone())
     }
 
     /// #98 T3: the alert of Terminal `id` (never the shown one: seeing it clears it).
@@ -1901,6 +1932,42 @@ impl Model {
                 }
                 out.push(Effect::Tabs);
             }
+            // #98 T3 (`CORE-78`): a program's progress (OSC 9;4), for the tab and the taskbar.
+            "terminal.progress" if !tid.is_empty() => {
+                let state = d["state"]
+                    .as_str()
+                    .and_then(subak_term::screen::ProgressState::parse);
+                let value = d["value"].as_u64().map_or(0, |v| v.min(100) as u8);
+                let next = state.map(|state| subak_term::screen::Progress { state, value });
+                if self.progress.get(&tid).copied() != next {
+                    match next {
+                        Some(p) => self.progress.insert(tid, p),
+                        None => self.progress.remove(&tid),
+                    };
+                    out.push(Effect::Tabs);
+                }
+            }
+            // #98 T3 (`CORE-79`): a shell-integration command finished.
+            "terminal.command_done" if !tid.is_empty() => {
+                out.push(Effect::Finished(Finished {
+                    name: self.name_of(&tid),
+                    terminal_id: tid,
+                    command: true,
+                    exit_code: d["exit_code"].as_i64(),
+                    duration_ms: d["duration_ms"].as_u64(),
+                }));
+            }
+            // #98 T3 (`CORE-79`): another Terminal's program ended (the shown one ends above).
+            "pane.exited" if !tid.is_empty() => {
+                self.progress.remove(&tid);
+                out.push(Effect::Finished(Finished {
+                    name: self.name_of(&tid),
+                    terminal_id: tid,
+                    command: false,
+                    exit_code: d["exit_code"].as_i64(),
+                    duration_ms: None,
+                }));
+            }
             "host.stopping" => self.host_stopping = text(&d["reason"]),
             _ => {}
         }
@@ -2793,6 +2860,70 @@ mod tests {
             m.alert(other),
             Some(Alert::Bell),
             "seeing the shown one clears only it"
+        );
+    }
+
+    /// #98 T3 (`CORE-78`, `CORE-79`): progress events set and clear a Terminal's progress;
+    /// finished commands and other Terminals' ended programs become `Effect::Finished`.
+    #[test]
+    fn progress_and_finished_commands_reach_the_window() {
+        use subak_term::screen::{Progress, ProgressState};
+        let mut m = Model::new(Want::Any, (80, 24));
+        connect_with(
+            &mut m,
+            json!([
+                term("t-a", "a", "running", 10),
+                term("t-b", "build", "running", 11)
+            ]),
+        );
+        let fx = event(
+            &mut m,
+            "terminal.progress",
+            json!({"terminal_id": "t-b", "pane_id": "p", "state": "normal", "value": 42}),
+        );
+        assert!(fx.iter().any(|e| matches!(e, Effect::Tabs)), "{fx:?}");
+        assert_eq!(
+            m.progress("t-b"),
+            Some(Progress {
+                state: ProgressState::Normal,
+                value: 42
+            })
+        );
+        let fx = event(
+            &mut m,
+            "terminal.progress",
+            json!({"terminal_id": "t-b", "pane_id": "p", "state": "normal", "value": 42}),
+        );
+        assert!(fx.is_empty(), "no change: no redraw");
+        event(
+            &mut m,
+            "terminal.progress",
+            json!({"terminal_id": "t-b", "pane_id": "p", "state": "none", "value": 0}),
+        );
+        assert_eq!(m.progress("t-b"), None);
+        let fx = event(
+            &mut m,
+            "terminal.command_done",
+            json!({"terminal_id": "t-b", "pane_id": "p", "exit_code": 3, "duration_ms": 1500}),
+        );
+        assert_eq!(
+            fx,
+            [Effect::Finished(Finished {
+                terminal_id: "t-b".into(),
+                name: "build".into(),
+                command: true,
+                exit_code: Some(3),
+                duration_ms: Some(1500),
+            })]
+        );
+        let fx = event(
+            &mut m,
+            "pane.exited",
+            json!({"terminal_id": "t-b", "pane_id": "p-b", "pid": 11, "exit_code": 0}),
+        );
+        assert!(
+            matches!(&fx[..], [Effect::Finished(f)] if !f.command && f.exit_code == Some(0) && f.name == "build"),
+            "{fx:?}"
         );
     }
 }

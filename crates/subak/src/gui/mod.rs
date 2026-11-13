@@ -61,6 +61,12 @@ mod tabs;
 mod keystate;
 #[cfg(windows)]
 mod net;
+#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(windows, allow(unsafe_code))]
+mod notify;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod taskbar;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod window;

@@ -38,6 +38,8 @@
         "detect_shells": { "description": "Step 33: the shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, WSL distributions) are offered as profiles (default true).", "type": "boolean" },
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
         "alt_is_meta": { "description": "#98 T2: Alt with a character sends ESC first (default true, as in Windows Terminal); false: the character alone.", "type": "boolean" },
+        "notify_command_seconds": { "description": "#98 T3: a notification when a shell-integration command (OSC 133) that ran at least this many seconds finishes while its tab is not shown or the window is not in front; 0 (default): never.", "type": "integer", "minimum": 0, "maximum": 86400 },
+        "notify_exit": { "description": "#98 T3: a notification when a Terminal's program ends while its tab is not shown or the window is not in front (default false).", "type": "boolean" },
         "bell": { "description": "#98 T3: what a bell in the shown pane does: off (default), visual (the pane flashes; the taskbar button too while the window is not in front) or audible (the system sound and the visual bell).", "enum": ["off", "visual", "audible"] },
         "backspace": { "description": "#98 T2: what Backspace sends: del (DEL 0x7F, default), ctrl-h (BS 0x08) or delete (CSI 3 ~).", "enum": ["del", "ctrl-h", "delete"] },
         "right_click": { "description": "copy-paste (default): copy a selection, else paste; menu: the pane menu; paste; none.", "enum": ["copy-paste", "menu", "paste", "none"] },
