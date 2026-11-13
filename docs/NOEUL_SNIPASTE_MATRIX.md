@@ -199,7 +199,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `PIN-25` | Confirm before closing several images at once | L | Same. Step 54: closing every pin or a group at once from the CLI needs `--yes` (exit 7 `confirmation_required` otherwise); missing: a GUI command that closes several pins (the settings window, N5) | partial | NOEUL-FR-064 | N2 | T | T: `crates/noeul/tests/pin_transform.rs` groups_switch_and_act_together; T: `crates/noeul/tests/pins.rs` many_pins_are_independent_windows_driven_by_cli_ipc_and_their_own_messages |
 | `PIN-26` | Move images beyond the screen edge | L, F | Allowed; recovery through "Bring pins on screen". Step 53: pins may lie partly or wholly off-screen; Bring pins on screen recovers them; missing: the manual check | partial | NOEUL-FR-061, NOEUL-FR-067 | N4 | M | T: `crates/noeul/src/pins.rs` on_screen_needs_a_grabbable_part, a_monitor_disconnect_keeps_pins_in_place_until_they_are_brought_back |
 | `PIN-27` | Disable smooth scaling for sharp text | F | Zooming in always repeats pixels (sharp, ADR 0029); `pin.sharp` / `pin set --sharp on` also takes the nearest pixel when zoomed out (#99). Missing: the manual check on real Windows | partial | NOEUL-FR-069 | N4 | T | T: `crates/noeul/src/zoom.rs` tests::sharp_downscaling_takes_pixels_instead_of_averaging |
-| `PIN-28` | Images on virtual desktops (Pro) | P | Pin extra | planned | NOEUL-FR-069 | N4 | M | — |
+| `PIN-28` | Images on virtual desktops (Pro) | P | Pins are topmost tool windows, which Windows shows on every virtual desktop: a pin stays in view when the user switches desktops (#99, checked on the real desktop). Missing: keeping a pin on one desktop only | partial | NOEUL-FR-069 | N4 | T, M | T: `crates/noeul/src/win/pinwnd/tests.rs` off_screen_pin_window_lifecycle (`WS_EX_TOOLWINDOW`, no `WS_EX_APPWINDOW`); M: 2026-11-13 Windows 10 22H2, a pin at 3000,400; `Win+Ctrl+D` created and switched to a second desktop (the registry counted 2): the pin's pixels were still there; `Win+Ctrl+F4` closed it again |
 | `PIN-29` | Paste or drag images from web pages, downloaded from the internet (Pro) | P | No network; an image already on the clipboard is pinned normally | not intended | D-05 | — | — | — |
 | `PIN-30` | Print an image window (`Ctrl+P`) | K | Deferred | not intended | D-13 | — | — | — |
 
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 9 |
-| `partial` | 114 |
-| `planned` | 24 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 115 |
+| `planned` | 23 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -335,7 +335,7 @@ picture.
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 1 | 9 | 1 | 1 | 12 |
 | 6. Annotation (`ANN`) | 1 | 16 | 0 | 0 | 17 |
-| 7. Floating pins (`PIN`) | 3 | 21 | 4 | 2 | 30 |
+| 7. Floating pins (`PIN`) | 3 | 22 | 3 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 0 | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 0 | 5 | 0 | 1 | 6 |
 | 10. Settings (`SET`) | 0 | 11 | 5 | 6 | 22 |
@@ -375,6 +375,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-13` moves to `partial`: per-tool colours. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-14` (a right-click marks the detected element) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-21` moves to `partial`: Korean tray and pin menus (`[general] language`). |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-28` moves to `partial`: pins show on every virtual desktop (checked); one-desktop pins are the gap. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |
