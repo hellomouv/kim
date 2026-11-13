@@ -1767,7 +1767,14 @@ mod tests {
 
     /// Asks UI Automation for the Name of `hwnd` on another thread while this thread (the
     /// window's) answers its messages, as a screen reader would.
+    /// The Name UI Automation reports, asked up to five times: a single read under the load of
+    /// the whole workspace's tests once came back empty (seen in `cargo xtask ci`, 2026-11-13),
+    /// while the same test passes alone; a wrong Name still fails at once.
     fn name_seen_by_uia(hwnd: HWND) -> Option<String> {
+        (0..5).find_map(|_| name_seen_by_uia_once(hwnd))
+    }
+
+    fn name_seen_by_uia_once(hwnd: HWND) -> Option<String> {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
         };
