@@ -3680,3 +3680,48 @@ fn split_panes_show_their_labels_when_asked() {
     assert_ne!(with, without, "the labels are drawn");
     println!("EVIDENCE pane labels: {labels:?}");
 }
+
+/// #98 T1 (`CORE-24`, `CORE-14`): the tab menu offers pin, duplicate, restart and the tab's
+/// colour; a colour is drawn at the tab's start, kept in `gui.json`, and removed again.
+#[test]
+fn tab_colours_from_the_tab_menu() {
+    const CMD_COLOR: u32 = 500;
+    let host = Host::start("gui-colors", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "one");
+    new_terminal(&ep, "two");
+    let appdata = sandbox("colors");
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    gui.cmd(&json!({"cmd": "menu", "tab": 1}));
+    let menu = gui
+        .history()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .rfind(|v| v["event"] == "menu")
+        .expect("the tab menu");
+    let text = menu["items"].to_string();
+    for want in ["Pin tab", "Duplicate", "Restart", "Tab colour", "Teal"] {
+        assert!(text.contains(want), "{want} in {text}");
+    }
+    // Teal is the fifth colour: CMD_COLOR + 5.
+    let d = gui.cmd(&json!({"cmd": "menu", "tab": 1, "id": CMD_COLOR + 5}));
+    assert!(
+        d["bar"]["text"].as_str().unwrap().contains("\u{258e}● two"),
+        "{}",
+        d["bar"]["text"]
+    );
+    let saved =
+        std::fs::read_to_string(appdata.join("mouv").join("subak").join("gui.json")).unwrap();
+    assert!(saved.contains("\"teal\""), "{saved}");
+    // None: removed.
+    let d = gui.cmd(&json!({"cmd": "menu", "tab": 1, "id": CMD_COLOR}));
+    assert!(
+        !d["bar"]["text"].as_str().unwrap().contains('\u{258e}'),
+        "{}",
+        d["bar"]["text"]
+    );
+    println!(
+        "EVIDENCE tab colours: the tab menu has Pin/Duplicate/Restart/Tab colour; teal drawn and saved, None removed it"
+    );
+}

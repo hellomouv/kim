@@ -190,6 +190,12 @@ const CMD_SHOW: u32 = 100;
 const CMD_SET: u32 = 200;
 /// `CMD_PROFILE + k`: a new Terminal from the `k`-th shell profile.
 const CMD_PROFILE: u32 = 400;
+/// #98 T1: the tab menu's own commands: pin, duplicate, restart, and `CMD_COLOR + k` the
+/// `k`-th tab colour (`CMD_COLOR`: none).
+const CMD_PIN: u32 = 30;
+const CMD_DUPLICATE: u32 = 31;
+const CMD_RESTART: u32 = 32;
+const CMD_COLOR: u32 = 500;
 /// The terminal font families the settings menu offers (the installed ones are shown).
 const MENU_FONTS: [&str; 7] = [
     "Cascadia Mono",
@@ -1832,6 +1838,11 @@ impl App {
                 },
                 pinned: self.model.pinned(&t.id),
                 closable: self.settings.tabs.close_buttons,
+                color: self
+                    .prefs
+                    .tab_colors
+                    .get(&t.id)
+                    .and_then(|c| tabs::color_named(c)),
             })
             .zip(self.model.tabs())
             .map(|(mut it, t)| {
@@ -4495,6 +4506,10 @@ impl App {
             // #98 T1 (`CORE-21`): another window of the same Host, with a new Terminal.
             Action::GuiNewWindow => self.new_window(),
             Action::CommandPalette => self.open_palette(),
+            Action::TabColor => {
+                let i = self.model.active();
+                self.open_menu(i, None);
+            }
             Action::TabDuplicate | Action::TabRestart => {
                 let fx = self.model.duplicate(a == Action::TabRestart, false);
                 self.apply(fx);
@@ -4618,6 +4633,30 @@ impl App {
             ));
             items.push((CMD_MOVE_LEFT, "Move left".into(), i > 0));
             items.push((CMD_MOVE_RIGHT, "Move right".into(), i + 1 < n));
+            // #98 T1: pin, duplicate, restart (the colours follow as a submenu).
+            items.push((
+                CMD_PIN,
+                format!(
+                    "{}{}",
+                    if self.model.pinned(&t.id) {
+                        "Unpin tab"
+                    } else {
+                        "Pin tab"
+                    },
+                    keys(Action::TabPin)
+                ),
+                true,
+            ));
+            items.push((
+                CMD_DUPLICATE,
+                format!("Duplicate{}", keys(Action::TabDuplicate)),
+                connected && !t.gone() && !t.stored(),
+            ));
+            items.push((
+                CMD_RESTART,
+                format!("Restart (asks when busy){}", keys(Action::TabRestart)),
+                connected && !t.gone() && !t.stored(),
+            ));
             items.push((0, String::new(), true));
             let close = if t.gone() {
                 "Close tab".to_string()
@@ -4683,6 +4722,22 @@ impl App {
             })
             .collect();
         items.splice(at_new..at_new, profiles);
+        // #98 T1 (`CORE-24`): the tab's colour.
+        if let Some(t) = tab.and_then(|i| self.model.tabs().get(i))
+            && let Some(at) = items.iter().position(|i| i.id == CMD_RESTART)
+        {
+            let now = self.prefs.tab_colors.get(&t.id).cloned();
+            let mut colors = vec![MenuItem::check(CMD_COLOR, "None", now.is_none())];
+            for (k, (name, _)) in tabs::TAB_COLORS.iter().enumerate() {
+                let label = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
+                colors.push(MenuItem::check(
+                    CMD_COLOR + 1 + k as u32,
+                    label,
+                    now.as_deref() == Some(*name),
+                ));
+            }
+            items.insert(at + 1, MenuItem::sub("Tab colour", colors));
+        }
         items.push(MenuItem::separator());
         items.push(self.settings_menu());
         let at = at.unwrap_or_else(|| {
@@ -4723,6 +4778,36 @@ impl App {
             }
         };
         match cmd {
+            CMD_PIN | CMD_DUPLICATE | CMD_RESTART => {
+                focus_tab(self);
+                self.run(match cmd {
+                    CMD_PIN => Action::TabPin,
+                    CMD_DUPLICATE => Action::TabDuplicate,
+                    _ => Action::TabRestart,
+                });
+            }
+            c if (CMD_COLOR..=CMD_COLOR + tabs::TAB_COLORS.len() as u32).contains(&c) => {
+                let id = tab
+                    .and_then(|i| self.model.tabs().get(i))
+                    .or_else(|| self.model.terminal())
+                    .map(|t| t.id.clone());
+                if let Some(id) = id {
+                    match tabs::TAB_COLORS
+                        .get((c - CMD_COLOR).wrapping_sub(1) as usize)
+                        .filter(|_| c > CMD_COLOR)
+                    {
+                        Some((name, _)) => {
+                            self.prefs.tab_colors.insert(id, (*name).to_string());
+                        }
+                        None => {
+                            self.prefs.tab_colors.remove(&id);
+                        }
+                    }
+                    self.event(&json!({"event": "tab_color", "colors": self.prefs.tab_colors}));
+                    self.save_prefs();
+                    self.rebuild_bar();
+                }
+            }
             CMD_RENAME => {
                 focus_tab(self);
                 self.start_rename();

@@ -64,6 +64,8 @@ pub struct Prefs {
     pub hidden_terminals: Vec<String>,
     /// #98 T1 (`CORE-14`): pinned Terminals (ids), first in the bar; closing one asks first.
     pub pinned_terminals: Vec<String>,
+    /// #98 T1 (`CORE-24`): Terminal id → tab colour name (`tabs::TAB_COLORS`).
+    pub tab_colors: std::collections::BTreeMap<String, String>,
     /// The text size and theme a version 1 file held (Step 20: they belong in `config.toml`
     /// now); `None` when the file was version 2 or had neither. Never written back.
     pub legacy: Option<crate::config::Legacy>,
@@ -78,6 +80,7 @@ impl Default for Prefs {
             last_terminal: None,
             hidden_terminals: Vec::new(),
             pinned_terminals: Vec::new(),
+            tab_colors: std::collections::BTreeMap::new(),
             legacy: None,
             extra: Map::new(),
         }
@@ -181,6 +184,23 @@ impl Prefs {
                 _ => bad.push("last_terminal"),
             }
         }
+        if let Some(v) = map.remove("tab_colors") {
+            let colors: Option<std::collections::BTreeMap<String, String>> =
+                v.as_object().and_then(|o| {
+                    o.iter()
+                        .map(|(k, c)| {
+                            let c = c
+                                .as_str()
+                                .filter(|c| crate::gui::tabs::color_named(c).is_some())?;
+                            (!k.is_empty() && k.len() <= 64).then(|| (k.clone(), c.to_string()))
+                        })
+                        .collect()
+                });
+            match colors {
+                Some(c) if c.len() <= 1000 => p.tab_colors = c,
+                _ => bad.push("tab_colors"),
+            }
+        }
         if let Some(v) = map.remove("pinned_terminals") {
             let ids: Option<Vec<String>> = v.as_array().and_then(|a| {
                 a.iter()
@@ -267,6 +287,9 @@ impl Prefs {
         m.insert("hidden_terminals".into(), json!(self.hidden_terminals));
         if !self.pinned_terminals.is_empty() {
             m.insert("pinned_terminals".into(), json!(self.pinned_terminals));
+        }
+        if !self.tab_colors.is_empty() {
+            m.insert("tab_colors".into(), json!(self.tab_colors));
         }
         for (k, v) in &self.extra {
             m.entry(k.clone()).or_insert_with(|| v.clone());
@@ -537,5 +560,22 @@ mod tests {
         let bad =
             Prefs::parse(r#"{"schema":"subak.gui","schema_version":2,"pinned_terminals":[1]}"#);
         assert!(bad.prefs.pinned_terminals.is_empty());
+    }
+
+    /// #98 T1 (`CORE-24`): tab colours are kept by Terminal id; an unknown colour is refused.
+    #[test]
+    fn tab_colours_round_trip() {
+        let mut p = Prefs::default();
+        assert!(p.to_json().get("tab_colors").is_none());
+        p.tab_colors.insert("t-0123456789ab".into(), "teal".into());
+        let l = Prefs::parse(&p.to_json().to_string());
+        assert_eq!(
+            l.prefs.tab_colors.get("t-0123456789ab").map(String::as_str),
+            Some("teal")
+        );
+        let bad = Prefs::parse(
+            r#"{"schema":"subak.gui","schema_version":2,"tab_colors":{"t-1":"magenta"}}"#,
+        );
+        assert!(bad.prefs.tab_colors.is_empty());
     }
 }

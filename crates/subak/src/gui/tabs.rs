@@ -98,6 +98,26 @@ pub struct Item<'a> {
     pub pinned: bool,
     /// #98 T1 (`CORE-10`, `tabs.close_buttons`): the tab has its `×` (hide) button.
     pub closable: bool,
+    /// #98 T1 (`CORE-24`): the tab's colour (a bar at its start; the name stays the signal).
+    pub color: Option<Rgb>,
+}
+
+/// #98 T1 (`CORE-24`): the tab colours, by name (mid tones that read on the dark and the light
+/// theme).
+pub const TAB_COLORS: [(&str, Rgb); 8] = [
+    ("red", Rgb(0xE0, 0x4F, 0x5F)),
+    ("orange", Rgb(0xE8, 0x8A, 0x3C)),
+    ("yellow", Rgb(0xD9, 0xB4, 0x2C)),
+    ("green", Rgb(0x4C, 0xB0, 0x6C)),
+    ("teal", Rgb(0x2E, 0xA8, 0xA8)),
+    ("blue", Rgb(0x4A, 0x86, 0xE0)),
+    ("purple", Rgb(0x9A, 0x6C, 0xE0)),
+    ("pink", Rgb(0xE0, 0x6C, 0xB4)),
+];
+
+/// The colour of a name of [`TAB_COLORS`].
+pub fn color_named(name: &str) -> Option<Rgb> {
+    TAB_COLORS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
 }
 
 /// #98 T3 (`CORE-78`): a tab's progress: `42%` (accent), `42%!` (failed, danger), `‖42%`
@@ -385,8 +405,10 @@ pub fn layout_hover(
         } else {
             String::new()
         };
-        // A hairline between two inactive tabs.
-        let lead = if !is_active && i > first && Some(i - 1) != active {
+        // A hairline between two inactive tabs; #98 T1: a coloured tab starts with its colour.
+        let lead = if let Some(c) = it.color {
+            format!("{}\u{258e}", fg(c))
+        } else if !is_active && i > first && Some(i - 1) != active {
             format!("{}│", fg(BORDER_SUBTLE))
         } else {
             " ".to_string()
@@ -548,6 +570,7 @@ mod tests {
                 progress: None,
                 pinned: false,
                 closable: true,
+                color: None,
             })
             .collect()
     }
@@ -865,5 +888,28 @@ mod tests {
             "falls back"
         );
         assert_eq!(label("{title}", "b", Some("a\u{7}b"), "c", None), "ab");
+    }
+
+    /// #98 T1 (`CORE-24`): a coloured tab starts with a bar in its colour; the width and the
+    /// name stay as they were.
+    #[test]
+    fn coloured_tabs_start_with_their_colour() {
+        let mut list = items(&["build", "logs"]);
+        let plain = layout(&list, Some(0), None, 80, 0);
+        list[1].color = color_named("teal");
+        let coloured = layout(&list, Some(0), None, 80, 0);
+        assert_eq!(
+            text(&plain, 80).chars().count(),
+            text(&coloured, 80).chars().count()
+        );
+        assert!(
+            text(&coloured, 80).contains("\u{258e}● logs"),
+            "{}",
+            text(&coloured, 80)
+        );
+        let vt = String::from_utf8_lossy(&coloured.vt).to_string();
+        assert!(vt.contains("38;2;46;168;168"), "teal: {vt}");
+        assert_eq!(color_named("nope"), None);
+        assert_eq!(TAB_COLORS.len(), 8);
     }
 }

@@ -153,6 +153,7 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         "tab.pin",
         "tab.duplicate",
         "tab.restart",
+        "tab.color",
     ] {
         assert!(keys_of(&list, id).is_empty(), "{id}");
     }

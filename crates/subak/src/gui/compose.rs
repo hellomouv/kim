@@ -398,6 +398,7 @@ mod tests {
                 progress: None,
                 pinned: false,
                 closable: true,
+                color: None,
             },
             Item {
                 name: "claude",
@@ -408,6 +409,7 @@ mod tests {
                 progress: None,
                 pinned: false,
                 closable: true,
+                color: None,
             },
             Item {
                 name: "kept",
@@ -418,6 +420,7 @@ mod tests {
                 progress: None,
                 pinned: false,
                 closable: true,
+                color: None,
             },
         ];
         for (scale, pct) in [(1.0f32, 100), (2.0, 200)] {

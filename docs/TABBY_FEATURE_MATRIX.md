@@ -89,7 +89,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `CORE-21` Multiple windows | S `new-window` | Each window is another GUI client of the same Host and can show any set of Terminals (SUBAK-FR-004) *Step 32 audit (2026-11-11):* several `subak-gui` windows can attach (each is a client), but a "new window" action and per-window Terminal sets are not built. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `gui.new-window` (`Ctrl+Shift+N`) opens another `subak-gui` of the same Host with a new Terminal (`--new-terminal`); every window is another client. Remaining: separate Terminal sets per window (the windows share `gui.json`). | partial | #98 T1 | T: `crates/subak/src/gui/model.rs::tests::titles_close_on_exit_and_new_terminal_windows`; T: `crates/subak/tests/gui_window.rs::tab_titles_density_new_window_and_close_on_exit`; real desktop (#98 T1): real Ctrl+Shift+N opened a second window with a new Terminal (windows 1 → 2, Terminals 1 → 2) |
 | `CORE-22` Dynamic tab titles | S profile `disableDynamicTitle`; K OSC title | Named after the foreground program or the OSC title until the user renames it. Can be turned off per profile. *Step 32 audit (2026-11-11):* *Partial:* internal windows are named after their program until renamed; the GUI title shows the program's OSC title; no per-profile switch. | partial | Step 21 | T: `crates/subak/tests/windows_panes.rs::a_terminal_holds_windows_with_independent_pane_processes` (Step 32 audit) |
 | `CORE-23` Tab title prefix/suffix rules | R plugin: "title-control - allows modifying the title of the terminal tabs…" | Title format strings (tmux-style) in config, with no plugin *Step 32 audit (2026-11-11):* tmux formats exist for `display-message` (Step 25), not for titles. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `[tabs] title` with `{name}`, `{title}` (OSC 0/2, as the window saw it while the tab was shown: the Host never reports titles, which may hold a command line), `{program}`, `{cwd}`; never blank, no control characters. No plugin. | implemented | #98 T1 | T: `crates/subak/src/gui/tabs.rs::tests::tab_titles_follow_the_format`; T: `crates/subak/src/gui/model.rs::tests::titles_close_on_exit_and_new_terminal_windows`; T: `crates/subak/tests/gui_window.rs::tab_titles_density_new_window_and_close_on_exit`; real desktop (#98 T1): Command Prompt's `title hello` showed as the tab `work: hello` |
-| `CORE-24` Tab colors and profile icons | S `showTabProfileIcon`; K tab color | Color and icon per profile and per Terminal. Color is never the only signal (KIM-NFR-012). *Not in Step 20:* no per-profile colour or icon *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. | planned | #98 T1 | — |
+| `CORE-24` Tab colors and profile icons | S `showTabProfileIcon`; K tab color | Color and icon per profile and per Terminal. Color is never the only signal (KIM-NFR-012). *Not in Step 20:* no per-profile colour or icon *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-14):* Per Terminal: the tab menu's "Tab colour" (eight named colours, `tab.color` opens it) draws a bar in that colour at the tab's start (the name stays the signal), kept in `gui.json` (`tab_colors`). Remaining: colours and icons per profile. | partial | #98 T1 | T: `crates/subak/src/gui/tabs.rs::tests::coloured_tabs_start_with_their_colour`; T: `crates/subak/src/gui/prefs.rs::tests::tab_colours_round_trip`; T: `crates/subak/tests/gui_window.rs::tab_colours_from_the_tab_menu`; real desktop (#98 T1): a real right click showed the tab menu with Pin/Duplicate/Restart/Tab colour; teal showed at the tab's start (the window test caught an off-by-one colour first) |
 | `CORE-25` Fullscreen | S `toggle-fullscreen` | Fullscreen per window *Step 32 audit (2026-11-11):* no fullscreen yet. *Step 36 (2026-11-11):* not implemented; follow-up #98 T1. *#98 T1 (2026-11-13):* `view.fullscreen` (`F11`): the window covers its monitor without a frame and comes back to the exact placement it had (`WINDOWPLACEMENT`). | implemented | #98 T1 | T: `crates/subak/tests/gui_window.rs::drops_pins_last_tab_fullscreen_and_focus_follows_mouse`; real desktop (#98 T1): F11 made the window (0, 0, 5120, 1440) and F11 again put it back exactly (a 3 px drift found there was fixed by saving the placement) |
 
 ### 1.3 Split panes
@@ -450,8 +450,8 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 55 |
-| `partial` | 90 |
+| `planned` | 54 |
+| `partial` | 91 |
 | `implemented` | 33 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
@@ -459,7 +459,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. Terminal core (`CORE`) | 7 | 49 | 22 | 3 | 2 | 83 |
+| 1. Terminal core (`CORE`) | 6 | 50 | 22 | 3 | 2 | 83 |
 | 2. Shells and profiles (`SHELL`) | 14 | 7 | 3 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
@@ -494,3 +494,4 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Titles, density, new windows, on exit: `CORE-23`, `CORE-48` `implemented`; `CORE-20` (reconnect remains), `CORE-21` (per-window sets remain) `partial`. No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | The command palette: `CORE-63` `implemented`. No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Pane labels: `CORE-32` `implemented`. No Tabby re-fetch. |
+| 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Tab colours: `CORE-24` `partial` (per Terminal; per-profile colours and icons remain). No Tabby re-fetch. |

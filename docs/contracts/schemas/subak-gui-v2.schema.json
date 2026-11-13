@@ -44,6 +44,12 @@
         }
       ]
     },
+    "tab_colors": {
+      "description": "#98 T1: Terminal id → its tab's colour. Written only when there are any.",
+      "type": "object",
+      "maxProperties": 1000,
+      "additionalProperties": { "enum": ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"] }
+    },
     "pinned_terminals": {
       "description": "#98 T1: pinned Terminals, by id: first in the tab bar, without a hide button, and closing one asks first. Written only when there are any.",
       "type": "array",

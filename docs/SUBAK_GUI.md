@@ -210,6 +210,10 @@ Keys go to the program, in the order of ADR 0009:
    Enter runs the entry as its keys would, Esc closes it without running anything.
    With `terminal.pane_labels`, a split window labels each pane at its top right with its index
    and program (`1 cmd.exe`), in the tab bar's font and colours.
+   The tab menu (right click, the Menu key, `tab.color`) offers Pin/Unpin, Duplicate, Restart
+   and a "Tab colour" submenu (none, red, orange, yellow, green, teal, blue, purple, pink): a
+   coloured tab starts with a bar in its colour (the name stays the signal), kept in
+   `gui.json` (`tab_colors`, by Terminal id).
 
 5. **Everything else** goes to the program in the xterm encoding (TERMINAL_EMULATOR §4.1):
    characters as UTF-8 (Alt adds `ESC`; AltGr characters are text), `Ctrl+letter` as C0 controls,

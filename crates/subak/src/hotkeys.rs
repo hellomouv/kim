@@ -154,6 +154,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "tab.restart",
     "gui.new-window",
     "command.palette",
+    "tab.color",
 ];
 
 /// The compiled-in manifest.
