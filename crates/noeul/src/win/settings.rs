@@ -776,7 +776,7 @@ fn file_dialog(hwnd: HWND, import: bool) {
     } else {
         // Export: the CLI prints the document; the window writes it where the user chose.
         let v = run_noeul(&Model::export());
-        let text = serde_json::to_string_pretty(&v["data"]).unwrap_or_default();
+        let text = Model::export_text(&v);
         let msg = match std::fs::write(&path, text) {
             Ok(()) => "The shortcuts were exported.".to_string(),
             Err(e) => format!("The file could not be written: {e}"),

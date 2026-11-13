@@ -226,6 +226,16 @@ impl Model {
         args(&["hotkeys", "export"])
     }
 
+    /// The file the window's Export writes: the hotkeys document of `noeul hotkeys export --json`
+    /// (its `data.document`), which `noeul hotkeys import` reads back. The whole `data` object
+    /// (with `path` and `tool` around the document) was written before, and Import refused it
+    /// (found by the real-desktop check of #66).
+    pub fn export_text(reply: &Value) -> String {
+        let data = &reply["data"];
+        let doc = data.get("document").unwrap_or(data);
+        serde_json::to_string_pretty(doc).unwrap_or_default()
+    }
+
     pub fn gesture(double: bool, value: &str) -> Vec<String> {
         let key = if double {
             "gestures.double_click"

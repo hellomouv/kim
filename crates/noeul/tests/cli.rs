@@ -219,6 +219,15 @@ fn hotkeys_commands_follow_the_contract() {
     assert_eq!(check["data"]["summary"]["errors"], 0);
     let (_, export) = hk(&["export"]);
     assert_eq!(export["data"]["document"]["tool"], "noeul");
+    // #66: what the settings window's Export writes is a document Import reads back.
+    let file = sb.root.join("exported-hotkeys.json");
+    std::fs::write(&file, noeul::prefs::Model::export_text(&export)).unwrap();
+    let (code, imported) = hk(&["import", file.to_str().unwrap()]);
+    assert_eq!(
+        (code, imported["ok"].as_bool()),
+        (0, Some(true)),
+        "{imported}"
+    );
     let (_, off) = hk(&["disable", "--all"]);
     assert_eq!(off["data"]["written"], true);
     let (_, on) = hk(&["enable", "--all"]);
