@@ -124,6 +124,10 @@ function Get-Visible($c) {
     $raw = $c.Text.ToString()
     $esc = [char]27
     $bel = [char]7
+    # A cursor position starts a new row: a reattach snapshot paints its screen rows with
+    # `ESC[row;1H`, not line ends, and stripping them glued the rows together (`tick-12tick-13`),
+    # so `tick-13\b` never matched once a session had history (found 2026-11-13 after 30 min).
+    $raw = [regex]::Replace($raw, "$esc\[[0-9]*(;[0-9]*)?[Hf]", "`n")
     # Windows PowerShell 5.1 has no `e escape; strip CSI and OSC sequences.
     return [regex]::Replace($raw, "$esc\[[0-9;?]*[ -/]*[@-~]|$esc\][^$bel]*($bel|$esc\\)", '')
 }
