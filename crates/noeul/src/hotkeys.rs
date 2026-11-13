@@ -113,6 +113,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "annotate.ellipse",
     "annotate.line",
     "annotate.arrow",
+    "annotate.double-arrow",
     "annotate.pen",
     "annotate.marker",
     "annotate.text",

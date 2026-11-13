@@ -727,7 +727,8 @@ Step 56 ships the annotation tools in the overlay and on pins
 ([ADR 0038](adr/0038-noeul-annotation.md); NOEUL-FR-080, NOEUL-FR-081, NOEUL-FR-083,
 NOEUL-NFR-014). The rules:
 
-1. **Tools.** The toolbar's rectangle, ellipse, line, arrow, pen, marker and text buttons (or their
+1. **Tools.** The toolbar's rectangle, ellipse, line, arrow, double arrow (#99, `ANN-12`: a head at
+   both ends), pen, marker and text buttons (or their
    bindable `annotate.*` actions) choose a tool; choosing it again leaves it. While a tool is active
    (phase `annotating`) the selection's handles are hidden and presses inside the selection draw
    (clipped to it): rectangle and ellipse from corner to corner (`Shift`: square, circle), line and
@@ -1433,7 +1434,7 @@ the other contexts, so its keys win there):
 | `annotate.undo` | `Ctrl+Z` |
 | `annotate.redo` | `Ctrl+Y`, `Ctrl+Shift+Z` |
 | `annotate.width-down` / `annotate.width-up` | `char:[` / `char:]` (repeat) |
-| `annotate.rectangle`, `.ellipse`, `.line`, `.arrow`, `.pen`, `.marker`, `.text`, `.mosaic`, `.blur`, `.eraser`, `.redact`, `.clear-all` | none (bindable) |
+| `annotate.rectangle`, `.ellipse`, `.line`, `.arrow`, `.double-arrow` (#99), `.pen`, `.marker`, `.text`, `.mosaic`, `.blur`, `.eraser`, `.redact`, `.clear-all` | none (bindable) |
 | `annotate.delete` | `Delete` |
 | `annotate.select-next` / `annotate.select-previous` | `N` / `Shift+N` |
 | `annotate.bring-forward` / `annotate.send-backward` | `PageUp` / `PageDown` |

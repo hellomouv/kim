@@ -647,18 +647,19 @@
       "required": ["tool", "objects", "kinds", "selected", "undo", "redo", "editing_text", "composing", "color", "width"],
       "additionalProperties": false,
       "properties": {
-        "tool": { "oneOf": [{ "type": "null" }, { "enum": ["rectangle", "ellipse", "line", "arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact"] }] },
+        "tool": { "oneOf": [{ "type": "null" }, { "enum": ["rectangle", "ellipse", "line", "arrow", "double-arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact"] }] },
         "objects": { "$ref": "#/$defs/u64" },
         "kinds": {
           "description": "How many objects of each kind.",
           "type": "object",
-          "required": ["rectangle", "ellipse", "line", "arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact"],
+          "required": ["rectangle", "ellipse", "line", "arrow", "double-arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact"],
           "additionalProperties": false,
           "properties": {
             "rectangle": { "$ref": "#/$defs/u64" },
             "ellipse": { "$ref": "#/$defs/u64" },
             "line": { "$ref": "#/$defs/u64" },
             "arrow": { "$ref": "#/$defs/u64" },
+            "double-arrow": { "description": "#99 (ANN-12): arrows with a head at both ends.", "$ref": "#/$defs/u64" },
             "pen": { "$ref": "#/$defs/u64" },
             "marker": { "$ref": "#/$defs/u64" },
             "text": { "$ref": "#/$defs/u64" },
@@ -692,7 +693,7 @@
         "monitors": { "$ref": "#/$defs/u64" },
         "buffer_bytes": { "$ref": "#/$defs/u64" },
         "help": { "type": "boolean" },
-        "focus": { "description": "What has the keyboard focus (Step 51): the canvas or a toolbar button (the annotation buttons since Step 56, the privacy tools since Step 57).", "enum": ["canvas", "pin", "copy", "save", "rectangle", "ellipse", "line", "arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact", "color", "width", "undo", "redo", "done", "cancel"] },
+        "focus": { "description": "What has the keyboard focus (Step 51): the canvas or a toolbar button (the annotation buttons since Step 56, the privacy tools since Step 57).", "enum": ["canvas", "pin", "copy", "save", "rectangle", "ellipse", "line", "arrow", "double-arrow", "pen", "marker", "text", "mosaic", "blur", "eraser", "redact", "color", "width", "undo", "redo", "done", "cancel"] },
         "pointer": { "description": "Where the overlay's pointer is (Step 52; moved by the mouse or the pointer keys).", "$ref": "#/$defs/point" },
         "detection": {
           "description": "Hover detection (Step 52, NOEUL-FR-040, ADR 0035): rectangles only.",

@@ -714,3 +714,55 @@ fn the_block_typesetter_gives_carets_and_lines() {
         "after the newline: the second line"
     );
 }
+
+/// #99 (`ANN-12`): the double arrow draws like an arrow with a head at both ends (symmetric,
+/// wider than the shaft at both bases), is chosen by its own action, moves and resizes by its
+/// two ends, and is counted as its own kind.
+#[test]
+fn a_double_arrow_has_a_head_at_both_ends() {
+    assert_eq!(
+        Tool::from_action("annotate.double-arrow"),
+        Some(Tool::DoubleArrow)
+    );
+    assert_eq!(Tool::DoubleArrow.as_str(), "double-arrow");
+    let red = PALETTE[0].1;
+    let (base, _l) = canvas(Rect::new(0, 0, 60, 41), BG);
+    let o = Object {
+        id: 1,
+        shape: Shape::DoubleArrow(P::of_pixel((4, 20)), P::of_pixel((55, 20))),
+        color: red,
+        level: DEFAULT_LEVEL,
+        dpi: D100,
+    };
+    let f = flatten(&base, std::slice::from_ref(&o), base.rect()).unwrap();
+    let col = |x: i32| {
+        (0..41)
+            .filter(|y| px(&f, x, *y) == [red.b, red.g, red.r, 255])
+            .count()
+    };
+    assert_eq!(col(30), 3, "the shaft in the middle");
+    assert!(col(41) > 9, "the head at the second point: {}", col(41));
+    assert!(col(18) > 9, "the head at the first point: {}", col(18));
+    assert!(
+        col(41).abs_diff(col(18)) <= 1,
+        "symmetric: {} {}",
+        col(41),
+        col(18)
+    );
+    assert_eq!(px(&f, 58, 20), BG, "nothing beyond the tips");
+    assert_eq!(px(&f, 1, 20), BG);
+    // Two ends to drag, the same as a line.
+    assert_eq!(
+        handles(&o).iter().map(|(h, _)| *h).collect::<Vec<_>>(),
+        [Handle::Start, Handle::End]
+    );
+    // Drawn with its tool it stays a double arrow and is counted as one.
+    let mut e = with_tool(Tool::DoubleArrow);
+    assert!(e.mark((10, 10), D150, false));
+    assert!(e.mark((30, 20), D150, false));
+    assert_eq!(
+        e.objects()[0].shape,
+        Shape::DoubleArrow(P::new(10.5, 10.5), P::new(30.5, 20.5))
+    );
+    assert_eq!(e.objects()[0].shape.kind(), Tool::DoubleArrow);
+}

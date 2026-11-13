@@ -520,6 +520,7 @@ pub const ANNOTATE_IDS: &[&str] = &[
     "annotate.ellipse",
     "annotate.line",
     "annotate.arrow",
+    "annotate.double-arrow",
     "annotate.pen",
     "annotate.marker",
     "annotate.text",
@@ -682,7 +683,7 @@ pub enum ToolbarItem {
 /// The capture overlay's toolbar (UX spec §3.1): Pin (primary), Copy, Save, the tools (the
 /// privacy tools mosaic, blur, eraser and redaction since Step 57), colour, width, Undo, Redo,
 /// Cancel.
-pub const TOOLBAR: [ToolbarItem; 19] = [
+pub const TOOLBAR: [ToolbarItem; 20] = [
     ToolbarItem::Pin,
     ToolbarItem::Copy,
     ToolbarItem::Save,
@@ -690,6 +691,7 @@ pub const TOOLBAR: [ToolbarItem; 19] = [
     ToolbarItem::Tool(Tool::Ellipse),
     ToolbarItem::Tool(Tool::Line),
     ToolbarItem::Tool(Tool::Arrow),
+    ToolbarItem::Tool(Tool::DoubleArrow),
     ToolbarItem::Tool(Tool::Pen),
     ToolbarItem::Tool(Tool::Marker),
     ToolbarItem::Tool(Tool::Text),
@@ -705,12 +707,13 @@ pub const TOOLBAR: [ToolbarItem; 19] = [
 ];
 
 /// The pin editor's toolbar: Done (primary), the tools, colour, width, Undo, Redo, Cancel.
-pub const EDIT_TOOLBAR: [ToolbarItem; 17] = [
+pub const EDIT_TOOLBAR: [ToolbarItem; 18] = [
     ToolbarItem::Done,
     ToolbarItem::Tool(Tool::Rectangle),
     ToolbarItem::Tool(Tool::Ellipse),
     ToolbarItem::Tool(Tool::Line),
     ToolbarItem::Tool(Tool::Arrow),
+    ToolbarItem::Tool(Tool::DoubleArrow),
     ToolbarItem::Tool(Tool::Pen),
     ToolbarItem::Tool(Tool::Marker),
     ToolbarItem::Tool(Tool::Text),
@@ -4087,6 +4090,13 @@ fn icon(b: &ButtonScene, dpi: u32) -> Vec<Object> {
             line((13.0, 3.0), (7.5, 3.0)),
             line((13.0, 3.0), (13.0, 8.5)),
         ],
+        ToolbarItem::Tool(Tool::DoubleArrow) => vec![
+            line((3.0, 13.0), (13.0, 3.0)),
+            line((13.0, 3.0), (8.5, 3.0)),
+            line((13.0, 3.0), (13.0, 7.5)),
+            line((3.0, 13.0), (7.5, 13.0)),
+            line((3.0, 13.0), (3.0, 8.5)),
+        ],
         ToolbarItem::Tool(Tool::Pen) => vec![obj(
             Shape::Pen(vec![
                 pt(2.0, 12.0),
@@ -5241,12 +5251,12 @@ mod tests {
     #[test]
     fn the_toolbar_sits_next_to_the_selection_and_never_over_the_chip() {
         // Below the selection, 6 + 2 px away, right-aligned unless the monitor's left edge stops it
-        // (616 logical pixels since Step 56, 744 with Step 57's privacy tools); 19 buttons in tab
+        // (616 logical pixels since Step 56, 744 with Step 57's privacy tools, 776 with #99's double arrow); 20 buttons in tab
         // order.
         let (o, s) = flow();
         let scene = o.scene(&Approx);
         let bar = scene.toolbar.clone().unwrap();
-        assert_eq!(bar.rect, Rect::new(0, 408, 744, 32));
+        assert_eq!(bar.rect, Rect::new(0, 408, 776, 32));
         assert_eq!(bar.rect.y, i32::try_from(s.bottom()).unwrap() + 8);
         let items: Vec<&str> = bar.buttons.iter().map(|b| b.item.as_str()).collect();
         assert_eq!(
@@ -5259,6 +5269,7 @@ mod tests {
                 "ellipse",
                 "line",
                 "arrow",
+                "double-arrow",
                 "pen",
                 "marker",
                 "text",
@@ -5275,8 +5286,8 @@ mod tests {
         );
         let labels: Vec<&str> = bar.buttons.iter().map(|b| b.label).collect();
         assert_eq!(&labels[..3], ["Pin", "Copy", "Save"]);
-        assert_eq!(labels[18], "Cancel");
-        assert!(labels[3..18].iter().all(|l| l.is_empty()), "icon buttons");
+        assert_eq!(labels[19], "Cancel");
+        assert!(labels[3..19].iter().all(|l| l.is_empty()), "icon buttons");
         assert!(
             bar.buttons[0].primary && !bar.buttons[1].primary,
             "Pin is primary"
@@ -5288,13 +5299,13 @@ mod tests {
             "the tools"
         );
         assert_eq!(
-            bar.buttons[10].rect,
-            Rect::new(402, 412, 28, 24),
+            bar.buttons[11].rect,
+            Rect::new(434, 412, 28, 24),
             "the mosaic tool after the text tool"
         );
-        assert_eq!(bar.buttons[18].rect, Rect::new(676, 412, 64, 24));
+        assert_eq!(bar.buttons[19].rect, Rect::new(708, 412, 64, 24));
         assert!(
-            bar.buttons[16].disabled && bar.buttons[17].disabled,
+            bar.buttons[17].disabled && bar.buttons[18].disabled,
             "nothing to undo or redo yet"
         );
         assert!(!bar.rect.intersects(&scene.chip.unwrap().rect));
@@ -5311,7 +5322,7 @@ mod tests {
         o.handle(Input::Action(Action::Full));
         let scene = o.scene(&Approx);
         let bar = scene.toolbar.clone().unwrap();
-        assert_eq!(bar.rect, Rect::new(50, 562, 744, 32));
+        assert_eq!(bar.rect, Rect::new(18, 562, 776, 32));
         assert!(Rect::new(0, 0, 800, 600).contains(&bar.rect));
         assert!(!bar.rect.intersects(&scene.chip.unwrap().rect));
         // The bar covers part of the selection: that part is not interior. A double-click on
@@ -5344,10 +5355,10 @@ mod tests {
         );
         drag(&mut o, (100, 100), (699, 549));
         let bar = o.scene(&Approx).toolbar.unwrap();
-        assert_eq!((bar.rect.width, bar.rect.height), (1116, 48));
+        assert_eq!((bar.rect.width, bar.rect.height), (1164, 48));
         assert_eq!(bar.rect.y, 550 + 9 + 2);
         assert_eq!(bar.buttons[3].rect.width, 42, "a tool");
-        assert_eq!(bar.buttons[18].rect.width, 96, "Cancel");
+        assert_eq!(bar.buttons[19].rect.width, 96, "Cancel");
         // A monitor narrower than the bar: the buttons wrap into rows inside it (Step 56).
         let mut o = one(300, 400);
         drag(&mut o, (20, 20), (119, 99));

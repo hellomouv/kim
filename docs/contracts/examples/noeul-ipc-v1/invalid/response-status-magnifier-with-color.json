@@ -132,6 +132,7 @@
           "objects": 0,
           "kinds": {
             "arrow": 0,
+            "double-arrow": 0,
             "blur": 0,
             "ellipse": 0,
             "eraser": 0,

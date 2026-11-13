@@ -58,6 +58,7 @@
     { "id": "annotate.ellipse", "title": "Ellipse tool", "context": "annotate", "defaults": [] },
     { "id": "annotate.line", "title": "Line tool", "context": "annotate", "defaults": [] },
     { "id": "annotate.arrow", "title": "Arrow tool", "context": "annotate", "defaults": [] },
+    { "id": "annotate.double-arrow", "title": "Double-headed arrow tool", "context": "annotate", "defaults": [] },
     { "id": "annotate.pen", "title": "Pen tool", "context": "annotate", "defaults": [] },
     { "id": "annotate.marker", "title": "Marker tool", "context": "annotate", "defaults": [] },
     { "id": "annotate.text", "title": "Text tool", "context": "annotate", "defaults": [] },

@@ -161,7 +161,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `ANN-09` | Custom colors and opacity through a color dialog | G, F | Color with opacity. Step 56: an eight-colour palette (the colour button, `Shift` backwards); missing: opacity and a custom colour | partial | NOEUL-FR-080 | N3 | T | T: `crates/noeul/src/overlay.rs` undo_redo_width_object_keys_order_delete_and_clear_all |
 | `ANN-10` | Right-click finishes the current shape | G, K | Same; `Esc` leaves the tool and keeps the drawing. Step 56: both (FLOW-15) | partial | NOEUL-FR-081 | N3 | T (FLOW-15) | T: `crates/noeul/src/overlay.rs` right_click_finishes_a_shape_or_leaves_the_tool_and_a_lost_capture_aborts, a_tool_draws_inside_never_pins_and_escape_leaves_it_with_the_drawing |
 | `ANN-11` | Re-edit, clone and delete finished annotations (Pro) | P | Annotations stay editable objects until export. Step 56: pick, move, resize, recolour, re-width, reorder and delete objects in the overlay and on pins, by mouse and keyboard; missing: clone | partial | NOEUL-FR-081 | N3 | T | T: `crates/noeul/src/annotation/tests.rs` objects_are_selected_moved_resized_reordered_and_deleted_with_undo, keyboard_editing_selects_nudges_grows_and_shrinks; T: `crates/noeul/src/app.rs` a_pin_keeps_its_annotations_editable_and_edits_commit_crop_or_cancel |
-| `ANN-12` | Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro) | P | Annotation extras | planned | NOEUL-FR-084 | N4 | T | — |
+| `ANN-12` | Numbered markers, rounded rectangles, dashes, double-headed and styled arrows, filled or outlined text, magnifier shape (Pro) | P | #99: the **double arrow** tool (`annotate.double-arrow`, its toolbar button after the arrow, in the overlay and the pin editor): a head at both ends that share the length, moved and resized by its two ends, counted as its own kind in `status`. Missing: numbered markers, rounded rectangles, dashes, styled arrow heads, filled or outlined text and the magnifier shape | partial | NOEUL-FR-084 | N4 | T, M | T: `crates/noeul/src/annotation/tests.rs` a_double_arrow_has_a_head_at_both_ends; T: `crates/noeul/src/overlay.rs` tests::the_toolbar_sits_next_to_the_selection_and_never_over_the_chip; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, the toolbar's double-arrow button and a drag inside a 601 × 301 selection drew a red arrow with both heads |
 | `ANN-13` | Rotatable shapes; several pen sizes; per-tool colors; shareable palette (Pro) | P | Annotation extras | planned | NOEUL-FR-084 | N4 | T | — |
 | `ANN-14` | Right-click marks the detected element in rectangle, ellipse or fill modes | A | Annotation extra | planned | NOEUL-FR-084 | N4 | T | — |
 | `ANN-15` | Annotate an image window (`Space` shows the paint bar) | K, F | `pin.annotate` (`Space`). Step 56: `Space` and the pin menu open the pin editor (a layered window over the pin); `Enter`/Done commit, `Esc`/Cancel leave the pin unchanged; missing: the manual check on the visible desktop (UX spec §4.9) | partial | NOEUL-FR-080 | N3 | T, M | T: `crates/noeul/src/app.rs` a_pin_keeps_its_annotations_editable_and_edits_commit_crop_or_cancel; T: `crates/noeul/tests/annotation.rs` a_label_and_a_pin_edit_through_the_real_windows |
@@ -322,8 +322,8 @@ picture.
 | Status | Rows |
 | --- | --- |
 | `supported` | 7 |
-| `partial` | 111 |
-| `planned` | 29 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `partial` | 112 |
+| `planned` | 28 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
@@ -334,7 +334,7 @@ picture.
 | 3. Color picker (`COLOR`) | 0 | 7 | 0 | 0 | 7 |
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
 | 5. Output and clipboard (`OUT`) | 1 | 9 | 1 | 1 | 12 |
-| 6. Annotation (`ANN`) | 0 | 14 | 3 | 0 | 17 |
+| 6. Annotation (`ANN`) | 0 | 15 | 2 | 0 | 17 |
 | 7. Floating pins (`PIN`) | 2 | 21 | 5 | 2 | 30 |
 | 8. Paste sources (`PASTE`) | 0 | 12 | 0 | 2 | 14 |
 | 9. Displays and color (`DISP`) | 0 | 5 | 0 | 1 | 6 |
@@ -370,6 +370,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-12` (typed size and fixed ratio, `T`) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `DET-03` (the wheel steps to the parent element and back) is `supported` after the real-desktop check. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `ANN-12` moves to `partial`: the double arrow tool. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |

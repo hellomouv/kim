@@ -103,6 +103,8 @@ pub enum Tool {
     Ellipse,
     Line,
     Arrow,
+    /// #99 (`ANN-12`): an arrow with a head at both ends.
+    DoubleArrow,
     Pen,
     Marker,
     Text,
@@ -117,11 +119,12 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 11] = [
+    pub const ALL: [Tool; 12] = [
         Tool::Rectangle,
         Tool::Ellipse,
         Tool::Line,
         Tool::Arrow,
+        Tool::DoubleArrow,
         Tool::Pen,
         Tool::Marker,
         Tool::Text,
@@ -137,6 +140,7 @@ impl Tool {
             Tool::Ellipse => "ellipse",
             Tool::Line => "line",
             Tool::Arrow => "arrow",
+            Tool::DoubleArrow => "double-arrow",
             Tool::Pen => "pen",
             Tool::Marker => "marker",
             Tool::Text => "text",
@@ -154,6 +158,7 @@ impl Tool {
             Tool::Ellipse => "annotate.ellipse",
             Tool::Line => "annotate.line",
             Tool::Arrow => "annotate.arrow",
+            Tool::DoubleArrow => "annotate.double-arrow",
             Tool::Pen => "annotate.pen",
             Tool::Marker => "annotate.marker",
             Tool::Text => "annotate.text",
@@ -175,6 +180,7 @@ impl Tool {
             Tool::Ellipse => "Ellipse",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
+            Tool::DoubleArrow => "Double arrow",
             Tool::Pen => "Pen",
             Tool::Marker => "Marker",
             Tool::Text => "Text",
@@ -467,6 +473,8 @@ pub enum Shape {
     Line(P, P),
     /// From the first point to the head at the second.
     Arrow(P, P),
+    /// #99 (`ANN-12`): a head at both points.
+    DoubleArrow(P, P),
     Pen(Vec<P>),
     Marker(Vec<P>),
     Text(Text),
@@ -481,10 +489,21 @@ impl Shape {
             Shape::Ellipse(_) => Tool::Ellipse,
             Shape::Line(..) => Tool::Line,
             Shape::Arrow(..) => Tool::Arrow,
+            Shape::DoubleArrow(..) => Tool::DoubleArrow,
             Shape::Pen(_) => Tool::Pen,
             Shape::Marker(_) => Tool::Marker,
             Shape::Text(_) => Tool::Text,
             Shape::Effect(e, _) => e.tool(),
+        }
+    }
+
+    /// A line, arrow or double arrow of the same kind between new ends (others unchanged).
+    fn with_ends(&self, a: P, b: P) -> Shape {
+        match self {
+            Shape::Line(..) => Shape::Line(a, b),
+            Shape::Arrow(..) => Shape::Arrow(a, b),
+            Shape::DoubleArrow(..) => Shape::DoubleArrow(a, b),
+            other => other.clone(),
         }
     }
 
@@ -565,7 +584,7 @@ impl Object {
                 .grow(w / 2.0 + 1.0),
             Shape::Rectangle(b) | Shape::Ellipse(b) => b.grow(1.0),
             Shape::Line(a, b) => Bounds::new(a.x, a.y, b.x, b.y).grow(w / 2.0 + 1.0),
-            Shape::Arrow(a, b) => {
+            Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
                 let (_, half) = arrow_head(w);
                 Bounds::new(a.x, a.y, b.x, b.y).grow(half.max(w / 2.0) + 1.0)
             }
@@ -602,7 +621,7 @@ impl Object {
                 ellipse_distance(p.sub(c), ra, rb).abs() <= half
             }
             Shape::Line(a, b) => segment_distance(p, *a, *b) <= half,
-            Shape::Arrow(a, b) => {
+            Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
                 segment_distance(p, *a, *b) <= half.max(arrow_head(self.width()).1 * 0.6)
             }
             Shape::Pen(pts) | Shape::Marker(pts) => polyline_distance(p, pts) <= half,
@@ -629,6 +648,7 @@ impl Object {
             Shape::Ellipse(b) => Shape::Ellipse(b.translate(fx, fy)),
             Shape::Line(a, b) => Shape::Line(mv(a), mv(b)),
             Shape::Arrow(a, b) => Shape::Arrow(mv(a), mv(b)),
+            Shape::DoubleArrow(a, b) => Shape::DoubleArrow(mv(a), mv(b)),
             Shape::Pen(pts) => Shape::Pen(pts.iter().map(mv).collect()),
             Shape::Marker(pts) => Shape::Marker(pts.iter().map(mv).collect()),
             Shape::Text(t) => Shape::Text(Text {
@@ -654,7 +674,7 @@ impl Object {
             Shape::Rectangle(b) | Shape::Ellipse(b) | Shape::Effect(_, Area::Box(b)) => {
                 format!("{} \u{d7} {}", b.width().round(), b.height().round())
             }
-            Shape::Line(a, b) | Shape::Arrow(a, b) => {
+            Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
                 let d = b.sub(*a);
                 let deg = (-d.y).atan2(d.x).to_degrees();
                 format!("{:.0} px  {:.1}\u{b0}", d.len(), deg)
@@ -1299,7 +1319,7 @@ impl Editor {
                             }
                             *b = Bounds::of_pixels(from, to);
                         }
-                        Shape::Line(_, b) | Shape::Arrow(_, b) => {
+                        Shape::Line(_, b) | Shape::Arrow(_, b) | Shape::DoubleArrow(_, b) => {
                             *b = if shift { snap45(fp, tp) } else { tp };
                         }
                         Shape::Pen(pts)
@@ -1356,7 +1376,7 @@ impl Editor {
                 Shape::Rectangle(b) | Shape::Ellipse(b) | Shape::Effect(_, Area::Box(b)) => {
                     b.width() > 1.0 || b.height() > 1.0
                 }
-                Shape::Line(a, b) | Shape::Arrow(a, b) => a != b,
+                Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => a != b,
                 _ => true,
             });
             if !keep {
@@ -1420,6 +1440,7 @@ impl Editor {
             Tool::Ellipse => Shape::Ellipse(Bounds::of_pixels(at, at)),
             Tool::Line => Shape::Line(p, p),
             Tool::Arrow => Shape::Arrow(p, p),
+            Tool::DoubleArrow => Shape::DoubleArrow(p, p),
             Tool::Pen => Shape::Pen(vec![p]),
             Tool::Marker => Shape::Marker(vec![p]),
             Tool::Text => return false,
@@ -1623,15 +1644,11 @@ impl Editor {
                 self.retype = true;
                 Object { level, ..o.clone() }
             }
-            Shape::Line(a, b) | Shape::Arrow(a, b) => {
+            Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
                 let d = P::new((dir.0 * n) as f32, (dir.1 * n) as f32);
                 let (a, b) = if grow { (*a, b.add(d)) } else { (a.add(d), *b) };
                 Object {
-                    shape: if matches!(o.shape, Shape::Line(..)) {
-                        Shape::Line(a, b)
-                    } else {
-                        Shape::Arrow(a, b)
-                    },
+                    shape: o.shape.with_ends(a, b),
                     ..o.clone()
                 }
             }
@@ -2107,7 +2124,9 @@ impl Object {
             Shape::Pen(p) | Shape::Marker(p) | Shape::Effect(_, Area::Brush(p)) => {
                 Bounds::around(p).unwrap_or(Bounds::new(0.0, 0.0, 0.0, 0.0))
             }
-            Shape::Line(a, b) | Shape::Arrow(a, b) => Bounds::new(a.x, a.y, b.x, b.y),
+            Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
+                Bounds::new(a.x, a.y, b.x, b.y)
+            }
             Shape::Text(_) => self.bounds(),
         }
     }
@@ -2123,7 +2142,9 @@ pub fn handles(o: &Object) -> Vec<(Handle, P)> {
         bottom: b,
     };
     match &o.shape {
-        Shape::Line(a, b) | Shape::Arrow(a, b) => vec![(Handle::Start, *a), (Handle::End, *b)],
+        Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b) => {
+            vec![(Handle::Start, *a), (Handle::End, *b)]
+        }
         Shape::Text(_) => Vec::new(),
         _ => {
             let b = o.bounds_of_shape();
@@ -2178,7 +2199,10 @@ fn reshaped(o: &Object, from: Bounds, to: Bounds) -> Object {
 /// `start` with `handle` dragged to pixel `at`.
 fn resized(start: &Object, handle: Handle, at: (i32, i32)) -> Object {
     match (handle, &start.shape) {
-        (Handle::Start | Handle::End, Shape::Line(a, b) | Shape::Arrow(a, b)) => {
+        (
+            Handle::Start | Handle::End,
+            Shape::Line(a, b) | Shape::Arrow(a, b) | Shape::DoubleArrow(a, b),
+        ) => {
             let p = P::of_pixel(at);
             let (a, b) = if handle == Handle::Start {
                 (p, *b)
@@ -2186,11 +2210,7 @@ fn resized(start: &Object, handle: Handle, at: (i32, i32)) -> Object {
                 (*a, p)
             };
             Object {
-                shape: if matches!(start.shape, Shape::Line(..)) {
-                    Shape::Line(a, b)
-                } else {
-                    Shape::Arrow(a, b)
-                },
+                shape: start.shape.with_ends(a, b),
                 ..start.clone()
             }
         }
@@ -2482,6 +2502,26 @@ fn mask_of(o: &Object, clip: Rect) -> Option<Mask> {
                 // The shaft ends inside the head so they join without a gap.
                 m.capsule(*a, b.sub(u.scale(hl * 0.6)), w / 2.0);
                 m.triangle([*b, base.add(n.scale(hw)), base.sub(n.scale(hw))]);
+            } else {
+                m.capsule(*a, *b, w / 2.0);
+            }
+        }
+        Shape::DoubleArrow(a, b) => {
+            let d = b.sub(*a);
+            let len = d.len();
+            let (mut hl, mut hw) = arrow_head(w);
+            if len > 0.0 {
+                // Two heads share the length: each takes at most half of it.
+                if hl > len / 2.0 {
+                    hw *= len / 2.0 / hl;
+                    hl = len / 2.0;
+                }
+                let u = d.scale(1.0 / len);
+                let n = P::new(-u.y, u.x);
+                let (base_b, base_a) = (b.sub(u.scale(hl)), a.add(u.scale(hl)));
+                m.capsule(a.add(u.scale(hl * 0.6)), b.sub(u.scale(hl * 0.6)), w / 2.0);
+                m.triangle([*b, base_b.add(n.scale(hw)), base_b.sub(n.scale(hw))]);
+                m.triangle([*a, base_a.add(n.scale(hw)), base_a.sub(n.scale(hw))]);
             } else {
                 m.capsule(*a, *b, w / 2.0);
             }
