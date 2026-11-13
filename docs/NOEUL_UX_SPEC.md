@@ -1302,7 +1302,7 @@ clipboard):
 These steps need the maintainer, on the real desktop with a physical mouse and keyboard, the real
 clipboard and real applications (record the Windows build, the monitors with their scales and HDR
 state, the applications and the date in the Step report and the matrix Evidence column). **None of
-them was run by the Step 59 worker.**
+them was run by the Step 59 worker; steps 2–9 were run on 2026-11-13 (result below).**
 
 - [ ] 1. `cargo build --release -p noeul`, then `target\release\noeul.exe start` (default profile,
   `F1` and `F3` free).
@@ -1337,6 +1337,18 @@ them was run by the Step 59 worker.**
   `C`, and nothing else; leave Noeul idle for a minute: 0 % CPU in Task Manager.
 - [ ] 14. `noeul hotkeys set color.copy X`, `F1`: `X` copies, `C` does nothing; the keyboard help
   says "X copies the colour"; `noeul hotkeys reset color.copy`.
+
+**Result (2026-11-13, real desktop, ADR 0088; Windows 10 22H2, one monitor at 100 %, HDR off,
+Microsoft Korean IME; the clipboard saved and restored; the test's own red/blue window instead of
+Paint):** steps 2–9 pass. Over white the readout is `#FFFFFF` / `rgb(255, 255, 255)`, `C` closes the
+overlay and copies `#FFFFFF`, `F3` pins a swatch card with both lines; `D` across the red/blue
+border changes the value exactly between x 2799 (`#FF0000`) and 2800 (`#0000FF`); `Shift+C` marks
+RGB, then HSL, `C` copies `hsl(0, 100%, 50%)` and `F3` pins a red swatch; the next capture starts in
+HSL and `Shift+C` returns to HEX; `hex_case lower` + `alpha on` give `#ff0000ff`, the reset
+`#FF0000`; with a selection and a rectangle, `C` outside copies and keeps both, `Enter` pins them;
+typing `Color` in a label leaves the clipboard unchanged; in Hangul mode `C` copies the colour with
+no Hangul character. Not run: step 10 (Narrator speaks on the maintainer's desktop) and step 11
+(no second monitor).
 
 ## 5. Toolbar, menus and the tray
 
