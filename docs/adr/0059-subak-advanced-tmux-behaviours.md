@@ -19,7 +19,7 @@ has not measured.
 
 1. **A measured subset, an explicit inventory.** Step 25 builds the subset below with automated
    evidence; every other Step-25 row becomes `deferred` / `post-26` and names one follow-up group
-   F1–F10 of [#97](https://github.com/hellomouv/kim/issues/97). Subak does not claim full parity.
+   F1–F10 of [#97](https://github.com/madebymouv/kim/issues/97). Subak does not claim full parity.
 2. **Layouts.** `main-horizontal`, `main-vertical` and their `-mirrored` forms with tmux's
    default `main-pane-height` 24 / `main-pane-width` 80 (clamped so the other panes keep their
    minimum); the main pane stays the main pane from one main preset to the next.

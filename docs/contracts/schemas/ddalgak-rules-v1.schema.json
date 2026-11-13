@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/blob/main/docs/contracts/schemas/ddalgak-rules-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/blob/main/docs/contracts/schemas/ddalgak-rules-v1.schema.json",
   "title": "Ddalgak rules document, schema_version 1",
   "description": "Ddalgak's rules file (%APPDATA%\\mouv\\ddalgak\\rules.json) and its export format: profiles, modes and rules (trigger, conditions, ordered steps, priority, pass-through, enabled state, consent). See docs/DDALGAK_RULE_MODEL.md. Triggers use the key names of the hotkey contract v1 (docs/HOTKEY_CONTRACT.md §5) with Ddalgak's extensions (bare modifiers, lock keys). Objects are open: unknown fields are preserved, but an unknown field or step type inside a rule makes that rule inactive, never broader (DDALGAK_RULE_MODEL §9). Cross-references (unique IDs, mode and profile references, self-triggering outputs, duplicate triggers) are checked by the semantic rules of DDALGAK_RULE_MODEL §8, which `cargo xtask schema-check` also runs on the examples.",
   "type": "object",

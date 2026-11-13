@@ -22,7 +22,7 @@ AI contributor. Security problems go through [SECURITY.md](SECURITY.md), never p
 3. **Clone and verify:**
 
    ```sh
-   git clone https://github.com/hellomouv/kim
+   git clone https://github.com/madebymouv/kim
    cd kim
    cargo xtask ci
    ```

@@ -599,7 +599,7 @@ every rule is removed again at the end):
    - `ddalgak rule add --id l-notepad --trigger Ctrl+Shift+F6 --action open_program --path "%SystemRoot%\System32\notepad.exe" --allow launch-programs`
    - `ddalgak rule add --id l-notepad-front --trigger Ctrl+Shift+F7 --action open_program --path "%SystemRoot%\System32\notepad.exe" --if-running activate --window maximized --allow launch-programs`
    - `ddalgak rule add --id l-calc --trigger Ctrl+Shift+F8 --action open_program --app-id Microsoft.WindowsCalculator_8wekyb3d8bbwe!App --allow launch-programs`
-   - `ddalgak rule add --id l-site --trigger Ctrl+Shift+F9 --action open_url --url github.com/hellomouv/kim --allow launch-programs`
+   - `ddalgak rule add --id l-site --trigger Ctrl+Shift+F9 --action open_url --url github.com/madebymouv/kim --allow launch-programs`
    - `ddalgak rule add --id l-admin --trigger Ctrl+Shift+F10 --action open_program --path "%SystemRoot%\System32\msconfig.exe" --allow launch-programs`
 
    `ddalgak status` lists them active; `ddalgak rule show l-site` shows `https://github.com/…`.

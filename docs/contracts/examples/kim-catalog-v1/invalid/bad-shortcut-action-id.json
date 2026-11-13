@@ -11,7 +11,7 @@
       "name": "Kim",
       "summary": "Catalog and explicit installer for Kim tools",
       "description": "Lists Kim tools and installs, updates or removes them only when you ask. Never installs anything by itself.",
-      "homepage": "https://github.com/hellomouv/kim",
+      "homepage": "https://github.com/madebymouv/kim",
       "license": "MIT OR Apache-2.0",
       "support": "in-development",
       "releases": []
@@ -21,7 +21,7 @@
       "name": "Subak",
       "summary": "Persistent Windows-first terminal with a separate Host and Clients",
       "description": "Sessions live in a per-user background Host and survive closing every window. Headless CLI, optional native GUI, Claude Code status. Not released yet.",
-      "homepage": "https://github.com/hellomouv/kim",
+      "homepage": "https://github.com/madebymouv/kim",
       "license": "MIT OR Apache-2.0",
       "support": "in-development",
       "releases": []
@@ -31,7 +31,7 @@
       "name": "Noeul",
       "summary": "Screenshot and pin tool: F1 captures a region, double-click pins it on the desktop",
       "description": "A small native screenshot utility in the spirit of Snipaste. F1 starts a region capture, a double-click inside the selection pins it as a floating window, and F3 pins the clipboard image. It stays in the notification area while you use it and uses no keyboard hook. Not released yet.",
-      "homepage": "https://github.com/hellomouv/kim",
+      "homepage": "https://github.com/madebymouv/kim",
       "license": "MIT OR Apache-2.0",
       "support": "in-development",
       "releases": [],
@@ -85,17 +85,17 @@
         {
           "kind": "docs",
           "title": "Noeul design and Snipaste parity plan (Step 48)",
-          "url": "https://github.com/hellomouv/kim/issues/53"
+          "url": "https://github.com/madebymouv/kim/issues/53"
         },
         {
           "kind": "shortcuts",
           "title": "Noeul in the hotkey contract",
-          "url": "https://github.com/hellomouv/kim/blob/main/docs/HOTKEY_CONTRACT.md#133-noeul-shortcuts-are-tool-operations"
+          "url": "https://github.com/madebymouv/kim/blob/main/docs/HOTKEY_CONTRACT.md#133-noeul-shortcuts-are-tool-operations"
         },
         {
           "kind": "mcp",
           "title": "Noeul CLI and MCP integration (Step 62)",
-          "url": "https://github.com/hellomouv/kim/issues/67"
+          "url": "https://github.com/madebymouv/kim/issues/67"
         }
       ],
       "shortcuts": {
@@ -153,7 +153,7 @@
       "name": "Ddalgak",
       "summary": "Automation engine: one key press runs the remaps, text, launches and macros you define",
       "description": "Ddalgak turns triggers you choose into actions: remap keys, type text, open programs or websites, move the mouse, switch modes and run multi-step macros. Rules are made in a visual editor or with a headless CLI. Its keyboard hook exists only while you have the engine turned on, and Ctrl+Alt+Shift+Esc always turns it off. Not released yet.",
-      "homepage": "https://github.com/hellomouv/kim",
+      "homepage": "https://github.com/madebymouv/kim",
       "license": "MIT OR Apache-2.0",
       "support": "in-development",
       "releases": [],
@@ -207,17 +207,17 @@
         {
           "kind": "docs",
           "title": "Ddalgak design and rule model (Step 65)",
-          "url": "https://github.com/hellomouv/kim/issues/70"
+          "url": "https://github.com/madebymouv/kim/issues/70"
         },
         {
           "kind": "shortcuts",
           "title": "Ddalgak in the hotkey contract",
-          "url": "https://github.com/hellomouv/kim/blob/main/docs/HOTKEY_CONTRACT.md#134-ddalgak-a-user-defined-automation-engine"
+          "url": "https://github.com/madebymouv/kim/blob/main/docs/HOTKEY_CONTRACT.md#134-ddalgak-a-user-defined-automation-engine"
         },
         {
           "kind": "mcp",
           "title": "Ddalgak CLI and MCP integration (Step 81)",
-          "url": "https://github.com/hellomouv/kim/issues/86"
+          "url": "https://github.com/madebymouv/kim/issues/86"
         }
       ],
       "shortcuts": {

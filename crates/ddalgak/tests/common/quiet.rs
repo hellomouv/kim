@@ -76,6 +76,52 @@ fn down(vk: u16) -> bool {
     (unsafe { GetAsyncKeyState(i32::from(vk)) } as u16) & 0x8000 != 0
 }
 
+/// The foreground window's process when it runs elevated (`TokenElevation`), e.g. Task
+/// Manager: Windows' integrity protection (UIPI) then drops injected input silently —
+/// `SendInput` still reports success — so the hook never sees the test's keys.
+#[allow(unsafe_code)]
+pub fn elevated_foreground() -> Option<String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TokenElevation};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
+    // SAFETY: plain queries on handles this function opens and closes; out-pointers are locals.
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &raw mut pid);
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return None;
+        }
+        let mut token: HANDLE = std::ptr::null_mut();
+        let opened = OpenProcessToken(process, TOKEN_QUERY, &raw mut token) != 0;
+        CloseHandle(process);
+        if !opened {
+            // A process we may not even query runs above us: treat it as elevated.
+            return Some(format!("pid {pid} (token not readable)"));
+        }
+        let mut elevated = 0u32;
+        let mut len = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            (&raw mut elevated).cast(),
+            4,
+            &raw mut len,
+        ) != 0;
+        CloseHandle(token);
+        (ok && elevated != 0).then(|| format!("pid {pid}"))
+    }
+}
+
 /// The modifiers held right now. None of the real-input tests ever injects a modifier, so a held
 /// one is a person's.
 pub fn modifiers_held() -> Vec<&'static str> {
@@ -181,6 +227,14 @@ pub fn attempts_with<T>(
                 return Outcome::Verified(t);
             }
             Err(Fail::Refused(step)) => return Outcome::Refused(step),
+            // Injection was silently dropped by Windows, not a rule that failed: the same
+            // outcome as a refused `SendInput` (the elevated focus case of `Fail::Refused`).
+            Err(Fail::Failed(msg)) if !disturbed && elevated_foreground().is_some() => {
+                return Outcome::Refused(format!(
+                    "{what}: an elevated window has the foreground ({}), so Windows drops injected input (UIPI); {msg}",
+                    elevated_foreground().unwrap_or_default()
+                ));
+            }
             Err(Fail::Failed(msg)) if !disturbed => {
                 panic!("`{what}`, attempt {n} (no physical input during it): {msg}")
             }

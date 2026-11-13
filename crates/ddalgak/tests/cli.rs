@@ -3640,6 +3640,17 @@ fn a_hook_that_reaches_the_timeout_turns_the_engine_off() {
             break;
         }
     }
+    if off.is_none()
+        && let Some(fg) = quiet::elevated_foreground()
+    {
+        // `SendInput` reports success, but Windows drops input bound for an elevated window.
+        eprintln!(
+            "skipped (SendInput refused): an elevated window has the foreground ({fg}); Windows drops injected input (UIPI)"
+        );
+        sb.json(&["quit"]);
+        let _ = host.wait_exit(Duration::from_secs(10));
+        return;
+    }
     let st = off.expect("the engine turned itself off");
     assert_eq!(st["data"]["engine"]["off_reason"], "hook_lost");
     assert_eq!(st["data"]["engine"]["last_change"]["origin"], "hook_lost");

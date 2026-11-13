@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/subak-gui-v2.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/subak-gui-v2.schema.json",
   "title": "Subak window placement and remembered tabs, schema version 2",
   "description": "Contents of %APPDATA%\\mouv\\subak\\gui.json written by subak-gui since Step 20 (ADR 0051, docs/SUBAK_GUI.md §5): the window's placement, the Terminal shown last and the hidden tabs. No process ids, terminal content or secrets. Version 1 (subak-gui-v1) also held font_size and theme; those moved to config.toml (subak-config-v1), and a version 1 file is migrated once (its values go into config.toml where that file is silent, the old file is backed up). Unknown keys are allowed and preserved by subak-gui when it rewrites the file.",
   "type": "object",

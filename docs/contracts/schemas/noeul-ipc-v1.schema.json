@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/blob/main/docs/contracts/schemas/noeul-ipc-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/blob/main/docs/contracts/schemas/noeul-ipc-v1.schema.json",
   "title": "Noeul IPC v1 message",
   "description": "One JSON frame between the noeul CLI and the running Noeul instance (4-byte little-endian length, then the UTF-8 JSON object; at most 65536 bytes). See docs/adr/0023-noeul-app-foundation.md §4, docs/adr/0029-noeul-pin-engine.md (pin methods, Step 53), docs/adr/0044-noeul-pin-transforms-and-control.md (pin.set, groups, Step 54) and crates/noeul/src/ipc.rs. Errors carry registered CLI error codes (docs/CLI_CONTRACT.md §6). Pictures never cross the pipe; results carry IDs, geometry and counts only (NOEUL-SEC-008).",
   "oneOf": [

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/subak-state-v2.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/subak-state-v2.schema.json",
   "title": "Subak persisted state, schema version 2 (Step 29)",
   "description": "Contents of state.json (%LOCALAPPDATA%\\mouv\\subak\\state\\ for the default endpoint, or --state-dir). See docs/contracts/STATE_SCHEMA.md and ADR 0063. Version 1 (the Step 03 draft) is migrated on load.",
   "type": "object",

@@ -250,7 +250,7 @@ pub fn register(version: &str, dir: &Path, icon: &Path, uninstaller: &Path) -> s
         ),
         (
             "URLInfoAbout",
-            "https://github.com/hellomouv/kim".to_string(),
+            "https://github.com/madebymouv/kim".to_string(),
         ),
     ];
     let mut err = 0;

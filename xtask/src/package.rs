@@ -231,7 +231,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
             "{summary}\r\nVersion {version}, built from commit {commit} with {rustc} ({target}).\r\n\r\n\
              Install with Kim: `kim install {id}` (from the signed catalog). This zip is also usable\r\n\
              directly: unpack it anywhere and run {entry}. Nothing is installed, registered or\r\n\
-             updated by itself; see https://github.com/hellomouv/kim/blob/main/docs/INSTALL.md.\r\n\r\n\
+             updated by itself; see https://github.com/madebymouv/kim/blob/main/docs/INSTALL.md.\r\n\r\n\
              License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE); third-party notices in\r\n\
              THIRD-PARTY-NOTICES.txt.\r\n",
             summary = tool.summary,
@@ -259,9 +259,9 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         "signed": signed,
         "catalog_release": {
             "version": version, "channel": "stable", "published_at": "<set when published>",
-            "release_notes": format!("https://github.com/hellomouv/kim/releases/tag/{id}-v{version}"),
+            "release_notes": format!("https://github.com/madebymouv/kim/releases/tag/{id}-v{version}"),
             "assets": [{"os": "windows", "arch": "x86_64", "kind": "zip", "entrypoint": tool.entrypoint,
-                        "url": format!("https://github.com/hellomouv/kim/releases/download/{id}-v{version}/{name}"),
+                        "url": format!("https://github.com/madebymouv/kim/releases/download/{id}-v{version}/{name}"),
                         "size": zipped.len(), "sha256": sha}],
         },
     });

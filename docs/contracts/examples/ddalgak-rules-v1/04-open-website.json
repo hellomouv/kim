@@ -15,8 +15,8 @@
           "title": "Open the Kim repository",
           "enabled": true,
           "trigger": {"keys": "Ctrl+Shift+F9"},
-          "steps": [{"type": "open_url", "url": "https://github.com/hellomouv/kim"}],
-          "consent": {"launch-programs": {"granted_at": "2026-11-04T09:40:00Z", "via": "gui", "fingerprint": "sha256:fa0b97ff8459f1d562cd49dfef59de849146a136c566a51e4a1d5f7c924ea21b"}}
+          "steps": [{"type": "open_url", "url": "https://github.com/madebymouv/kim"}],
+          "consent": {"launch-programs": {"granted_at": "2026-11-04T09:40:00Z", "via": "gui", "fingerprint": "sha256:da2e5c41f13da5ebfb7392a8186875b6a6d2ea8cdcab7c4ff02a8c1ad6d0bb88"}}
         },
         {
           "id": "search-docs",

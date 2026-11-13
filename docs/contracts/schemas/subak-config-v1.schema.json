@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/subak-config-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/subak-config-v1.schema.json",
   "title": "Subak settings, config_version 1 (the data model of config.toml)",
   "description": "The settings of %APPDATA%\\mouv\\subak\\config.toml (Step 20, ADR 0051, docs/SUBAK_GUI.md §13, docs/contracts/STATE_SCHEMA.md §2) as JSON: the file is TOML, and `subak config show --json` reports these values as `settings` (every key with its effective value). Display and behaviour settings of the Subak window and basic local shell profiles only: no process ids, terminal content or secrets. Unknown keys are allowed in the file and kept by every edit; an invalid value falls back to its default alone. Profile values shown by Subak are redacted (`***`) where they look secret.",
   "type": "object",

@@ -249,9 +249,12 @@ fn open_a_program_never_runs_it() {
 fn open_a_website() {
     let mut f = with(Effect::OpenUrl, "Ctrl+Alt+Shift+F15");
     assert!(paths(&f).contains(&"steps[0].url"));
-    f.fields.url = "GitHub.com/hellomouv".into();
+    f.fields.url = "GitHub.com/madebymouv".into();
     let r = f.build("gh", None).unwrap();
-    assert_eq!(r.steps[0].to_value()["url"], "https://github.com/hellomouv");
+    assert_eq!(
+        r.steps[0].to_value()["url"],
+        "https://github.com/madebymouv"
+    );
     assert_eq!(f.summary(None), "Opens github.com in your browser");
     valid_in_document(&r);
     for bad in [

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/blob/main/docs/contracts/schemas/ddalgak-cli-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/blob/main/docs/contracts/schemas/ddalgak-cli-v1.schema.json",
   "title": "ddalgak --json output, schema_version 1 (Step 66 engine commands, Step 67 rule commands, Step 75 profile commands)",
   "description": "Every document `ddalgak ... --json` prints: the cli-envelope-v1 envelope, the `data` of each command (selected by `command`), and Ddalgak's error codes with their exit codes (docs/CLI_CONTRACT.md §6, docs/DDALGAK_ENGINE.md §6, docs/DDALGAK_RULE_MODEL.md §13). Objects are closed so regression tests notice any change; consumers must still ignore unknown fields and tolerate new enum values (CLI_CONTRACT §8). Privacy is part of the contract: activity entries carry rule IDs and outcome codes only, and no engine or status field ever carries keys, typed text, window titles, paths of other programs or rule content (DDALGAK-SEC-001, DDALGAK-SEC-011). The rule commands show what the user asked for: `rule list` titles, triggers and step types, `rule show` the one requested rule as stored in rules.json, and problem messages name rules, triggers and step fields (never typed text, URLs or arguments).",
   "oneOf": [

@@ -29,7 +29,7 @@ pub const BUNDLED_SIGNATURE: &[u8] = include_bytes!(concat!(
 
 /// Default remote location, used only by an explicit `kim catalog refresh`.
 pub const DEFAULT_SOURCE: &str =
-    "https://raw.githubusercontent.com/hellomouv/kim/main/catalog/catalog.json";
+    "https://raw.githubusercontent.com/madebymouv/kim/main/catalog/catalog.json";
 
 pub const CACHE_FILE: &str = "catalog.json";
 pub const CACHE_SIG_FILE: &str = "catalog.json.sig";
@@ -395,7 +395,7 @@ mod tests {
             }
             for l in &t.links {
                 assert!(KNOWN_LINK_KINDS.contains(&l.kind.as_str()), "{}", l.kind);
-                assert!(l.url.starts_with("https://github.com/hellomouv/kim"));
+                assert!(l.url.starts_with("https://github.com/madebymouv/kim"));
             }
             assert!(t.links.iter().any(|l| l.kind == "docs"));
             assert!(t.links.iter().any(|l| l.kind == "mcp"));

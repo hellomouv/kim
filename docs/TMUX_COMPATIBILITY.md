@@ -7,7 +7,7 @@ mouv · Tracks [SUBAK-FR-060](PRODUCT_REQUIREMENTS.md)
 > Subak is a **tmux-like** multiplexer for Windows, **not** a drop-in tmux. Of the 606 rows of
 > the tmux 3.8 inventory below, **88 are `implemented`** and **140 `partial`** — each with
 > automated evidence that exists in the repository — **352 are `deferred`** (tracked in follow-up
-> groups F1–F10 of [#97](https://github.com/hellomouv/kim/issues/97)) and **26 `unsupported`**
+> groups F1–F10 of [#97](https://github.com/madebymouv/kim/issues/97)) and **26 `unsupported`**
 > by design; none is left unclassified. Full tmux parity is **not** claimed.
 >
 > | Level | What you can rely on |
@@ -46,7 +46,7 @@ appears as one GUI tab. A Subak internal **Window** is a tmux **window**; it is 
 **Status values.** `planned` — intended, not built · `partial` — some documented behaviour has
 automated evidence · `implemented` — the whole row has automated evidence · `deferred` — not
 planned before Step 26; may be revisited · `unsupported` — will not be provided, by design.
-`implemented` is used since Step 11 (four environment rows) and Step 12 (invocation, `has-session`, `new -d`); Step 13 made six scrollback rows `partial`; Step 15 made five client-view rows `partial`; Step 21 made `rename-window` `implemented` and ten window and pane rows `partial`. Step 25 ([ADR 0059](adr/0059-subak-advanced-tmux-behaviours.md)) made 61 of its rows `implemented` or `partial` and moved the other 292 to `deferred`, each naming a follow-up group F1–F10 of [#97](https://github.com/hellomouv/kim/issues/97); Subak does **not** claim full tmux parity.
+`implemented` is used since Step 11 (four environment rows) and Step 12 (invocation, `has-session`, `new -d`); Step 13 made six scrollback rows `partial`; Step 15 made five client-view rows `partial`; Step 21 made `rename-window` `implemented` and ten window and pane rows `partial`. Step 25 ([ADR 0059](adr/0059-subak-advanced-tmux-behaviours.md)) made 61 of its rows `implemented` or `partial` and moved the other 292 to `deferred`, each naming a follow-up group F1–F10 of [#97](https://github.com/madebymouv/kim/issues/97); Subak does **not** claim full tmux parity.
 
 **Target Steps.**
 

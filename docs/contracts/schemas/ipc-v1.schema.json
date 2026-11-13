@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/ipc-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/ipc-v1.schema.json",
   "title": "Subak IPC v1 control message",
   "description": "One JSON control frame (kind 0x01), as implemented in Steps 09 and 10. See docs/contracts/IPC_PROTOCOL.md and docs/SESSION_MODEL.md. Events with a known name have typed data; the result_* definitions type the results of the Step 10 methods (a response does not name its method, so tests validate results against them directly).",
   "oneOf": [

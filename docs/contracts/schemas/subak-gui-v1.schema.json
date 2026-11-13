@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/subak-gui-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/subak-gui-v1.schema.json",
   "title": "Subak window preferences, schema version 1",
   "description": "Contents of %APPDATA%\\mouv\\subak\\gui.json, written by subak-gui (Step 16, ADR 0039, docs/SUBAK_GUI.md §5). Display preferences and window placement only: no process ids, terminal content or secrets. Unknown keys are allowed and preserved by subak-gui when it rewrites the file.",
   "type": "object",

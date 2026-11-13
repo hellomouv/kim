@@ -15,7 +15,7 @@ checkpoint."*
 - Uncommitted changes: none expected between Steps
 - Next action: continue #99 (remaining planned rows need new overlay, pin and annotation UI), then #98 (Tabby) and #97 (tmux). Maintainer-check and Linux issues stay open. The repository moved to madebymouv/kim (old URL redirects).
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
-  repos/hellomouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
+  repos/madebymouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
 
@@ -147,7 +147,7 @@ checkpoint."*
   run 4/4 PASS; recorded in `e2e/LEDGER.md`.
 
 ## Queue (Step number in the issue title; reconstruct with
-`gh issue list --repo hellomouv/kim --state open --limit 200`)
+`gh issue list --repo madebymouv/kim --state open --limit 200`)
 
 1. Subak: 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43
    (Windows part), 44

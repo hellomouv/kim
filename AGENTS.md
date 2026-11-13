@@ -1,7 +1,7 @@
 # AGENTS.md — Repository working rules
 
 These rules apply to every contributor, human or AI (Claude Code and other coding agents), for
-the whole `hellomouv/kim` repository. When a rule here conflicts with a convenience, the rule wins.
+the whole `madebymouv/kim` repository. When a rule here conflicts with a convenience, the rule wins.
 When a rule conflicts with an explicit, documented decision record (ADR), follow the ADR and
 update this file in the same change.
 
@@ -92,9 +92,21 @@ These rules come directly from the maintainer and are mandatory.
 
 ## 5. Working on this machine (agents)
 
-- Work headlessly. The maintainer uses the same computer while agents work: do not open GUI
-  windows, browsers, or focus-stealing processes; use headless test modes.
-- Do not install system-wide software or trigger elevation (UAC) without asking first.
+- **Real desktop testing is allowed** (maintainer decision 2026-11-13,
+  [ADR 0088](docs/adr/0088-interactive-desktop-testing.md)): agents may use the real mouse,
+  keyboard, windows, global hotkeys, screen capture and clipboard to verify GUI behaviour.
+  Never touch windows or programs the maintainer already has open; use test-started instances
+  and sandboxed profiles.
+- Keyboard, mouse, clipboard, display-scaling and double-click settings may be changed only
+  temporarily: save the prior state first, restore and verify it after the check. No permanent
+  desktop changes, no global power-plan changes.
+- Do not install system-wide software, trigger elevation (UAC), automate credential prompts or
+  the lock screen, or otherwise bypass Windows security without asking first.
+- Hardware a check needs but this PC lacks (a second monitor, HDR) means **not tested**; leave
+  the requirement open.
+- A session-scoped keep-awake helper (`SetThreadExecutionState`, a 2 px cursor nudge every five
+  minutes on an unlocked, idle-pointer desktop) may run while an agent session is active; it
+  must end with the session and leave no task or service behind.
 
 ## 6. Git and GitHub workflow
 

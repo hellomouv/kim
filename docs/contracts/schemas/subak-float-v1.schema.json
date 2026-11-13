@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/docs/contracts/schemas/subak-float-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/subak-float-v1.schema.json",
   "title": "Subak floating icon settings, schema version 1",
   "description": "Contents of %APPDATA%\\mouv\\subak\\float.json, written by `subak-gui --float` (Step 18, ADR 0045, docs/SUBAK_GUI.md §11). Which presences the floating UI shows (the floating icon, the tray icon), whether they stay on top, whether the Terminal manager stays open, and where the icon was. No process ids, terminal content or secrets. Unknown keys are allowed and preserved when the file is rewritten.",
   "type": "object",

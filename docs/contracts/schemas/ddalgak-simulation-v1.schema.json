@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hellomouv/kim/blob/main/docs/contracts/schemas/ddalgak-simulation-v1.schema.json",
+  "$id": "https://github.com/madebymouv/kim/blob/main/docs/contracts/schemas/ddalgak-simulation-v1.schema.json",
   "title": "Ddalgak test playground result, schema_version 1",
   "description": "What the test playground (GUI) and `ddalgak test --json` report for one input event: the context it was tested in, which rule would win and why, and the effect of every step. In `simulate` (the default) nothing is injected, opened or changed outside the playground; `live` only types into the playground's own test field and opens a program or website only after a per-effect confirmation (docs/DDALGAK_RULE_MODEL.md §11). Personal content is summarized, never echoed: typed text as counts, URLs as scheme and host, programs as file names. Closed schema (CLI output, CLI_CONTRACT §8).",
   "type": "object",

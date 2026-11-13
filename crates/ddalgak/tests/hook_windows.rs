@@ -205,6 +205,12 @@ fn serial() -> Turn {
 
 #[test]
 fn real_hook_idle_cost_injected_cycles_held_keys_and_cleanup() {
+    if let Some(fg) = quiet::elevated_foreground() {
+        eprintln!(
+            "skipped (SendInput refused): an elevated window has the foreground ({fg}); Windows drops injected input (UIPI)"
+        );
+        return;
+    }
     let _turn = serial();
     let mut e = engine(
         vec![
@@ -495,6 +501,12 @@ fn send_other(vk: u16, up: bool) -> bool {
 
 #[test]
 fn real_remap_block_and_dual_role_with_obscure_keys() {
+    if let Some(fg) = quiet::elevated_foreground() {
+        eprintln!(
+            "skipped (SendInput refused): an elevated window has the foreground ({fg}); Windows drops injected input (UIPI)"
+        );
+        return;
+    }
     let _turn = serial();
     if !ddalgak::win::input_desktop_available() {
         eprintln!(
@@ -689,6 +701,12 @@ fn real_remap_block_and_dual_role_with_obscure_keys() {
 /// a fixed editable target here: the real probe would look at the maintainer's focused window.
 #[test]
 fn a_send_keys_run_reaches_send_input_with_an_obscure_key_only() {
+    if let Some(fg) = quiet::elevated_foreground() {
+        eprintln!(
+            "skipped (SendInput refused): an elevated window has the foreground ({fg}); Windows drops injected input (UIPI)"
+        );
+        return;
+    }
     use ddalgak::core::{FireKind, Signal};
     let _turn = serial();
     let mut b = binding("f13-sends-f16", "F13", Injected::Ignore, EngineOp::Pause);

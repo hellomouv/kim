@@ -2129,8 +2129,8 @@ mod tests {
         let ok = [
             ("github.com", "https://github.com/"),
             (
-                "  https://GitHub.com/hellomouv/kim  ",
-                "https://github.com/hellomouv/kim",
+                "  https://GitHub.com/madebymouv/kim  ",
+                "https://github.com/madebymouv/kim",
             ),
             ("HTTP://Example.COM", "http://example.com/"),
             (
@@ -2249,7 +2249,7 @@ mod tests {
             assert!(!r.contains("abc123") && !r.contains("pw") && !r.contains("cookie"));
         }
         assert_eq!(
-            url_preview("https://github.com/hellomouv/kim?tab=readme"),
+            url_preview("https://github.com/madebymouv/kim?tab=readme"),
             Some(json!({ "scheme": "https", "host": "github.com" }))
         );
         // Every message is free of the URL's path and query.
@@ -2366,7 +2366,7 @@ mod tests {
         let f = FakeLauncher::default();
         let never = || false;
         let p = plan(vec![
-            Target::Url("https://github.com/hellomouv/kim?tab=readme".into()),
+            Target::Url("https://github.com/madebymouv/kim?tab=readme".into()),
             Target::App {
                 app_id: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App".into(),
                 show: Show::Minimized,
@@ -2378,7 +2378,7 @@ mod tests {
             [
                 Call::Shell(ShellRequest {
                     verb: "open",
-                    target: "https://github.com/hellomouv/kim?tab=readme".into(),
+                    target: "https://github.com/madebymouv/kim?tab=readme".into(),
                     show: Show::Normal
                 }),
                 Call::Shell(ShellRequest {
@@ -2717,12 +2717,12 @@ mod tests {
     fn the_website_editor_normalizes_and_refuses_other_schemes() {
         let mut d = UrlDraft {
             title: "Kim".into(),
-            input: "GitHub.com/hellomouv/kim".into(),
+            input: "GitHub.com/madebymouv/kim".into(),
             saved: None,
         };
         assert_eq!(
             d.step(),
-            Some(json!({ "type": "open_url", "url": "https://github.com/hellomouv/kim" }))
+            Some(json!({ "type": "open_url", "url": "https://github.com/madebymouv/kim" }))
         );
         assert_eq!(d.summary(), "Opens github.com in your browser");
         assert_eq!(

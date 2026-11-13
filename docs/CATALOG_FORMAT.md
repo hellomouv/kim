@@ -13,7 +13,7 @@ verify them. It is **data, not code**: reading it never installs, updates or sta
 
 | File | Where | Purpose |
 | --- | --- | --- |
-| `catalog.json` | repository [`catalog/`](../catalog/catalog.json); bundled into `kim.exe` at build time; published at `https://raw.githubusercontent.com/hellomouv/kim/main/catalog/catalog.json` | The catalog document |
+| `catalog.json` | repository [`catalog/`](../catalog/catalog.json); bundled into `kim.exe` at build time; published at `https://raw.githubusercontent.com/madebymouv/kim/main/catalog/catalog.json` | The catalog document |
 | `catalog.json.sig` | next to it | Detached ed25519 signature (§4) |
 | cache | `%LOCALAPPDATA%\mouv\kim\catalog\catalog.json(.sig)` | Last catalog fetched by an explicit `kim catalog refresh` |
 
@@ -35,7 +35,7 @@ Signed files are marked `-text` in `.gitattributes`: the signature covers exact 
       "name": "Subak",
       "summary": "Persistent Windows-first terminal …",
       "description": "…",
-      "homepage": "https://github.com/hellomouv/kim",
+      "homepage": "https://github.com/madebymouv/kim",
       "license": "MIT OR Apache-2.0",
       "support": "in-development",
       "releases": [
@@ -49,7 +49,7 @@ Signed files are marked `-text` in `.gitattributes`: the signature covers exact 
           "assets": [
             {
               "os": "windows", "arch": "x86_64", "min_os_build": 17763,
-              "url": "https://github.com/hellomouv/kim/releases/download/subak-v0.1.0/subak-0.1.0-windows-x86_64.zip",
+              "url": "https://github.com/madebymouv/kim/releases/download/subak-v0.1.0/subak-0.1.0-windows-x86_64.zip",
               "size": 4194304,
               "sha256": "64 lowercase hex characters",
               "kind": "zip",
@@ -97,7 +97,7 @@ them, and the signature covers them like everything else.
     { "kind": "gui", "command": "noeul", "summary": "Starts Noeul in the notification area", "status": "planned" },
     { "kind": "cli", "command": "noeul status --json", "summary": "Reports whether Noeul runs", "status": "planned" }
   ],
-  "links": [ { "kind": "docs", "title": "Noeul philosophy (Step 48)", "url": "https://github.com/hellomouv/kim/blob/main/docs/NOEUL_PHILOSOPHY.md" } ],
+  "links": [ { "kind": "docs", "title": "Noeul philosophy (Step 48)", "url": "https://github.com/madebymouv/kim/blob/main/docs/NOEUL_PHILOSOPHY.md" } ],
   "shortcuts": {
     "manifest": "hotkeys.manifest.json", "backend": "register",
     "actions": [ { "action": "capture.region", "title": "Capture a region", "scope": "global", "keys": ["F1"] } ]

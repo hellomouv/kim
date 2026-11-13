@@ -50,7 +50,7 @@ Windows 11, real multi-monitor hardware. The maintainer's script: [NOEUL_ACCEPTA
 
 ## 3. Remaining planned rows (tracked)
 
-Each is tracked in [#99](https://github.com/hellomouv/kim/issues/99) (except `APP-03`); *partial* rows name
+Each is tracked in [#99](https://github.com/madebymouv/kim/issues/99) (except `APP-03`); *partial* rows name
 their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OUT-07`, `OUT-12` and
 `SET-11`, then `PIN-21`, `PIN-22`, `PIN-27`, `SET-06`, `DET-09` and `SNIP-10` to *partial*.
 
@@ -63,4 +63,4 @@ their gap in the matrix. #99 moved `SNIP-11`, `CLI-02`, `HIST-06`, `OUT-06`, `OU
 - `PIN-15` Group manager window (Pro)
 - `PIN-28` Images on virtual desktops (Pro)
 - `SET-21` Interface translations
-- `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/hellomouv/kim/issues/69), done on the Linux server)
+- `APP-03` Windows, macOS and Linux editions (Linux: tracked by [#69](https://github.com/madebymouv/kim/issues/69), done on the Linux server)
