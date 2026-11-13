@@ -56,7 +56,7 @@
         "copy_on_select": { "description": "A mouse selection is copied when the button is released (default false).", "type": "boolean" },
         "claude_indicators": { "description": "Step 28: tabs and the title show each Terminal's Claude Code state from hooks (default true).", "type": "boolean" },
         "claude_animation": { "description": "Step 44: the Claude marks move (default true); false or reduced motion: static marks, no timer.", "type": "boolean" },
-        "detect_shells": { "description": "Step 33: the shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, WSL distributions) are offered as profiles (default true).", "type": "boolean" },
+        "detect_shells": { "description": "Step 33: the shells found on this PC (PowerShell 7, Windows PowerShell, Command Prompt, Git Bash, since #98 T4 Command Prompt with Clink, Cygwin, MSYS2 environments, Cmder and the Visual Studio developer prompts, and WSL distributions) are offered as profiles (default true).", "type": "boolean" },
         "smart_ctrl_c": { "description": "Ctrl+C copies when text is selected, else it reaches the program (default false).", "type": "boolean" },
         "alt_is_meta": { "description": "#98 T2: Alt with a character sends ESC first (default true, as in Windows Terminal); false: the character alone.", "type": "boolean" },
         "notify_command_seconds": { "description": "#98 T3: a notification when a shell-integration command (OSC 133) that ran at least this many seconds finishes while its tab is not shown or the window is not in front; 0 (default): never.", "type": "integer", "minimum": 0, "maximum": 86400 },

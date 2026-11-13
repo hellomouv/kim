@@ -181,3 +181,29 @@ fn issue98_line_editing_actions_and_keyboard_settings() {
         assert_eq!(code, 0, "{doc}");
     }
 }
+
+/// #98 T4 (`SHELL-04`, `SHELL-08`–`SHELL-11`): every shell `subak profile list` offers as
+/// detected exists on this PC; what a detected profile sets is only what its shell needs to
+/// start in Subak's folder (`CHERE_INVOKING`, `MSYSTEM`).
+#[test]
+fn issue98_detected_shells_exist_and_assume_nothing_more() {
+    let sb = TempDir::new("issue98-t4");
+    let (code, doc) = json(&sb, &["profile", "list"]);
+    assert_eq!(code, 0, "{doc}");
+    let profiles = doc["data"]["profiles"].as_array().unwrap();
+    let detected: Vec<&Value> = profiles
+        .iter()
+        .filter(|p| p["source"] == "detected")
+        .collect();
+    assert!(
+        detected.iter().any(|p| p["name"] == "Command Prompt"),
+        "{doc}"
+    );
+    for p in detected {
+        let program = p["program"].as_str().unwrap();
+        assert!(std::path::Path::new(program).is_file(), "{p}");
+        for (name, _) in p["env"].as_object().unwrap() {
+            assert!(name == "CHERE_INVOKING" || name == "MSYSTEM", "{p}");
+        }
+    }
+}
