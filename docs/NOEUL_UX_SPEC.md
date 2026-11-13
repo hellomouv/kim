@@ -456,6 +456,13 @@ p95 ≤ 150 ms on 3840×2160; the 100 ms target is not reached, GDI capture alon
 Not run here: step 9 (one monitor at 100 %), step 10 (locking the session would interrupt the
 user working on this PC).
 
+**Follow-up (2026-11-13):** `F1` is free now; the real default `F1` is `registered`, opens the
+overlay with the crosshair, six rapid presses give one overlay (5 ignored), holding `F1` (16
+auto-repeat downs) gives one capture, moving the focus to another window cancels the overlay,
+and `F1`, drag, double-click pins exactly; `F3` pins a copied image at the pointer with exact
+colours, a copied colour value as a swatch and copied text as a card (clipboard saved and
+restored).
+
 ### 4.6 Step 53: manual check of real pins
 
 Step 53 ships the pin engine ([ADR 0029](adr/0029-noeul-pin-engine.md)): independent topmost pin
@@ -588,6 +595,20 @@ pins, and `config reset gestures` restores it; ten fast captures give ten pins o
 (always PNG). Not run here: the clipboard writes of steps 7 and 9–10 and the paste into Paint
 (the user's clipboard stays untouched), step 11 (it changes a Windows setting), step 13 (no
 150 % monitor).
+
+**Follow-up (2026-11-13, ADR 0088: the clipboard and settings may now be used temporarily, saved
+and restored):** with the real default `F1` (now free on this PC): step 7 — `Ctrl+C`, `Tab`,
+`Tab`, `Enter` and the toolbar's Copy each copy the selection without pinning, and the copied
+picture equals the screen pixel for pixel (sampled every 7th pixel, 0 differences); step 10 —
+with the clipboard held open by another process, `Ctrl+C` reports `clipboard_unavailable` and
+keeps the overlay, a double-click still pins; step 11 — at 500 ms two clicks 650 ms apart pin
+nothing, after raising the double-click time to 900 ms (broadcast, same Noeul process) they pin;
+step 12 — `double_click copy`, the Snipaste-style preset (double-click and `Enter` copy, `Ctrl+T`
+and the middle click pin, named in `hotkeys list`) and `config reset gestures` behave as written;
+step 13 — at 150 % (the system's DPI override, recommended +2) a 600×450 device-pixel selection
+reads "600 by 450", pins at 600×450, quick-saves a 600×450 file, and the toolbar text is crisp.
+The clipboard, the double-click time and the scaling were restored and checked afterwards. A
+second monitor is not available here.
 
 ### 4.8 Step 52: manual check of smart selection and precision
 
