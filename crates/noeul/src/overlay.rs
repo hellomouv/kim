@@ -279,6 +279,9 @@ pub enum Action {
     Full,
     /// `selection.last` (`R`): the rectangle of the last successful capture.
     Last,
+    /// `selection.size` (`T`): type the selection's size (`800x600`) or a fixed aspect ratio
+    /// (`16:9`) that later drags keep (#99, `SNIP-12`).
+    Size,
     /// `selection.move-*` (arrows): one device pixel.
     Move(Dir),
     /// `selection.grow-*` (`Ctrl`+arrows): that edge outwards by one device pixel.
@@ -308,6 +311,45 @@ pub enum Action {
     ColorFormatNext,
 }
 
+/// What `selection.size` asks for when the entry is not a size or a ratio (#99, `SNIP-12`).
+pub const SIZE_HINT: &str = "Type a size like 800x600 or a ratio like 16:9, then Enter";
+
+/// A typed `selection.size` entry (#99, `SNIP-12`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeEntry {
+    /// Width and height in device pixels (both at least 1).
+    Exact(u32, u32),
+    /// A fixed aspect ratio, or `None` to drop it (`:`, `0:0`).
+    Ratio(Option<(u32, u32)>),
+}
+
+/// Parses `800x600`, `800 x 600`, `800*600`, `800\u{d7}600`, `800 600`, `16:9`, `:` or `0:0`.
+pub fn parse_size_entry(text: &str) -> Option<SizeEntry> {
+    let t = text.trim();
+    if let Some((a, b)) = t.split_once(':') {
+        let (a, b) = (a.trim(), b.trim());
+        if a.is_empty() && b.is_empty() {
+            return Some(SizeEntry::Ratio(None));
+        }
+        let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
+        return match (a, b) {
+            (0, 0) => Some(SizeEntry::Ratio(None)),
+            (0, _) | (_, 0) => None,
+            _ if a > 1000 || b > 1000 => None,
+            _ => Some(SizeEntry::Ratio(Some((a, b)))),
+        };
+    }
+    let mut parts = t
+        .split(|c: char| matches!(c, 'x' | 'X' | '*' | '\u{d7}') || c.is_whitespace())
+        .filter(|p| !p.is_empty());
+    let w = parts.next()?.parse::<u32>().ok()?;
+    let h = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() || w == 0 || h == 0 {
+        return None;
+    }
+    Some(SizeEntry::Exact(w, h))
+}
+
 /// The action IDs of [`Action`], in manifest order.
 pub const ACTION_IDS: &[&str] = &[
     "capture.pin",
@@ -319,6 +361,7 @@ pub const ACTION_IDS: &[&str] = &[
     "selection.mark",
     "selection.full",
     "selection.last",
+    "selection.size",
     "selection.move-up",
     "selection.move-down",
     "selection.move-left",
@@ -362,6 +405,7 @@ impl Action {
             "selection.mark" => Action::Mark,
             "selection.full" => Action::Full,
             "selection.last" => Action::Last,
+            "selection.size" => Action::Size,
             "detect.cycle" => Action::DetectCycle,
             "magnifier.toggle" => Action::Magnifier,
             "history.previous" => Action::HistoryPrevious,
@@ -936,6 +980,10 @@ pub struct Overlay {
     alt: bool,
     /// #99: `Space` is held (from the last pointer move).
     space: bool,
+    /// #99 (`SNIP-12`): the size being typed after `selection.size`.
+    size_entry: Option<String>,
+    /// #99 (`SNIP-12`): a fixed aspect ratio (width : height) typed as `A:B`; drags keep it.
+    ratio: Option<(u32, u32)>,
     last: Option<Rect>,
     detect: Detection,
     magnifier: bool,
@@ -1014,6 +1062,8 @@ impl Overlay {
             help,
             help_monitor: 0,
             banner: None,
+            size_entry: None,
+            ratio: None,
             click: None,
             bar_focus: None,
             bar_hover: None,
@@ -1135,7 +1185,17 @@ impl Overlay {
     /// Whether a label is being edited: every key but the editing keys and `Escape` is suspended
     /// (UX spec §6).
     pub fn editing_text(&self) -> bool {
-        self.ann.editing_text()
+        self.size_entry.is_some() || self.ann.editing_text()
+    }
+
+    /// #99 (`SNIP-12`): the size being typed, if any.
+    pub fn size_entry(&self) -> Option<&str> {
+        self.size_entry.as_deref()
+    }
+
+    /// #99 (`SNIP-12`): the fixed aspect ratio drags keep, if one was typed.
+    pub fn ratio(&self) -> Option<(u32, u32)> {
+        self.ratio
     }
 
     /// The same overlay with hover detection in `mode` over `snapshot` (`None`: no window list
@@ -1500,21 +1560,46 @@ impl Overlay {
     fn band(&self, anchor: (i32, i32), to: (i32, i32), square: bool) -> Rect {
         let (ax, ay) = (i64::from(anchor.0), i64::from(anchor.1));
         let (mut tx, mut ty) = (i64::from(to.0), i64::from(to.1));
-        if square {
+        // Shift keeps 1:1; a typed ratio (#99, `SNIP-12`) keeps its own.
+        let ratio = if square { Some((1, 1)) } else { self.ratio };
+        if let Some((ra, rb)) = ratio {
+            let (ra, rb) = (i64::from(ra.max(1)), i64::from(rb.max(1)));
             let sx = if tx < ax { -1 } else { 1 };
             let sy = if ty < ay { -1 } else { 1 };
-            let d = (tx - ax).abs().max((ty - ay).abs());
-            let (cx, cy) = self.clamp((
-                i32::try_from(ax + sx * d).unwrap_or(i32::MAX),
-                i32::try_from(ay + sy * d).unwrap_or(i32::MAX),
-            ));
-            let d = (i64::from(cx) - ax).abs().min((i64::from(cy) - ay).abs());
-            tx = ax + sx * d;
-            ty = ay + sy * d;
+            // Sides in pixels: the longer side wins and the other follows the ratio.
+            let (mut w, mut h) = ((tx - ax).abs() + 1, (ty - ay).abs() + 1);
+            if w * rb >= h * ra {
+                h = (w * rb + ra / 2) / ra;
+            } else {
+                w = (h * ra + rb / 2) / rb;
+            }
+            // Within the picture, from the anchor in the drag's direction.
+            let p = self.picture;
+            let room_x = if sx > 0 {
+                p.right() - ax
+            } else {
+                ax - i64::from(p.x) + 1
+            };
+            let room_y = if sy > 0 {
+                p.bottom() - ay
+            } else {
+                ay - i64::from(p.y) + 1
+            };
+            if w > room_x {
+                w = room_x;
+                h = w * rb / ra;
+            }
+            if h > room_y {
+                h = room_y;
+                w = h * ra / rb;
+            }
+            let (w, h) = (w.max(1), h.max(1));
+            tx = ax + sx * (w - 1);
+            ty = ay + sy * (h - 1);
         }
         let (mut l, mut t) = (ax.min(tx), ay.min(ty));
         let (mut r, mut b) = (ax.max(tx) + 1, ay.max(ty) + 1);
-        if !square && self.snapping() {
+        if ratio.is_none() && self.snapping() {
             // The edges on the pointer's side move; they snap (Step 52).
             let p = self.picture;
             let (pl, pr, pt, pb) = (i64::from(p.x), p.right(), i64::from(p.y), p.bottom());
@@ -1692,6 +1777,32 @@ impl Overlay {
                         self.wheel -= if up { 120 } else { -120 };
                     }
                 }
+                Outcome::Stay
+            }
+            Input::Char(c) if self.size_entry.is_some() => {
+                if let Some(e) = self.size_entry.as_mut()
+                    && e.chars().count() < 16
+                    && (c.is_ascii_digit() || matches!(c, 'x' | 'X' | '*' | '\u{d7}' | ':' | ' '))
+                {
+                    e.push(c);
+                }
+                Outcome::Stay
+            }
+            Input::TextKey(k) if self.size_entry.is_some() => {
+                match k {
+                    TextKey::Backspace => {
+                        if let Some(e) = self.size_entry.as_mut() {
+                            e.pop();
+                        }
+                    }
+                    TextKey::Newline => self.apply_size(),
+                    _ => {}
+                }
+                Outcome::Stay
+            }
+            // `Escape` ends the entry and keeps the capture.
+            Input::Annotate(AnnotateAction::Done) if self.size_entry.is_some() => {
+                self.size_entry = None;
                 Outcome::Stay
             }
             Input::Char(c) => {
@@ -2212,6 +2323,7 @@ impl Overlay {
             | Action::Magnifier
             | Action::Full
             | Action::Last
+            | Action::Size
             | Action::HistoryPrevious
             | Action::HistoryNext
             | Action::Copy
@@ -2374,6 +2486,10 @@ impl Overlay {
                 self.history_at = None;
                 Outcome::Stay
             }
+            Action::Size => {
+                self.size_entry = Some(String::new());
+                Outcome::Stay
+            }
             Action::Last => {
                 if let Some(r) = self.last.and_then(|l| intersection(l, self.picture)) {
                     self.set_selection(r);
@@ -2420,6 +2536,67 @@ impl Overlay {
             | Action::Pointer(_)
             | Action::ColorCopy
             | Action::ColorFormatNext => Outcome::Stay,
+        }
+    }
+
+    /// #99 (`SNIP-12`): applies the typed entry. `W x H` (also `W*H`, `W\u{d7}H` or `W H`)
+    /// sizes the selection in device pixels from its top-left corner (a new one at the
+    /// pointer), inside the picture; `A:B` fixes the aspect ratio for this and later drags
+    /// (`0:0` or `:` alone ends it). Anything else leaves the selection alone and says what to
+    /// type.
+    fn apply_size(&mut self) {
+        let text = self.size_entry.take().unwrap_or_default();
+        match parse_size_entry(&text) {
+            Some(SizeEntry::Exact(w, h)) => {
+                let p = self.picture;
+                let w = w.min(p.width).max(1);
+                let h = h.min(p.height).max(1);
+                let (x0, y0) = match self.selection() {
+                    Some(s) => (s.x, s.y),
+                    None => self.pointer,
+                };
+                let max_x = p.right() - i64::from(w);
+                let max_y = p.bottom() - i64::from(h);
+                let x = i64::from(x0).clamp(i64::from(p.x), max_x.max(i64::from(p.x)));
+                let y = i64::from(y0).clamp(i64::from(p.y), max_y.max(i64::from(p.y)));
+                self.set_selection(Rect::new(
+                    i32::try_from(x).unwrap_or(p.x),
+                    i32::try_from(y).unwrap_or(p.y),
+                    w,
+                    h,
+                ));
+                self.history_at = None;
+                self.banner = None;
+            }
+            Some(SizeEntry::Ratio(None)) => {
+                self.ratio = None;
+                self.banner = None;
+            }
+            Some(SizeEntry::Ratio(Some((a, b)))) => {
+                self.ratio = Some((a, b));
+                self.banner = None;
+                if let Some(s) = self.selection() {
+                    let p = self.picture;
+                    let (a, b) = (u64::from(a), u64::from(b));
+                    let mut w = u64::from(s.width);
+                    let mut h = w * b / a;
+                    let room = u64::try_from(p.bottom() - i64::from(s.y)).unwrap_or(0);
+                    if h > room {
+                        h = room;
+                        w = h * a / b;
+                    }
+                    let (w, h) = (
+                        u32::try_from(w.max(1)).unwrap_or(1),
+                        u32::try_from(h.max(1)).unwrap_or(1),
+                    );
+                    self.set_selection(Rect::new(s.x, s.y, w, h));
+                }
+            }
+            None => {
+                if !text.trim().is_empty() {
+                    self.banner = Some(SIZE_HINT.to_string());
+                }
+            }
         }
     }
 
@@ -2594,9 +2771,17 @@ impl Overlay {
         }
         // The size readout of the annotation drawn or selected (NOEUL-FR-083), and what a
         // privacy tool's protection is worth (NOEUL-FR-082).
-        let note = protected
-            .then(|| PROTECTED_NOTE.to_string())
-            .or_else(|| self.ann.note());
+        let note = match &self.size_entry {
+            // #99 (`SNIP-12`): the entry being typed, with what Enter and Escape do.
+            Some(e) => Some(format!("Size or ratio: {e}_  (Enter applies, Esc cancels)")),
+            None => protected
+                .then(|| PROTECTED_NOTE.to_string())
+                .or_else(|| self.ann.note())
+                .or_else(|| {
+                    self.ratio
+                        .map(|(a, b)| format!("Ratio {a}:{b} (T, then : and Enter ends it)"))
+                }),
+        };
         let chip = self.chip(shown, note.as_deref(), measure);
         // Hit-testing follows what is drawn (the toolbar avoids the chip; a press on the chip
         // where it covers the selection is not a click).
@@ -4041,6 +4226,141 @@ mod tests {
         );
         release(&mut o, 300, 200);
         assert_eq!(o.selection(), Some(Rect::new(150, 120, 151, 81)));
+    }
+
+    /// #99 (`SNIP-12`): the size and ratio entry parses the usual spellings and refuses the rest.
+    #[test]
+    fn the_size_entry_parses_sizes_and_ratios() {
+        for t in [
+            "800x600",
+            " 800 x 600 ",
+            "800*600",
+            "800\u{d7}600",
+            "800 600",
+            "800X600",
+        ] {
+            assert_eq!(parse_size_entry(t), Some(SizeEntry::Exact(800, 600)), "{t}");
+        }
+        assert_eq!(
+            parse_size_entry("16:9"),
+            Some(SizeEntry::Ratio(Some((16, 9))))
+        );
+        assert_eq!(
+            parse_size_entry(" 4 : 3 "),
+            Some(SizeEntry::Ratio(Some((4, 3))))
+        );
+        assert_eq!(parse_size_entry(":"), Some(SizeEntry::Ratio(None)));
+        assert_eq!(parse_size_entry("0:0"), Some(SizeEntry::Ratio(None)));
+        for bad in [
+            "", "800", "0x600", "800x0", "1x2x3", "16:0", "a:b", "2000:1", "x",
+        ] {
+            assert_eq!(parse_size_entry(bad), None, "{bad}");
+        }
+    }
+
+    fn typed(o: &mut Overlay, text: &str) {
+        o.handle(Input::Action(Action::Size));
+        assert!(o.editing_text(), "the entry takes the keyboard");
+        for c in text.chars() {
+            o.handle(Input::Char(c));
+        }
+        o.handle(Input::TextKey(TextKey::Newline));
+    }
+
+    /// #99 (`SNIP-12`): `T` and a typed size give the selection exactly that size from its
+    /// top-left corner, inside the picture; with nothing selected it starts at the pointer.
+    #[test]
+    fn a_typed_size_sizes_the_selection_in_device_pixels() {
+        let mut o = one(800, 600);
+        press(&mut o, Button::Left, 100, 100);
+        mv(&mut o, 200, 150);
+        release(&mut o, 200, 150);
+        typed(&mut o, "320x240");
+        assert!(!o.editing_text());
+        assert_eq!(o.selection(), Some(Rect::new(100, 100, 320, 240)));
+        // Larger than what is left: moved in, then limited to the picture.
+        typed(&mut o, "780 590");
+        assert_eq!(o.selection(), Some(Rect::new(20, 10, 780, 590)));
+        typed(&mut o, "5000x5000");
+        assert_eq!(o.selection(), Some(Rect::new(0, 0, 800, 600)));
+        // Nothing selected yet: at the pointer.
+        let mut o = one(800, 600);
+        mv(&mut o, 50, 60);
+        typed(&mut o, "100x80");
+        assert_eq!(o.selection(), Some(Rect::new(50, 60, 100, 80)));
+        assert_eq!(o.phase(), Phase::Selected);
+    }
+
+    /// #99 (`SNIP-12`): `16:9` reshapes the selection and later drags keep the ratio (no
+    /// snapping); `:` ends it. `Escape` closes the entry and keeps the capture; nonsense keeps
+    /// the selection and says what to type; Backspace edits.
+    #[test]
+    fn a_typed_ratio_is_kept_by_later_drags() {
+        let mut o = one(800, 600);
+        press(&mut o, Button::Left, 100, 100);
+        mv(&mut o, 259, 300);
+        release(&mut o, 259, 300);
+        typed(&mut o, "16:9");
+        assert_eq!(o.ratio(), Some((16, 9)));
+        assert_eq!(o.selection(), Some(Rect::new(100, 100, 160, 90)));
+        // A new drag keeps 16:9, the longer side wins.
+        let mut o2 = o.clone();
+        o2.selection = None;
+        o2.state = State::Hover;
+        press(&mut o2, Button::Left, 10, 10);
+        mv(&mut o2, 329, 20);
+        assert_eq!(o2.live(), Some(Rect::new(10, 10, 320, 180)));
+        mv(&mut o2, 30, 189);
+        assert_eq!(
+            o2.live(),
+            Some(Rect::new(10, 10, 320, 180)),
+            "the taller side wins"
+        );
+        // Near the bottom edge it shrinks to what fits, still 16:9.
+        mv(&mut o2, 799, 599);
+        let r = o2.live().unwrap();
+        assert!(r.bottom() <= 600 && r.right() <= 800, "{r:?}");
+        assert_eq!(u64::from(r.width) * 9 / 16, u64::from(r.height), "{r:?}");
+        // `:` ends the ratio.
+        typed(&mut o, ":");
+        assert_eq!(o.ratio(), None);
+        // Escape ends the entry, the capture stays; Backspace edits.
+        o.handle(Input::Action(Action::Size));
+        o.handle(Input::Char('9'));
+        o.handle(Input::Char('x'));
+        o.handle(Input::TextKey(TextKey::Backspace));
+        assert_eq!(o.size_entry(), Some("9"));
+        assert_eq!(
+            o.handle(Input::Annotate(AnnotateAction::Done)),
+            Outcome::Stay
+        );
+        assert!(!o.editing_text() && o.selection().is_some());
+        // Nonsense: the selection stays, the banner says what to type.
+        let before = o.selection();
+        typed(&mut o, "12");
+        assert_eq!(o.selection(), before);
+        assert_eq!(o.banner.as_deref(), Some(SIZE_HINT));
+    }
+
+    /// #99 (`SNIP-12`): the readout shows the entry while it is typed, and the ratio after.
+    #[test]
+    fn the_readout_shows_the_entry_and_the_ratio() {
+        let mut o = one(800, 600);
+        press(&mut o, Button::Left, 100, 100);
+        mv(&mut o, 200, 150);
+        release(&mut o, 200, 150);
+        o.handle(Input::Action(Action::Size));
+        o.handle(Input::Char('4'));
+        o.handle(Input::Char(':'));
+        o.handle(Input::Char('3'));
+        let lines = o.scene(&Approx).chip.unwrap().lines;
+        assert!(
+            lines.iter().any(|l| l.contains("Size or ratio: 4:3_")),
+            "{lines:?}"
+        );
+        o.handle(Input::TextKey(TextKey::Newline));
+        let lines = o.scene(&Approx).chip.unwrap().lines;
+        assert!(lines.iter().any(|l| l.contains("Ratio 4:3")), "{lines:?}");
     }
 
     #[test]

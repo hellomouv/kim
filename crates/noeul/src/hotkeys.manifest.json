@@ -26,6 +26,7 @@
     { "id": "selection.mark", "title": "Mark a corner at the pointer (keyboard selection)", "context": "capture-overlay", "defaults": ["Space"] },
     { "id": "selection.full", "title": "Select the monitor, then all monitors", "context": "capture-overlay", "defaults": ["Ctrl+A"] },
     { "id": "selection.last", "title": "Select the last captured rectangle", "context": "capture-overlay", "defaults": ["R"] },
+    { "id": "selection.size", "title": "Type the selection's size or a fixed aspect ratio", "context": "capture-overlay", "defaults": ["T"] },
     { "id": "selection.move-up", "title": "Move the selection up one pixel", "context": "capture-overlay", "defaults": [{ "keys": "Up", "repeat": true }] },
     { "id": "selection.move-down", "title": "Move the selection down one pixel", "context": "capture-overlay", "defaults": [{ "keys": "Down", "repeat": true }] },
     { "id": "selection.move-left", "title": "Move the selection left one pixel", "context": "capture-overlay", "defaults": [{ "keys": "Left", "repeat": true }] },

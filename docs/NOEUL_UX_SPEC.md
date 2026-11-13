@@ -1402,7 +1402,7 @@ scopes `global` and `app`, also **without default keys**; the catalog's shortcut
 | `selection.full` | `Ctrl+A` | `color.copy` | `C` |
 | `selection.last` | `R` | `color.format-next` | `Shift+C` |
 | `history.previous` | `Comma` | `history.next` | `Period` |
-| `capture.private` | `P` | | |
+| `capture.private` | `P` | `selection.size` | `T` (#99: type `800x600` or `16:9`, Enter) |
 
 Shipped since Step 50 ([ADR 0026](adr/0026-noeul-capture-overlay.md)): `capture.pin`,
 `capture.cancel`, `selection.full`, `selection.last` and the `selection.move-*`, `-grow-*` and

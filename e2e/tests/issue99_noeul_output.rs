@@ -188,3 +188,29 @@ fn issue99_capture_writes_jpeg_or_png_and_waits_for_its_delay() {
     );
     n.ok(&["quit", "--yes"]);
 }
+
+/// #99 (`SNIP-12`): the typed size and fixed ratio of the capture overlay is a bindable action,
+/// discoverable headlessly: `hotkeys list` shows `selection.size` on `T` in the
+/// `capture-overlay` context, and `hotkeys show` names it. (The overlay itself is checked by
+/// `crates/noeul/src/overlay.rs` tests and on the real desktop; nothing opens here.)
+#[test]
+#[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
+fn issue99_the_size_entry_is_a_listed_overlay_action() {
+    require_e2e();
+    let n = Noeul::new();
+    let (code, list) = n.json(&["hotkeys", "list"]);
+    assert_eq!(code, 0, "{list:#}");
+    valid("hotkeys-cli-v1", &list);
+    let size = list["data"]["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "selection.size")
+        .cloned()
+        .unwrap_or_else(|| panic!("selection.size is listed: {list:#}"));
+    assert_eq!(size["scope"], "context:capture-overlay", "{size:#}");
+    assert!(size.to_string().contains("\"T\""), "bound to T: {size:#}");
+    let (code, show) = n.json(&["hotkeys", "show", "selection.size"]);
+    assert_eq!(code, 0, "{show:#}");
+    valid("hotkeys-cli-v1", &show);
+}

@@ -81,6 +81,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "selection.mark",
     "selection.full",
     "selection.last",
+    "selection.size",
     "selection.move-up",
     "selection.move-down",
     "selection.move-left",

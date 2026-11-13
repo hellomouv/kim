@@ -77,7 +77,7 @@ Each row has a permanent ID so that commits, tests and later audits can cite it.
 | `SNIP-09` | Square selection while holding `Shift` | L | Same while dragging. Step 50: `Shift` while dragging keeps the sides equal inside the picture; missing: the manual check | partial | NOEUL-FR-011 | N1 | T | T: `crates/noeul/src/overlay.rs` shift_makes_a_square_inside_the_picture |
 | `SNIP-10` | Move the area while still dragging by holding `Space` | A | Holding `Space` during a drag moves the area with the pointer (its size stays); pressing `Space` mid-drag no longer turns the drag into a corner marking (#99). | supported | NOEUL-FR-046 | N4 | T | T: `crates/noeul/src/overlay.rs` tests::space_held_while_dragging_moves_the_area; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, real mouse and keyboard through the hotkey-opened overlay |
 | `SNIP-11` | Delayed capture and a dialog for position, size and delay | P, C | Delayed capture: `noeul capture --delay <seconds>` (0–60) waits before capturing or opening the overlay (#99). Missing: the tray item and the position, size and delay dialog | partial | NOEUL-FR-015 | N5 | T | T: `crates/noeul/src/main.rs` tests::capture_delay_is_bounded |
-| `SNIP-12` | Type the region size during snipping; fixed-ratio capture (Pro) | P | Typed size and fixed aspect ratio | planned | NOEUL-FR-046 | N4 | T | — |
+| `SNIP-12` | Type the region size during snipping; fixed-ratio capture (Pro) | P | `selection.size` (`T`) opens a size entry in the readout: `800x600` (also `800*600`, `800×600`, `800 600`) gives the selection exactly that size in device pixels from its top-left corner (a new one at the pointer), kept inside the picture; `16:9` fixes the aspect ratio for the selection and every later drag (snapping off, the readout says `Ratio 16:9`), `:` ends it; Backspace edits, `Escape` closes only the entry; anything else keeps the selection and says what to type (#99). | supported | NOEUL-FR-046 | N4 | T, M | T: `crates/noeul/src/overlay.rs` tests::the_size_entry_parses_sizes_and_ratios, a_typed_size_sizes_the_selection_in_device_pixels, a_typed_ratio_is_kept_by_later_drags, the_readout_shows_the_entry_and_the_ratio; M: 2026-11-13 Windows 10 22H2, 5120×1440 at 100 %, real keys in the hotkey-opened overlay: `640x360` → 640 × 360 at 3000,300; `4:3` → 640 × 480 with `Ratio 4:3`; a new drag 501 × 376; `Escape` closed the entry, a second one the capture |
 | `SNIP-13` | Capture the mouse cursor, toggled in the overlay | P, K | Optional pointer capture, off by default. Step 58 (ADR 0050): `noeul capture … --pointer` and `[capture] pointer = "on"` (the `F1` freeze and the `capture.monitor`/`capture.window` keys) draw the real pointer into the capture's own bitmap at its hotspot (`GetCursorInfo`, `DrawIconEx` at the image's own size); a hidden or outside pointer is reported; missing: the overlay's toggle and the manual check of the pointer's size on scaled monitors (UX spec §4.13) | partial | NOEUL-FR-016 | N4 | T, M | T: `crates/noeul/src/displays/tests.rs` the_synthetic_pointer_is_drawn_exactly_at_its_hotspot_or_says_why_not; T: `crates/noeul/src/app/display_tests.rs` the_pointer_is_drawn_into_the_picture_only_when_asked_and_says_why_not; T: `crates/noeul/src/win/displays.rs` system_pointers_are_drawn_at_their_hotspot_into_a_memory_bitmap; T: `crates/noeul/tests/displays.rs` monitor_window_and_region_captures_through_the_cli_are_pixel_exact |
 | `SNIP-14` | Capture the active window (Pro) or the active screen | P, C | Active window and monitor capture from the tray and CLI, without an overlay. Step 58 (ADR 0050): `noeul capture --monitor <n>` (or `primary`, `pointer`) and `--window active` (the focused window's visible frame cut from the screen) pin in place, and the global `capture.monitor`/`capture.window` actions (no default keys) do the same; results give the logical size and honest warnings; no tray items (opening the tray menu makes the taskbar the active window) ◆; missing: the manual check on real monitors (UX spec §4.13) | partial | NOEUL-FR-017 | N4 | T, M | T: `crates/noeul/src/app/display_tests.rs` monitors_are_captured_whole_at_their_native_pixels_with_a_logical_mapping, the_active_window_is_cut_from_the_screen_and_its_limits_are_said, the_capture_keys_pin_with_focus_and_explain_failures; T: `crates/noeul/tests/displays.rs` monitor_window_and_region_captures_through_the_cli_are_pixel_exact |
 | `SNIP-15` | Refresh the frozen screenshot while keeping annotations, `F5` (Pro) | K, P | Not planned for now; cancel and capture again | not intended | D-12 | — | — | — |
@@ -321,15 +321,15 @@ picture.
 
 | Status | Rows |
 | --- | --- |
-| `supported` | 5 |
+| `supported` | 6 |
 | `partial` | 111 |
-| `planned` | 31 (of which 5 are Noeul additions: the five `ADD` rows) |
+| `planned` | 30 (of which 5 are Noeul additions: the five `ADD` rows) |
 | `not intended` | 24 |
 | **Total** | **171** |
 
 | Group | supported | partial | planned | not intended | Total |
 | --- | --- | --- | --- | --- | --- |
-| 1. Starting and selecting (`SNIP`) | 1 | 12 | 1 | 8 | 22 |
+| 1. Starting and selecting (`SNIP`) | 2 | 12 | 0 | 8 | 22 |
 | 2. Detection and precision (`DET`) | 0 | 11 | 1 | 0 | 12 |
 | 3. Color picker (`COLOR`) | 0 | 7 | 0 | 0 | 7 |
 | 4. History (`HIST`) | 1 | 2 | 3 | 0 | 6 |
@@ -368,6 +368,7 @@ Deviations from Snipaste's defaults (**◆**) are in `SNIP-05`, `DET-02`, `DET-0
 | 2026-11-12 | 2.11.3 (2026-01-18) | #99 | Pin follow-ups: `PIN-21` (grayscale, invert, topmost), `PIN-22` (replace with the clipboard) and `PIN-27` (sharp pixels) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-06` (tray click settings) and `DET-09` (the keys are separate rebindable actions) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-10` (move the area with `Space` held) moves to `partial`. |
+| 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SNIP-12` (typed size and fixed ratio, `T`) is `supported` after the real-desktop check. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `PIN-17` (snap with `Shift`) and `PIN-20` (multi-selection) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `COLOR-05` (recolour a colour card) and `PIN-24` (colour picking on pins) move to `partial`. |
 | 2026-11-13 | 2.11.3 (2026-01-18) | #99 | `SET-03` (start at sign-in through `noeulw.exe`) moves to `partial`. |
