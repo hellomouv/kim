@@ -695,13 +695,7 @@ impl Host {
                 ),
             ));
         };
-        use crate::table::Action as A;
-        let runnable = b.hotstring.is_none()
-            && matches!(
-                b.action,
-                A::Type(_) | A::Keys(_) | A::Launch(_) | A::Mouse(_) | A::Sequence(_)
-            );
-        if !runnable {
+        if !b.startable() {
             return Err((
                 "rule_not_runnable".into(),
                 format!(

@@ -160,6 +160,23 @@ pub struct SeqPlan {
     pub continue_on_error: bool,
 }
 
+impl Binding {
+    /// Whether the rule can be started without its keys (`ddalgak rule run`, a timer): a run —
+    /// typing, keys, a launch, mouse steps or a macro — never a remap, a hold, a mode or engine
+    /// rule or a hotstring, which only mean something while their keys are down.
+    pub fn startable(&self) -> bool {
+        self.hotstring.is_none()
+            && matches!(
+                self.action,
+                Action::Type(_)
+                    | Action::Keys(_)
+                    | Action::Launch(_)
+                    | Action::Mouse(_)
+                    | Action::Sequence(_)
+            )
+    }
+}
+
 impl Action {
     /// A typing run (`type_text`, `send_keys`).
     pub fn is_run(&self) -> bool {

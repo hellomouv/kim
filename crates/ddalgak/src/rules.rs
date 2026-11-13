@@ -802,6 +802,15 @@ struct Candidate {
 }
 
 /// The engine's interpretation of a checked document.
+/// #84: whether a rule of `profile` can be started without its keys (the target of a timer):
+/// `None` when it does not compile, else [`crate::table::Binding::startable`].
+pub fn startable(rule: &Rule, profile: &crate::model::Profile) -> Option<bool> {
+    let map = rule.to_value().as_object().cloned()?;
+    compile(&map, &ModeSet::from_profile(profile))
+        .ok()
+        .map(|(b, _)| b.startable())
+}
+
 pub fn from_store(l: &store::Loaded) -> Loaded {
     let (Some(doc), true) = (&l.doc, l.state.usable()) else {
         return Loaded::empty(l.state.clone(), l.revision, l.hash);
@@ -2391,6 +2400,45 @@ mod tests {
             report.problems.iter().any(|p| p.code == "step_invalid"),
             "{:?}",
             report.problems
+        );
+    }
+
+    /// #84 (found on the real desktop): a timer aimed at a rule that only works with its keys (a
+    /// mode rule here) was accepted and did nothing when it came due; it is refused now, and a
+    /// timer aimed at a rule that runs (a notification) still passes.
+    #[test]
+    fn a_timer_must_start_a_rule_that_can_run_without_its_keys() {
+        let check = |target: Value| {
+            let mut arm = engine_rule("arm", "F13", "pause");
+            arm["steps"] = json!([{"type": "timer", "rule": "target", "after_ms": 3000}]);
+            let v: Value = serde_json::from_slice(&doc(json!([arm, target]))).unwrap();
+            crate::validate::check(&v, &Context::default())
+                .problems
+                .into_iter()
+                .filter(|p| p.code == "step_invalid")
+                .map(|p| p.message)
+                .collect::<Vec<_>>()
+        };
+        let mut mode = engine_rule("target", "F14", "pause");
+        mode["steps"] = json!([{"type": "mode", "op": "set", "mode": "nav"}]);
+        let refused = check(mode);
+        assert!(
+            refused
+                .iter()
+                .any(|m| m.contains("only works with its keys (a remap, a hold,")),
+            "{refused:?}"
+        );
+        assert!(
+            !refused.iter().any(|m| m.contains("  ")),
+            "no runs of spaces: {refused:?}"
+        );
+        let mut note = engine_rule("target", "F14", "pause");
+        note["steps"] = json!([{"type": "notify", "title": "Later"}]);
+        assert!(check(note).is_empty());
+        let engine = engine_rule("target", "F14", "pause");
+        assert!(
+            !check(engine).is_empty(),
+            "an engine rule only works with its keys"
         );
     }
 

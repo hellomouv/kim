@@ -980,12 +980,24 @@ fn extend(
                     Action::Timer(t) => crate::actions::TimerSpec::compile(&v).and_then(|_| {
                         if t.rule == rule.id {
                             Err("a timer cannot start its own rule".to_string())
-                        } else if profile
+                        } else if let Some(target) = profile
                             .rules
                             .iter()
-                            .any(|x| x.id() == Some(t.rule.as_str()))
+                            .find(|x| x.id() == Some(t.rule.as_str()))
                         {
-                            Ok(())
+                            // #84 (found on the real desktop): a timer aimed at a mode rule was
+                            // accepted and then did nothing when it came due.
+                            match target.rule().and_then(|r| crate::rules::startable(r, profile)) {
+                                Some(false) => Err(format!(
+                                    concat!(
+                                        "the timer's rule `{}` only works with its keys ",
+                                        "(a remap, a hold, a mode or engine rule, or a hotstring); ",
+                                        "use one that types, presses keys, opens, moves the mouse or runs steps"
+                                    ),
+                                    t.rule
+                                )),
+                                _ => Ok(()),
+                            }
                         } else {
                             Err(format!("no rule `{}` in this profile", t.rule))
                         }
