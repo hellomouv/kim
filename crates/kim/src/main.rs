@@ -8,6 +8,10 @@
 //! `catalog refresh`, `update check --refresh`, `install` and `update`. No code path here starts
 //! a GUI; the only child processes are a staged tool's `--version` self-check during an explicit
 //! install and `tools describe --probe`.
+//!
+//! The one exception is not a CLI path (ADR 0089): a double-click on `kim.exe` in Explorer (no
+//! arguments, alone on the console Windows made for it) hands over to the Kim window
+//! (`kim-manager.exe`) and ends; see `kim::start`.
 
 mod discover;
 mod hotkeys_cmd;
@@ -175,6 +179,47 @@ pub(crate) struct Ctx {
     pub no_input: bool,
 }
 
+/// ADR 0089: a double-click on `kim.exe` opens the Kim window (`kim::start` says when that is).
+/// `None`: this is a CLI start, go on as usual.
+fn double_click_start(argv: &[OsString]) -> Option<ExitCode> {
+    let no_input =
+        std::env::var_os("KIM_NO_INPUT").is_some_and(|v| !v.is_empty() && v != "0" && v != "false");
+    if !kim::start::is_double_click(kim::start::this_launch(argv.len(), no_input)) {
+        return None;
+    }
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let paths = Paths::from_env().ok();
+    let mirror = kim::start::mirror_beside(&dir);
+    for candidate in kim::start::manager_candidates(&dir, paths.as_ref()) {
+        if !candidate.is_file() {
+            continue;
+        }
+        let mut cmd = std::process::Command::new(&candidate);
+        if let Some(m) = &mirror {
+            cmd.arg("--catalog").arg(m);
+        }
+        cmd.current_dir(&dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        if cmd.spawn().is_ok() {
+            kim::start::release_console();
+            return Some(ExitCode::SUCCESS);
+        }
+    }
+    // No window here: say so on the console Windows opened, and keep it open until Enter.
+    let _ = Cli::command().print_help();
+    println!(
+        "\n\nThe Kim window ({}) was not found next to this kim.exe or in Kim's install.\n\
+         Put kim-manager.exe next to kim.exe (or install Kim with Kim-Setup.exe), or use the \
+         commands above from a terminal.\n\nPress Enter to close this window.",
+        kim::start::MANAGER_EXE
+    );
+    let mut line = String::new();
+    let _ = std::io::stdin().read_line(&mut line);
+    Some(ExitCode::SUCCESS)
+}
+
 impl Ctx {
     fn new(g: &Global) -> Self {
         let env_no_input = std::env::var_os("KIM_NO_INPUT")
@@ -219,6 +264,9 @@ pub(crate) fn diag(msg: impl AsRef<str>) {
 
 fn main() -> ExitCode {
     let argv: Vec<OsString> = std::env::args_os().collect();
+    if let Some(code) = double_click_start(&argv) {
+        return code;
+    }
     let json_requested = argv.iter().skip(1).any(|a| a == "--json");
     let cli = match Cli::try_parse_from(&argv) {
         Ok(cli) => cli,
@@ -491,6 +539,7 @@ pub(crate) fn load() -> Result<(Paths, Loaded), KimError> {
         match loaded.source {
             store::Source::Bundled => "bundled",
             store::Source::Cache => "cached",
+            store::Source::Mirror => "local mirror",
         },
         loaded.signer.key_id,
         if loaded.stale { " (stale)" } else { "" }
@@ -518,6 +567,7 @@ pub(crate) fn catalog_header(l: &Loaded) -> String {
         match l.source {
             store::Source::Bundled => "bundled",
             store::Source::Cache => "cached",
+            store::Source::Mirror => "local mirror",
         },
         l.signer.key_id,
         date(&l.catalog.generated_at),

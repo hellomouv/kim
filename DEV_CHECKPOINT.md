@@ -13,11 +13,14 @@ checkpoint."*
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
 - Uncommitted changes: none expected between Steps
+- Root `kim.exe` (ADR 0089): at wrap-up also copy `kim-manager.exe` to the root and run `cargo xtask local-mirror --key <catalog key>` so the double-click works with the current tools
 - Next action: #98 T4 rest (CORE-38, SHELL-14, SHELL-18, SHELL-23, SHELL-24, SHELL-26, CFG-07, CFG-08, PLUG-05), T1 rest (CORE-09, CORE-28, CORE-47), then T5, T6; since 2026-11-14 NO real mouse/keyboard/screen (the user is at the PC): off-screen windows and tests only, real-desktop checks are written as not tested; then #97 (tmux) and #44. Real-desktop drags must check the end point (memory real-drag-end-point). Maintainer-check and Linux issues stay open. The repository moved to madebymouv/kim (old URL redirects).
 - Loop directive (user, 2026-11-11): keep implementing until `gh api --paginate
   repos/madebymouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-14: user request (ADR 0089) — root `kim.exe` usable by double-click: hand-over to Kim Manager (only no-arg, lone console with a window, console stdio, no KIM_NO_INPUT), `cargo xtask local-mirror` (signed `file://` catalog in `kim-local/`, session-only, never cached), Open buttons, icons + version info via `kim-winres` (kim, kim-manager, kim-setup: Kim; subak, subak-gui: watermelon). Tests: kim-winres 4/4, start 3/3, store mirror, double_click (hidden console + job: baseline 2, double-click 3), kim-manager ui mirror/open/icon, program_icon, subak icon_assets; sandboxed real install of subak/noeul/ddalgak from the generated mirror (release kim); `cargo deny` bans/licenses/sources ok; real double-click and on-screen icons **not tested** (no real input while the user is present).
 
 - 2026-11-13: Noeul #99 SNIP-12 (typed size / ratio, T) and DET-03 (wheel to parent element) verified on the real desktop; `cargo xtask ci` EXIT 0. Driver note: the key name is `esc` (not `escape`); F1 needs `RegisteredKey(1)` because `Hotkey` only sends F13-F24.
 

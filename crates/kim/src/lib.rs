@@ -22,6 +22,7 @@ pub mod platform;
 pub mod redact;
 pub mod running;
 pub mod settings;
+pub mod start;
 pub mod time;
 
 /// Version of this Kim build.

@@ -1,0 +1,15 @@
+[package]
+name = "kim-winres"
+version = "0.0.1"
+description = "Build-time helper: writes a Windows resource object (program icon and version information) for Kim's executables, without rc.exe or windres"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

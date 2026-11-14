@@ -684,3 +684,164 @@ fn no_hotkeys_start_flag_turns_every_shortcut_off() {
     assert!(!h.state().shortcuts_visible() && !h.state().is_busy());
     assert!(!layer.exists(), "the file is not touched");
 }
+
+/// ADR 0089: a double-click on `kim.exe` opens this window with the local mirror next to it
+/// (`--catalog file://…`): Subak installs from the package on disk (no network, nothing cached),
+/// and "Open Subak" then starts the installed version's `subak-gui.exe` (recorded here, not
+/// started) only when pressed.
+#[test]
+#[cfg(windows)]
+fn a_local_mirror_installs_a_tool_that_open_then_starts() {
+    let sb = Sandbox::new("mirror");
+    let paths = Paths::under(sb.0.join("user"));
+    let mirror = sb.0.join("kim-local");
+    std::fs::create_dir_all(&mirror).unwrap();
+    // The package: the CLI (a copy of cmd.exe answers `--version` with stdin closed) and the
+    // window program the Open button starts.
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let o = zip::write::SimpleFileOptions::default();
+    for name in ["subak.exe", "subak-gui.exe"] {
+        zip.start_file(name, o).unwrap();
+        zip.write_all(&std::fs::read(r"C:\Windows\System32\cmd.exe").unwrap())
+            .unwrap();
+    }
+    let body = zip.finish().unwrap().into_inner();
+    let zip_path = mirror.join("subak-0.0.1-windows-x86_64.zip");
+    std::fs::write(&zip_path, &body).unwrap();
+    let bundled: serde_json::Value =
+        serde_json::from_slice(kim::catalog::store::BUNDLED_CATALOG).unwrap();
+    let mut doc = bundled.clone();
+    doc["catalog_version"] = json!(bundled["catalog_version"].as_u64().unwrap() + 1);
+    let subak = doc["tools"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|t| t["id"] == "subak")
+        .unwrap();
+    subak["releases"] = json!([{"version": "0.0.1", "channel": "stable",
+        "published_at": "2026-11-14T00:00:00Z", "release_notes": "built on this PC",
+        "assets": [{"os": "windows", "arch": "x86_64", "url": kim::start::file_url(&zip_path),
+                    "size": body.len(), "sha256": signature::hex(&Sha256::digest(&body)),
+                    "kind": "zip", "entrypoint": "subak.exe"}]}]);
+    let bytes = serde_json::to_vec_pretty(&doc).unwrap();
+    let catalog = mirror.join("catalog.json");
+    std::fs::write(&catalog, &bytes).unwrap();
+    std::fs::write(
+        mirror.join("catalog.json.sig"),
+        serde_json::to_vec(&signature::sign(&bytes, &SEED)).unwrap(),
+    )
+    .unwrap();
+    let mut keys = keys();
+    keys.extend_from_slice(signature::TRUSTED_KEYS);
+    let be = Backend {
+        paths: paths.clone(),
+        keys,
+        downloader: Arc::new(kim::fetch::DefaultFetcher::default()),
+        settings_path: Some(sb.0.join("settings.json")),
+        platform: Platform::current(),
+        catalog_source: "http://127.0.0.1:9/never-used.json".into(),
+    };
+    let started = Arc::new(std::sync::Mutex::new(Vec::<PathBuf>::new()));
+    let mut app = KimManagerApp::new(be, None);
+    let rec = started.clone();
+    app.set_launcher(Arc::new(move |p: &std::path::Path, _: &[&str]| {
+        rec.lock().unwrap().push(p.to_path_buf());
+        Ok(())
+    }));
+    // Before the mirror: Subak is planned, nothing to install.
+    assert!(
+        app.views()
+            .iter()
+            .any(|v| v.id == "subak" && v.latest.is_none())
+    );
+    app.use_mirror(&kim::start::file_url(&catalog));
+    assert!(
+        matches!(app.banner(), Some(Banner::Info(m)) if m.contains("built on this PC")),
+        "{:?}",
+        app.banner()
+    );
+    let mut h = harness(app);
+    h.state_mut().select("subak");
+    h.run();
+    assert!(
+        h.query_by_label("Open Subak").is_none(),
+        "not installed yet"
+    );
+    h.get_by_label("Install 0.0.1").click();
+    h.run();
+    assert!(
+        h.state_mut().wait_idle(Duration::from_secs(30)),
+        "install finishes"
+    );
+    h.run();
+    assert!(
+        matches!(h.state().banner(), Some(Banner::Success(_))),
+        "{:?}",
+        h.state().banner()
+    );
+    assert!(paths.install_record("subak").exists());
+    assert!(
+        !paths.catalog_cache_dir().join("catalog.json").exists(),
+        "a mirror is never cached"
+    );
+    assert!(
+        started.lock().unwrap().is_empty(),
+        "installing starts nothing"
+    );
+    h.get_by_label("Open Subak").click();
+    h.run();
+    let want = paths
+        .tool_dir("subak")
+        .join("versions")
+        .join("0.0.1")
+        .join("subak-gui.exe");
+    assert_eq!(*started.lock().unwrap(), vec![want]);
+    assert!(
+        matches!(h.state().banner(), Some(Banner::Success(m)) if m.contains("subak-gui.exe")),
+        "{:?}",
+        h.state().banner()
+    );
+    println!(
+        "EVIDENCE local mirror: Subak 0.0.1 installed from {} and Open started subak-gui.exe",
+        zip_path.display()
+    );
+}
+
+/// ADR 0089: what Open starts per tool.
+#[test]
+fn open_starts_each_tools_own_window_program() {
+    let p = |t: &str| {
+        kim_manager::launches(t)
+            .iter()
+            .map(|l| l.program)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(p("subak"), ["subak-gui.exe"]);
+    assert_eq!(p("noeul"), ["noeulw.exe"]);
+    assert_eq!(p("ddalgak"), ["ddalgak-gui.exe", "ddalgak-editor.exe"]);
+    assert!(p("kim").is_empty(), "Kim is this window");
+}
+
+/// ADR 0089: `kim-manager.exe` carries the Kim icon (Explorer and the taskbar).
+#[test]
+#[cfg(windows)]
+fn the_window_program_carries_the_kim_icon() {
+    let res =
+        kim_winres::resources(&std::fs::read(env!("CARGO_BIN_EXE_kim-manager")).unwrap()).unwrap();
+    let ico = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/icon/kim.ico"),
+    )
+    .unwrap();
+    let images = kim_winres::parse_ico(&ico).unwrap();
+    let icons = res.iter().filter(|r| r.0 == kim_winres::RT_ICON).count();
+    assert_eq!(icons, images.len());
+    let v = &res
+        .iter()
+        .find(|r| r.0 == kim_winres::RT_VERSION)
+        .unwrap()
+        .2;
+    assert_eq!(
+        kim_winres::version_string(v, "FileDescription").as_deref(),
+        Some("Kim Manager")
+    );
+}

@@ -45,6 +45,11 @@ See [docs/INSTALL.md](docs/INSTALL.md): supported Windows versions, the independ
 packages, install/update/rollback/uninstall, and the current known limitations. No release is
 published yet ([docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md)).
 
+From a build of this repository: put `kim.exe` and `kim-manager.exe` at the root, run
+`cargo xtask local-mirror --key <catalog key>`, then double-click `kim.exe` — Kim Manager opens
+and installs and opens Subak, Noeul and Ddalgak from the packages built here
+([INSTALL](docs/INSTALL.md#use-kim-from-a-build-of-this-repository-no-release-needed)).
+
 ## Documentation
 
 Start with the [documentation index](docs/README.md):

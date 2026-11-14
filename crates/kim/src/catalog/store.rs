@@ -39,6 +39,9 @@ pub const CACHE_SIG_FILE: &str = "catalog.json.sig";
 pub enum Source {
     Bundled,
     Cache,
+    /// ADR 0089: a local mirror (`file://` catalog of packages built on this PC), used for one
+    /// Kim Manager session and never written to the cache.
+    Mirror,
 }
 
 /// A verified catalog plus where it came from.
@@ -216,6 +219,21 @@ pub fn fetch_verified(
     let bytes = fetcher.get(source_url, MAX_CATALOG_BYTES)?;
     let sig = fetcher.get(&format!("{source_url}.sig"), signature::MAX_SIGNATURE_BYTES)?;
     let (fetched, signer) = verify_document(&bytes, &sig, keys)?;
+    // ADR 0089: packages on this PC's disk only come from a catalog that is itself on disk.
+    if !source_url.starts_with("file://")
+        && fetched
+            .tools
+            .iter()
+            .flat_map(|t| &t.releases)
+            .flat_map(|r| &r.assets)
+            .any(|a| a.url.starts_with("file:"))
+    {
+        return Err(KimError::new(
+            ErrorCode::CatalogInvalid,
+            "the fetched catalog points at files on this PC (file:// packages), which only a local mirror may do",
+        )
+        .with_hint("nothing was changed"));
+    }
     let previous_version = current.catalog.catalog_version;
     if fetched.catalog_version < previous_version {
         return Err(KimError::new(
@@ -247,6 +265,44 @@ pub fn fetch_verified(
         signer,
         bytes,
         sig,
+    })
+}
+
+/// ADR 0089: a local mirror (`file://` source only): fetched and verified like a refresh
+/// (signature, content, no older than the trusted catalog), returned for this session and never
+/// written to the cache, so a later refresh from the publisher is not blocked by it.
+pub fn mirror(
+    paths: &Paths,
+    keys: &[TrustedKey],
+    now: i64,
+    source_url: &str,
+    fetcher: &dyn Fetcher,
+) -> Result<Loaded> {
+    if !source_url.starts_with("file://") {
+        return Err(KimError::new(
+            ErrorCode::Usage,
+            format!(
+                "a local mirror is a file:// catalog, not `{}`",
+                crate::redact::url(source_url)
+            ),
+        ));
+    }
+    let f = fetch_verified(paths, keys, now, source_url, fetcher)?;
+    let stale = is_stale(&f.catalog, now);
+    let warnings = if stale {
+        vec![format!(
+            "the local mirror expired on {}",
+            f.catalog.expires_at
+        )]
+    } else {
+        Vec::new()
+    };
+    Ok(Loaded {
+        catalog: f.catalog,
+        source: Source::Mirror,
+        signer: f.signer,
+        stale,
+        warnings,
     })
 }
 
@@ -650,6 +706,60 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.code, ErrorCode::UnsupportedSource);
+    }
+
+    /// A catalog with one release whose package is a file on this PC.
+    fn with_file_package(version: u64) -> Vec<u8> {
+        let mut v: serde_json::Value = serde_json::from_slice(&doc(version, FUTURE)).unwrap();
+        v["tools"][0]["releases"] = serde_json::json!([{
+            "version": "0.0.1", "channel": "stable", "published_at": "2026-11-04T00:00:00Z",
+            "release_notes": "built here",
+            "assets": [{"os": "windows", "arch": "x86_64", "kind": "zip", "entrypoint": "subak.exe",
+                        "url": "file:///C:/kim/kim-local/subak-0.0.1-windows-x86_64.zip",
+                        "size": 10, "sha256": "a".repeat(64)}]
+        }]);
+        serde_json::to_vec_pretty(&v).unwrap()
+    }
+
+    /// ADR 0089: `file:///` packages are a local mirror's: accepted from a `file://` source for
+    /// one session (never cached), refused from any other source.
+    #[test]
+    fn file_packages_come_only_from_a_local_mirror_and_are_never_cached() {
+        let t = Tmp::new("mirror");
+        let p = t.paths();
+        let base = super::super::parse(BUNDLED_CATALOG)
+            .map(|c| c.catalog_version)
+            .unwrap_or(1);
+        let keys = test_keys_plus_bundled();
+        let local = with_file_package(base + 1);
+        let sig = sig_bytes(&local, &SEED);
+        // From https: refused, nothing written.
+        let e = refresh(&p, &keys, now(), URL, &fetcher_with(&local, &sig)).unwrap_err();
+        assert_eq!(e.code, ErrorCode::CatalogInvalid, "{e:?}");
+        assert!(!p.catalog_cache_dir().join(CACHE_FILE).exists());
+        // From file://: a mirror for this session.
+        let file = "file:///C:/kim/kim-local/catalog.json";
+        let mut f = MapFetcher::default();
+        f.0.insert(file.into(), local.clone());
+        f.0.insert(format!("{file}.sig"), sig.clone());
+        let m = mirror(&p, &keys, now(), file, &f).unwrap();
+        assert_eq!(m.source, Source::Mirror);
+        assert_eq!(m.catalog.tools[0].releases.len(), 1);
+        assert!(
+            !p.catalog_cache_dir().join(CACHE_FILE).exists(),
+            "never cached"
+        );
+        // A mirror is a file:// catalog only.
+        let e = mirror(&p, &keys, now(), URL, &fetcher_with(&local, &sig)).unwrap_err();
+        assert_eq!(e.code, ErrorCode::Usage);
+        // Signatures still count.
+        let mut bad = MapFetcher::default();
+        bad.0.insert(file.into(), local.clone());
+        bad.0
+            .insert(format!("{file}.sig"), sig_bytes(&local, &OTHER_SEED));
+        assert!(mirror(&p, &keys, now(), file, &bad).is_err());
+        // The bundled catalog never points at files.
+        assert!(!String::from_utf8_lossy(BUNDLED_CATALOG).contains("file:"));
     }
 
     /// Test key plus the real build keys, so `refresh` can load the real bundled catalog.

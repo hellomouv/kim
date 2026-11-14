@@ -61,6 +61,74 @@ impl Backend {
     }
 }
 
+/// ADR 0089: starts a program of an installed tool: `(program, arguments)`. Tests record the
+/// call instead of starting anything.
+pub type Launcher = Arc<dyn Fn(&std::path::Path, &[&str]) -> std::io::Result<()> + Send + Sync>;
+
+/// One program the details panel offers to start for an installed tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Launch {
+    /// The button.
+    pub label: &'static str,
+    /// The program in the installed version's folder.
+    pub program: &'static str,
+    pub args: &'static [&'static str],
+}
+
+/// ADR 0089: what "Open" starts for each installed tool (its window or its notification-area
+/// app). Only programs of the installed version are started, only when the user presses the
+/// button, and Kim Manager never stops them.
+pub fn launches(tool: &str) -> &'static [Launch] {
+    const SUBAK: &[Launch] = &[Launch {
+        label: "Open Subak",
+        program: "subak-gui.exe",
+        args: &[],
+    }];
+    const NOEUL: &[Launch] = &[Launch {
+        label: "Start Noeul",
+        program: "noeulw.exe",
+        args: &[],
+    }];
+    const DDALGAK: &[Launch] = &[
+        Launch {
+            label: "Start Ddalgak",
+            program: "ddalgak-gui.exe",
+            args: &[],
+        },
+        Launch {
+            label: "Open rule editor",
+            program: "ddalgak-editor.exe",
+            args: &[],
+        },
+    ];
+    match tool {
+        "subak" => SUBAK,
+        "noeul" => NOEUL,
+        "ddalgak" => DDALGAK,
+        _ => &[],
+    }
+}
+
+/// The real [`Launcher`]: a detached start in the program's own folder, without a console.
+pub fn real_launcher() -> Launcher {
+    Arc::new(|program: &std::path::Path, args: &[&str]| {
+        let mut c = std::process::Command::new(program);
+        c.args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        if let Some(dir) = program.parent() {
+            c.current_dir(dir);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: GUI programs show their own windows
+        }
+        c.spawn().map(|_| ())
+    })
+}
+
 /// Messages from worker threads to the UI.
 #[derive(Debug)]
 enum Msg {
@@ -112,6 +180,9 @@ pub struct KimManagerApp {
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     ctx: Option<egui::Context>,
+    /// ADR 0089: a local mirror (`--catalog file://…`) used instead of the cache this session.
+    mirror: Option<String>,
+    launcher: Launcher,
 }
 
 impl std::fmt::Debug for KimManagerApp {
@@ -150,6 +221,8 @@ impl KimManagerApp {
             tx,
             rx,
             ctx: ctx.cloned(),
+            mirror: None,
+            launcher: real_launcher(),
         };
         if let Some(ctx) = ctx {
             theme::apply(ctx);
@@ -161,6 +234,68 @@ impl KimManagerApp {
             app.refresh_catalog();
         }
         app
+    }
+
+    /// ADR 0089: use the local mirror at `url` (a `file://` catalog of packages built on this
+    /// PC) for this session: it is verified like a refresh and never written to the cache.
+    pub fn use_mirror(&mut self, url: &str) {
+        self.mirror = Some(url.to_string());
+        self.backend.catalog_source = url.to_string();
+        self.reload();
+        if let Some(l) = &self.loaded
+            && l.source == store::Source::Mirror
+        {
+            self.banner = Some(Banner::Info(format!(
+                "Using the local packages built on this PC (catalog v{}).",
+                l.catalog.catalog_version
+            )));
+        }
+    }
+
+    /// Replaces how programs are started (tests).
+    pub fn set_launcher(&mut self, launcher: Launcher) {
+        self.launcher = launcher;
+    }
+
+    /// ADR 0089: starts `program` of the installed `tool` (the user pressed its button).
+    pub fn open(&mut self, tool: &str, launch: &Launch) {
+        let Some(version) = self
+            .views
+            .iter()
+            .find(|v| v.id == tool)
+            .and_then(|v| v.installed_version.clone())
+        else {
+            return;
+        };
+        let path = self
+            .backend
+            .paths
+            .tool_dir(tool)
+            .join("versions")
+            .join(&version)
+            .join(launch.program);
+        let name = self
+            .views
+            .iter()
+            .find(|v| v.id == tool)
+            .map_or(tool.to_string(), |v| v.name.clone());
+        self.banner = Some(if !path.is_file() {
+            Banner::Error {
+                message: format!(
+                    "{} {version} has no {}; repair or reinstall it",
+                    name, launch.program
+                ),
+                code: "not_found".into(),
+            }
+        } else {
+            match (self.launcher)(&path, launch.args) {
+                Ok(()) => Banner::Success(format!("Started {} ({}).", name, launch.program)),
+                Err(e) => Banner::Error {
+                    message: format!("cannot start {}: {e}", path.display()),
+                    code: "io".into(),
+                },
+            }
+        });
     }
 
     pub fn banner(&self) -> Option<&Banner> {
@@ -271,11 +406,33 @@ impl KimManagerApp {
     }
 
     fn reload(&mut self) {
-        match store::load(
+        let loaded = store::load(
             &self.backend.paths,
             &self.backend.keys,
             kim::time::now_utc(),
-        ) {
+        )
+        .map(|l| match &self.mirror {
+            // ADR 0089: the local mirror replaces the cache for this session; if it cannot be
+            // used, the trusted catalog is shown with the reason.
+            Some(url) => match store::mirror(
+                &self.backend.paths,
+                &self.backend.keys,
+                kim::time::now_utc(),
+                url,
+                &DefaultFetcher::default(),
+            ) {
+                Ok(m) => m,
+                Err(e) => {
+                    self.banner = Some(Banner::Error {
+                        message: format!("the local packages cannot be used: {}", e.message),
+                        code: e.code.as_str().into(),
+                    });
+                    l
+                }
+            },
+            None => l,
+        });
+        match loaded {
             Ok(l) => {
                 self.views = status::evaluate(
                     &l.catalog,
@@ -304,6 +461,19 @@ impl KimManagerApp {
     }
 
     fn refresh_catalog(&mut self) {
+        if self.mirror.is_some() {
+            // A local mirror is read again from disk, never through the network or the cache.
+            self.reload();
+            if let Some(l) = &self.loaded
+                && l.source == store::Source::Mirror
+            {
+                self.banner = Some(Banner::Info(format!(
+                    "Read the local packages again (catalog v{}).",
+                    l.catalog.catalog_version
+                )));
+            }
+            return;
+        }
         if let Err(e) = self.settings.ensure_online() {
             self.banner = Some(Banner::Error {
                 message: e.message,
@@ -341,7 +511,8 @@ impl KimManagerApp {
     /// Starts an explicit install or update of `tool` (the user pressed the button).
     pub fn start_install(&mut self, tool: &str) {
         let Some(loaded) = &self.loaded else { return };
-        if let Err(e) = self.settings.ensure_online() {
+        let local = loaded.source == store::Source::Mirror;
+        if !local && let Err(e) = self.settings.ensure_online() {
             self.banner = Some(Banner::Error {
                 message: e.message,
                 code: e.code.as_str().into(),
@@ -635,6 +806,7 @@ impl KimManagerApp {
                 let src = match l.source {
                     store::Source::Bundled => "bundled",
                     store::Source::Cache => "cached",
+                    store::Source::Mirror => "local mirror",
                 };
                 let stale = if l.stale { " · stale" } else { "" };
                 ui.label(
@@ -933,11 +1105,32 @@ impl KimManagerApp {
                 let button =
                     egui::Button::new(egui::RichText::new(label).color(c.text_on_accent).strong())
                         .fill(c.accent);
+                let local = self
+                    .loaded
+                    .as_ref()
+                    .is_some_and(|l| l.source == store::Source::Mirror);
                 if ui
-                    .add_enabled(!self.settings.offline_mode, button)
+                    .add_enabled(!self.settings.offline_mode || local, button)
                     .clicked()
                 {
                     self.start_install(&view.id);
+                }
+            }
+            // ADR 0089: start an installed tool's window or notification-area app.
+            if matches!(
+                view.status,
+                ToolStatus::Installed | ToolStatus::UpdateAvailable
+            ) {
+                for launch in launches(&view.id) {
+                    let button = egui::Button::new(
+                        egui::RichText::new(launch.label)
+                            .color(c.text_on_accent)
+                            .strong(),
+                    )
+                    .fill(c.accent);
+                    if ui.add(button).clicked() {
+                        self.open(&view.id, launch);
+                    }
                 }
             }
             if matches!(

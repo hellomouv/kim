@@ -29,9 +29,10 @@ ureq = { version = "=3.4.2", default-features = false, features = ["native-tls"]
 zip = { version = "=9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61.2", features = ["Wdk_System_SystemServices", "Win32_System_SystemInformation", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61.2", features = ["Wdk_System_SystemServices", "Win32_System_SystemInformation", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Console"] }
 
 [dev-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }
 # The CLI contract tests compile xtask/src/jsonschema.rs (the schema-check validator), which
 # needs `regex`; already in the workspace lock for xtask, test-only, never shipped.
 regex = "1.13.1"
@@ -40,3 +41,6 @@ zip = { version = "=9.0.5", default-features = false, features = ["deflate-flate
 [target."cfg(windows)".dev-dependencies]
 # tests/cli_headless.rs runs kim inside a job object to prove headless commands start no process.
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

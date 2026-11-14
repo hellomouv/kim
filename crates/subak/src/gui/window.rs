@@ -7589,7 +7589,16 @@ pub fn run(o: Options) -> ExitCode {
             style: CS_DBLCLKS,
             lpfnWndProc: Some(wndproc),
             hInstance: hinst,
-            hIcon: LoadIconW(null_mut(), IDI_APPLICATION),
+            // ADR 0089: the watermelon icon linked into subak-gui.exe (resource 1, kim-winres);
+            // the system's application icon if it is missing.
+            hIcon: {
+                let own = LoadIconW(hinst, 1 as _);
+                if own.is_null() {
+                    LoadIconW(null_mut(), IDI_APPLICATION)
+                } else {
+                    own
+                }
+            },
             lpszClassName: class.as_ptr(),
             ..WNDCLASSEXW::default()
         };

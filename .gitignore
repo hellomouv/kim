@@ -1,6 +1,12 @@
 # Rust build output (root and research workspaces)
 target/
 
+# ADR 0089: the local mirror `cargo xtask local-mirror` writes, and the programs next to the
+# root kim.exe (built locally, never committed)
+/kim-local/
+/kim.exe
+/kim-manager.exe
+
 # Research prototype binaries (rebuilt from source, see research/*/README.md)
 /research/gui-eval/bin/
 

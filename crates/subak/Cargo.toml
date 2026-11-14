@@ -110,6 +110,7 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [dev-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }
 # tests/cli.rs validates `subak --json` output with xtask/src/jsonschema.rs (test-only).
 regex = "1.13.1"
 # tests/icon_assets.rs encodes the generated icon PNGs (Step 44; already used by Noeul).
@@ -138,3 +139,6 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

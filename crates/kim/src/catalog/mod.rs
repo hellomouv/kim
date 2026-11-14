@@ -406,9 +406,16 @@ pub fn validate(c: &Catalog) -> Vec<String> {
                 if !targets.insert((a.os.as_str(), a.arch.as_str())) {
                     p.push(format!("{actx}: duplicate os/arch in one release"));
                 }
-                if crate::fetch::check_source_url(&a.url).is_err() || a.url.starts_with("file:") {
+                // ADR 0089: `file:///` packages are allowed for a local mirror (a folder of
+                // packages next to the catalog); `fetch_verified` refuses them in a catalog that
+                // did not itself come from a `file://` source.
+                let local_file = a.url.starts_with("file:///") && a.url.len() > "file:///".len();
+                if !local_file
+                    && (crate::fetch::check_source_url(&a.url).is_err()
+                        || a.url.starts_with("file:"))
+                {
                     p.push(format!(
-                        "{actx}: url must be https:// (http:// only for loopback)"
+                        "{actx}: url must be https:// (http:// only for loopback, file:/// only in a local mirror)"
                     ));
                 }
                 if a.size == 0 || a.size > MAX_ASSET_BYTES {
@@ -680,6 +687,20 @@ mod tests {
             "expires_at must be later",
         ] {
             assert!(all.contains(needle), "missing `{needle}` in:\n{all}");
+        }
+    }
+
+    /// ADR 0089: a local mirror's `file:///` package parses (the store decides which sources
+    /// may carry one); other `file:` forms do not.
+    #[test]
+    fn local_file_packages_parse_and_other_file_forms_do_not() {
+        let mut v = minimal();
+        v["tools"][0]["releases"][0]["assets"][0]["url"] =
+            "file:///C:/kim/kim-local/subak-0.0.1-windows-x86_64.zip".into();
+        assert!(parse_value(&v).is_ok());
+        for bad in ["file://server/share/x.zip", "file:///", "file:x.zip"] {
+            v["tools"][0]["releases"][0]["assets"][0]["url"] = bad.into();
+            assert!(parse_value(&v).is_err(), "{bad}");
         }
     }
 

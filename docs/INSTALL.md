@@ -19,6 +19,23 @@ If something goes wrong: run `Kim-Setup.exe` again (it offers a repair), or unzi
 `kim-<version>-windows-x86_64.zip` and run `kim-manager.exe` from there. Remove Kim in Settings →
 Apps (your settings are kept).
 
+## Use Kim from a build of this repository (no release needed)
+
+[ADR 0089](adr/0089-double-click-kim-local-mirror-and-program-icons.md): build the programs and a
+local mirror of the tools, then double-click `kim.exe`:
+
+```sh
+cargo build --release -p kim -p kim-manager
+copy target\release\kim.exe .  &  copy target\release\kim-manager.exe .
+cargo xtask local-mirror --key <catalog key file>   # writes kim-local\ (packages + signed catalog)
+```
+
+A double-click on `kim.exe` (no arguments, its own console) opens the Kim window with the
+packages in `kim-local\`: select Subak, Noeul or Ddalgak, press **Install**, then **Open Subak**,
+**Start Noeul**, **Start Ddalgak** or **Open rule editor**. Nothing is downloaded; the mirror is
+used for that session only and never replaces Kim's catalog cache. From a terminal, `kim` stays
+the headless CLI (`kim --help`).
+
 ## 1. Supported systems
 
 | System | State |

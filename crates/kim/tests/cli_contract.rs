@@ -565,6 +565,9 @@ fn kim_source_spawns_processes_only_in_the_documented_places() {
                     spawn_sites.push(format!("{rel}: {needle}"));
                 }
             }
+            // ADR 0089: only the double-click hand-over (`start.rs`, and `double_click_start` in
+            // `main.rs`, checked below) may name the Kim window.
+            let may_name_window = rel == "start.rs" || rel == "main.rs";
             for gui in [
                 "kim-manager",
                 "subak-gui",
@@ -572,6 +575,9 @@ fn kim_source_spawns_processes_only_in_the_documented_places() {
                 "cmd /c start",
                 "rundll32",
             ] {
+                if gui == "kim-manager" && may_name_window {
+                    continue;
+                }
                 assert!(
                     !code.contains(gui),
                     "{rel} mentions `{gui}`: headless kim must never start a GUI"
@@ -587,8 +593,28 @@ fn kim_source_spawns_processes_only_in_the_documented_places() {
             "install.rs: Command::new(",
             // Step 38: `tools invoke` runs the provider's `interop invoke` headless (no window,
             // stdin a request, time-limited); it can only name an installed tool's entrypoint.
-            "interop.rs: Command::new("
+            "interop.rs: Command::new(",
+            // ADR 0089: the double-click hand-over to Kim Manager (never a CLI start).
+            "main.rs: Command::new(",
         ],
         "a new process spawn in kim needs review against KIM-FR-012 and an update of this list"
     );
+    // The one spawn in main.rs is inside `double_click_start`, which returns before any CLI
+    // parsing unless `kim::start::is_double_click` holds.
+    let main = std::fs::read_to_string(src.join("main.rs")).unwrap();
+    assert_eq!(main.matches("Command::new(").count(), 1);
+    let f = main.find("fn double_click_start").unwrap();
+    let end = f + main[f..]
+        .find(
+            "
+}
+",
+        )
+        .unwrap();
+    let spawn = main.find("Command::new(").unwrap();
+    assert!(
+        spawn > f && spawn < end,
+        "the spawn is in double_click_start"
+    );
+    assert!(main[f..end].contains("if !kim::start::is_double_click("));
 }

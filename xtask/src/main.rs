@@ -15,6 +15,7 @@ mod docs;
 mod hotkeys;
 mod jsonschema;
 mod ledger;
+mod local_mirror;
 mod package;
 mod schema;
 mod tmux;
@@ -48,6 +49,8 @@ COMMANDS:
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
     package <kim|subak|noeul> [--skip-build]
+    local-mirror --key <file> [--out <dir>] [--skip-build]
+                      Package kim, subak, noeul, ddalgak into a signed local mirror (kim-local/) Kim Manager can install from (ADR 0089)
     bench-noeul [--record|--check]   Noeul's budgets (NOEUL-NFR-001…006), release build, nothing visible
     bench-ddalgak [--record|--check] Ddalgak's budgets (DDALGAK-NFR-001…004), the test host, nothing visible
                       Build the Windows release zip (programs, capabilities.json, licenses,
@@ -87,6 +90,7 @@ fn main() -> ExitCode {
         Some("bench-noeul") => bench_noeul::run(&root, &args[1..]),
         Some("bench-ddalgak") => bench_ddalgak::run(&root, &args[1..]),
         Some("package") => package::run(&root, &args[1..]),
+        Some("local-mirror") => local_mirror::run(&root, &args[1..]),
         Some("e2e") => run_e2e(
             &root,
             args.iter().any(|a| a == "--force"),

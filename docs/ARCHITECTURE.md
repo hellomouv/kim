@@ -42,8 +42,9 @@ flowchart LR
 
 | Component | Binary / crate | Responsibility | Requirements |
 | --- | --- | --- | --- |
-| Kim CLI | `kim.exe` / `crates/kim` | Catalog queries, explicit install/update/uninstall, update check, status, tool and capability discovery ([CLI_CONTRACT](CLI_CONTRACT.md), [KIM_CLI](KIM_CLI.md)) | KIM-FR-003…011, KIM-FR-020, KIM-SEC-001…005 |
-| Kim Manager GUI | `kim-manager.exe` (Step 06) | Same operations with a GUI; never runs headless paths through the GUI | KIM-FR-009, KIM-FR-013 |
+| Kim CLI | `kim.exe` / `crates/kim` | Catalog queries, explicit install/update/uninstall, update check, status, tool and capability discovery ([CLI_CONTRACT](CLI_CONTRACT.md), [KIM_CLI](KIM_CLI.md)); a double-click in Explorer (never a CLI start) hands over to Kim Manager ([ADR 0089](adr/0089-double-click-kim-local-mirror-and-program-icons.md)) | KIM-FR-003…011, KIM-FR-012, KIM-FR-020, KIM-SEC-001…005 |
+| Kim Manager GUI | `kim-manager.exe` (Step 06) | Same operations with a GUI; never runs headless paths through the GUI; starts an installed tool's window when asked (Open) and can use a local mirror for one session (`--catalog file://…`, ADR 0089) | KIM-FR-009, KIM-FR-013 |
+| Program resources | `crates/kim-winres` (build dependency only, ADR 0089) | Links the program icon and version information into each package's executables without `rc.exe`/`windres` | — |
 | Hotkey library | `crates/kim-hotkeys` (Step 46; a library compiled into each tool, never a process) | Key syntax, `hotkeys.json`, conflict checks, `RegisterHotKey` backend ([HOTKEY_CONTRACT](HOTKEY_CONTRACT.md)) | KIM-FR-040…046, KIM-NFR-020…022, KIM-SEC-020…023 |
 | Subak CLI | `subak.exe` / `crates/subak` | Terminal CRUD, attach/detach, capture, host control, Claude hook reporter | SUBAK-FR-011…015, SUBAK-FR-053 |
 | Subak Host | `subak.exe host serve` | Owns Terminals/Windows/Panes, ConPTYs, jobs, VT state, history, state store, IPC server, metrics | SUBAK-FR-001…004, SUBAK-FR-016, SUBAK-FR-040 |

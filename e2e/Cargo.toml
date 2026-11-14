@@ -22,6 +22,8 @@ eframe = { version = "=0.37.0", default-features = false, features = ["glow", "a
 egui_kittest = "=0.37.0"
 kim = { path = "../crates/kim" }
 kim-setup = { path = "../crates/kim-setup" }
+# adr0089 reads the program icons back out of the release executables.
+kim-winres = { path = "../crates/kim-winres" }
 # step57 decodes Noeul's quick-saved PNG to check that a redaction left no original pixel.
 png = { version = "0.18.1", default-features = false }
 # step07 validates real --json output with xtask/src/jsonschema.rs (needs regex).

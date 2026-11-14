@@ -4,7 +4,7 @@ Kim (김) is named after the Korean roasted laver sheet — so the icon is one.
 
 | File | Use |
 | --- | --- |
-| `kim.ico` | Windows executables and shortcuts (16, 20, 24, 32, 40, 48, 64, 128, 256 px, PNG-compressed entries, ≈ 50 KB) |
+| `kim.ico` | Windows executables and shortcuts (16, 20, 24, 32, 40, 48, 64, 128, 256 px, PNG-compressed entries, ≈ 50 KB); linked into `kim.exe`, `kim-manager.exe` and `kim-setup.exe` by `crates/kim-winres` (ADR 0089) |
 | `kim-{16,32,48,64,128,256}.png` | GUI, docs, catalog (palette PNGs with alpha, ≈ 0.5–33 KB) |
 
 All files are generated from the original photo by `make_icons.py` (developer tool, needs

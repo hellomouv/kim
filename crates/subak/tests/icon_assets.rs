@@ -312,3 +312,33 @@ fn the_icon_reads_at_small_sizes_on_dark_and_light_surfaces() {
         )
     );
 }
+
+/// ADR 0089: `subak-gui.exe` and `subak.exe` carry the watermelon icon (`subak.ico`, linked by
+/// kim-winres), so Explorer, the taskbar and the window's title bar show it.
+#[test]
+#[cfg(windows)]
+fn the_programs_carry_the_watermelon_icon() {
+    let images = kim_winres::parse_ico(&std::fs::read(dir().join("subak.ico")).unwrap()).unwrap();
+    for exe in [env!("CARGO_BIN_EXE_subak-gui"), env!("CARGO_BIN_EXE_subak")] {
+        let res = kim_winres::resources(&std::fs::read(exe).unwrap()).unwrap();
+        let icons: Vec<&Vec<u8>> = res
+            .iter()
+            .filter(|r| r.0 == kim_winres::RT_ICON)
+            .map(|r| &r.2)
+            .collect();
+        assert_eq!(icons.len(), images.len(), "{exe}");
+        assert!(
+            icons.iter().zip(&images).all(|(g, w)| **g == w.data),
+            "{exe}"
+        );
+        let v = &res
+            .iter()
+            .find(|r| r.0 == kim_winres::RT_VERSION)
+            .unwrap()
+            .2;
+        assert_eq!(
+            kim_winres::version_string(v, "FileDescription").as_deref(),
+            Some("Subak")
+        );
+    }
+}

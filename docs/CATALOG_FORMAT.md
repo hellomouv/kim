@@ -216,6 +216,13 @@ Allowed refresh sources: `https://…`, `http://` to `127.0.0.1`/`localhost`/`[:
 `file://` (offline mirrors). Transport is defense in depth; trust comes from the signature. HTTPS
 uses the operating system's TLS stack and certificate store (SChannel on Windows).
 
+**Local mirror** ([ADR 0089](adr/0089-double-click-kim-local-mirror-and-program-icons.md)): a
+release asset `url` may be `file:///<absolute path>` only in a catalog that itself comes from a
+`file://` source (`cargo xtask local-mirror` writes one next to the root `kim.exe`). A catalog
+from any other source that names a `file:` package is refused (`catalog_invalid`, nothing
+changed); the bundled catalog never names one. Kim Manager's `--catalog file://…` uses a mirror
+for that session only (`source: local mirror`) and never writes it to the cache.
+
 No command fetches automatically: not at start-up, not on a timer, not when a catalog is stale
 (`KIM-SEC-002`, `KIM-NFR-004`).
 

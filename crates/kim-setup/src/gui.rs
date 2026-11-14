@@ -10,10 +10,11 @@ use windows_sys::Win32::Graphics::Gdi::{
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, DestroyWindow,
-    DispatchMessageW, GetMessageW, GetSystemMetrics, IDC_ARROW, IDYES, LoadCursorW, MB_ICONERROR,
-    MB_ICONINFORMATION, MB_ICONQUESTION, MB_YESNO, MSG, MessageBoxW, PostMessageW, PostQuitMessage,
-    RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, ShowWindow, TranslateMessage, WM_APP,
-    WM_DESTROY, WM_PAINT, WNDCLASSW, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
+    DispatchMessageW, GetMessageW, GetSystemMetrics, IDC_ARROW, IDYES, LoadCursorW, LoadIconW,
+    MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION, MB_YESNO, MSG, MessageBoxW, PostMessageW,
+    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, ShowWindow,
+    TranslateMessage, WM_APP, WM_DESTROY, WM_PAINT, WNDCLASSW, WS_CAPTION, WS_MINIMIZEBOX,
+    WS_OVERLAPPED, WS_SYSMENU,
 };
 
 fn w(s: &str) -> Vec<u16> {
@@ -137,6 +138,8 @@ pub fn run_with_progress<T: Send + 'static>(
             lpfnWndProc: Some(proc),
             hInstance: inst,
             hCursor: LoadCursorW(std::ptr::null_mut(), IDC_ARROW),
+            // ADR 0089: the Kim icon linked into Kim-Setup.exe (resource 1, kim-winres).
+            hIcon: LoadIconW(inst, 1 as _),
             hbrBackground: (COLOR_WINDOW + 1) as usize as _,
             lpszClassName: class.as_ptr(),
             ..std::mem::zeroed()
