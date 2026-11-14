@@ -35,11 +35,15 @@ taskbar), in steps of 25 %, never smaller than before:
 2. Subak keeps restoring the size the user left it at (`gui.json`); the rule only sets the
    first window. Its text follows the same factor unless `config.toml` sets a size (that value
    always wins; *Reset zoom* returns to the screen's default, `Ctrl+=` / `Ctrl+-` save a size as
-   before). The tab bar keeps its DPI size. Noeul's settings window multiplies its DPI layout
+   before). The tab bar grows by the same factor. Noeul's settings window multiplies its DPI layout
    by the zoom (and now paints its dark background, which it did not).
 3. Kim moves a window that grows for Settings or Information (or a larger Size) up or left so
    that it stays within the work area of its screen, and back when it shrinks.
-4. Nothing changes Windows' display scaling or any other desktop setting. Test windows (the
+4. A rebuilt package of the same version (the local mirror) is not an update, so an installed
+   tool's right-click menu gains **Reinstall…**: the install dialog (titled *Reinstall …?*, the
+   permissions as before) installs the same version again, verified like any install, keeping
+   the user's data (`PlanOptions.reinstall`, as Repair). It is refused while the tool runs.
+5. Nothing changes Windows' display scaling or any other desktop setting. Test windows (the
    off-screen test modes) keep their fixed sizes, so the existing tests are unaffected.
 
 ## Consequences
@@ -50,6 +54,10 @@ taskbar), in steps of 25 %, never smaller than before:
   `screen_zoom`, `default_font`,
   `ddalgak_editor::window_scale`, `noeul::win::settings::zoom_for`), the Kim UI test
   `the_size_follows_the_screen_or_the_choice_and_persists` (Auto, a fixed size applied at once,
-  saved and read again, out-of-range values clamped), and the real desktop (each window opened
-  at its new size on this PC). An e2e scenario does not apply: the size depends on the real
+  saved and read again, out-of-range values clamped), `reinstall_puts_the_same_version_back_after_asking`, and the real desktop (each window opened
+  at its new size on this PC; Subak's larger tab bar switched tabs on real clicks). A real
+  display-scaling change to 150 % (saved, then restored to 100 % and checked): Kim chose Auto
+  175 % (966 × 588 pixels) and its Settings stayed on the screen; Subak's first window kept the
+  default grid (the 150 % work area is 930 points tall, so its factor is 1.0, as designed). An
+  e2e scenario does not apply: the size depends on the real
   screen, and the e2e windows open off-screen at fixed sizes.

@@ -350,6 +350,64 @@ fn a_missing_program_is_never_shown_as_installed() {
     assert_eq!(h.state().tile_state("noeul"), TileState::Installed);
 }
 
+/// ADR 0091: *Reinstall…* (right-click on an installed tool) installs the same version again
+/// after the dialog, verified like any install: a changed program file is back, the data stay.
+/// Cancel changes nothing and a later plain Install is not a reinstall.
+#[test]
+fn reinstall_puts_the_same_version_back_after_asking() {
+    let sb = Sandbox::new("reinstall");
+    let be = all_released(&sb, "1.0.0");
+    let paths = be.paths.clone();
+    let (app, _) = app(be);
+    let mut h = harness(app);
+    h.run();
+    h.state_mut().start_install("noeul");
+    wait(&mut h);
+    let program = paths
+        .tool_dir("noeul")
+        .join("versions")
+        .join("1.0.0")
+        .join("noeulw.exe");
+    let original = std::fs::read(&program).unwrap();
+    std::fs::write(&program, b"changed").unwrap();
+    let data = paths
+        .tool_dir("noeul")
+        .join("..")
+        .join("noeul-user-data.txt");
+    std::fs::write(&data, b"mine").unwrap();
+    h.get_by_label("Noeul, installed 1.0.0").click_secondary();
+    h.run();
+    h.get_by_label("Reinstall…").click();
+    h.run();
+    assert!(h.query_by_label("Reinstall Noeul?").is_some());
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert_eq!(h.state().installing_prompt(), None);
+    assert_eq!(
+        std::fs::read(&program).unwrap(),
+        b"changed",
+        "Cancel changes nothing"
+    );
+    h.get_by_label("Noeul, installed 1.0.0").click_secondary();
+    h.run();
+    h.get_by_label("Reinstall…").click();
+    h.run();
+    h.get_by_label("Reinstall").click();
+    wait(&mut h);
+    assert!(
+        matches!(h.state().banner(), Some(Banner::Success(_))),
+        "{:?}",
+        h.state().banner()
+    );
+    assert_eq!(
+        std::fs::read(&program).unwrap(),
+        original,
+        "the program is back"
+    );
+    assert_eq!(std::fs::read(&data).unwrap(), b"mine", "data kept");
+    assert_eq!(h.state().tile_state("noeul"), TileState::Installed);
+}
+
 /// ADR 0090: the right-click menu shows only what fits: not installed → Install…, Information;
 /// installed → Open (Ddalgak: and its editor), Settings…, the folder, updates, Uninstall…,
 /// Information. The install prompt fits the compact window.
@@ -386,6 +444,7 @@ fn right_click_menus_fit_the_state() {
         "Settings…",
         "Open installation folder",
         "Check for updates",
+        "Reinstall…",
         "Uninstall…",
         "Information",
     ] {

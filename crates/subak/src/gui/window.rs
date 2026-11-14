@@ -501,8 +501,8 @@ struct App {
     /// Settings changed in this window that could not be saved (an invalid or newer file):
     /// they last while it runs.
     cfg_unsaved: bool,
-    /// ADR 0091: the default text is this much larger on a large screen (1.0 in test windows
-    /// and the drop-down; a size set in `config.toml` always wins).
+    /// ADR 0091: the default text and the tab bar are this much larger on a large screen (1.0
+    /// in test windows and the drop-down; a text size set in `config.toml` always wins).
     screen_zoom: f32,
     /// Windows apps use the light mode (`theme = "system"`).
     light_mode: bool,
@@ -1820,7 +1820,8 @@ impl App {
     /// Lays out and renders the tab bar (the tabs, their states, the rename field) and composes
     /// its strip.
     fn rebuild_bar(&mut self) {
-        let scale = self.scale();
+        // ADR 0091: on a large screen the tab bar grows with the default text.
+        let scale = self.scale() * self.screen_zoom;
         let hc = self.hc_theme();
         let theme = self.bar_theme();
         let mut r = match self.bar.renderer.take() {
@@ -1835,7 +1836,8 @@ impl App {
         } else {
             BAR_HEIGHT
         };
-        let height = (layout::px(bar_height, self.dpi).max(1) as u32).max(m.height + 2);
+        let height =
+            (layout::px(bar_height * self.screen_zoom, self.dpi).max(1) as u32).max(m.height + 2);
         let pad_x = layout::px(4.0, self.dpi).max(0) as u32;
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);

@@ -200,6 +200,8 @@ pub struct KimManagerApp {
     launcher: Launcher,
     // ADR 0090: the launcher.
     install_prompt: Option<String>,
+    /// *Reinstall…* was chosen for this tool: the install dialog installs the same version again.
+    reinstall: Option<String>,
     info: Option<String>,
     show_settings: bool,
     settings_tab: SettingsTab,
@@ -264,6 +266,7 @@ impl KimManagerApp {
             mirror: None,
             launcher: real_launcher(),
             install_prompt: None,
+            reinstall: None,
             info: None,
             show_settings: false,
             settings_tab: SettingsTab::default(),
@@ -591,9 +594,11 @@ impl KimManagerApp {
         // installs the same version again, verified like any install.
         let opts = PlanOptions {
             channel: Some(self.channel),
-            reinstall: self.tile_state(tool) == TileState::Damaged,
+            reinstall: self.tile_state(tool) == TileState::Damaged
+                || self.reinstall.as_deref() == Some(tool),
             ..PlanOptions::default()
         };
+        self.reinstall = None;
         let plan = match install::plan_install(
             loaded,
             &self.backend.paths,
@@ -1340,6 +1345,17 @@ impl KimManagerApp {
                     pick = Some(MenuAction::CheckUpdates);
                 }
                 if ui
+                    .add_enabled(!busy, egui::Button::new("Reinstall…"))
+                    .on_disabled_hover_text(busy_why)
+                    .on_hover_text(
+                        "Installs this version again from the catalog, verified like any \
+                         install; your settings and data stay",
+                    )
+                    .clicked()
+                {
+                    pick = Some(MenuAction::Reinstall);
+                }
+                if ui
                     .add_enabled(
                         !busy,
                         egui::Button::new(egui::RichText::new("Uninstall…").color(c.danger)),
@@ -1404,6 +1420,10 @@ impl KimManagerApp {
             MenuAction::Folder => self.open_folder(id),
             MenuAction::CheckUpdates => self.refresh_catalog(),
             MenuAction::Install => self.install_prompt = Some(id.to_string()),
+            MenuAction::Reinstall => {
+                self.reinstall = Some(id.to_string());
+                self.install_prompt = Some(id.to_string());
+            }
             MenuAction::Uninstall => {
                 self.confirm = Some(ConfirmUninstall {
                     tool: id.to_string(),
@@ -1591,6 +1611,7 @@ impl KimManagerApp {
             return;
         };
         let state = self.tile_state(&id);
+        let again = self.reinstall.as_deref() == Some(id.as_str());
         let view = self.views.iter().find(|v| v.id == id).cloned();
         let name = self.tool_name(&id);
         let local = self
@@ -1607,6 +1628,7 @@ impl KimManagerApp {
                 }
                 ui.vertical(|ui| {
                     let title = match state {
+                        _ if again => format!("Reinstall {name}?"),
                         TileState::Damaged => format!("Repair {name}?"),
                         TileState::Update => format!("Update {name}?"),
                         _ => format!("Install {name}?"),
@@ -1622,10 +1644,11 @@ impl KimManagerApp {
                 });
             });
             ui.add_space(6.0);
-            let installable = matches!(
-                state,
-                TileState::NotInstalled | TileState::Damaged | TileState::Update
-            );
+            let installable = again
+                || matches!(
+                    state,
+                    TileState::NotInstalled | TileState::Damaged | TileState::Update
+                );
             if installable {
                 if let Some(v) = view.as_ref().and_then(|v| v.latest_compatible.clone()) {
                     let from = if local {
@@ -1644,7 +1667,7 @@ impl KimManagerApp {
                 if let Some(d) = self.details.get(&id).filter(|d| !d.permissions.is_empty()) {
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("It may")
+                        egui::RichText::new("On this computer it")
                             .size(11.0)
                             .color(c.text_secondary),
                     );
@@ -1690,6 +1713,7 @@ impl KimManagerApp {
                         None
                     };
                     let label = match state {
+                        _ if again => "Reinstall",
                         TileState::Damaged => "Repair",
                         TileState::Update => "Update",
                         _ => "Install",
@@ -1715,6 +1739,7 @@ impl KimManagerApp {
             self.start_install(&id);
         } else if close {
             self.install_prompt = None;
+            self.reinstall = None;
         }
     }
 
@@ -2180,6 +2205,7 @@ enum MenuAction {
     Folder,
     CheckUpdates,
     Install,
+    Reinstall,
     Uninstall,
     Info,
 }
