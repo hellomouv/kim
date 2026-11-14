@@ -501,6 +501,9 @@ struct App {
     /// Settings changed in this window that could not be saved (an invalid or newer file):
     /// they last while it runs.
     cfg_unsaved: bool,
+    /// ADR 0091: the default text is this much larger on a large screen (1.0 in test windows
+    /// and the drop-down; a size set in `config.toml` always wins).
+    screen_zoom: f32,
     /// Windows apps use the light mode (`theme = "system"`).
     light_mode: bool,
     /// Windows shows animations ("Show animations in Windows").
@@ -681,6 +684,45 @@ fn installed_fonts(names: &[&'static str]) -> Vec<&'static str> {
         .copied()
         .filter(|f| subak_term::render::gdi::GdiRasterizer::new(&[f]).is_ok())
         .collect()
+}
+
+/// ADR 0091: when `config.toml` does not set `appearance.font_size`, the text is `zoom` times
+/// the default (a large screen); a size in the file always wins.
+fn screen_font(settings: &mut Settings, cfg: &config::Loaded, zoom: f32) {
+    if !cfg
+        .parsed
+        .set_keys
+        .iter()
+        .any(|k| k == "appearance.font_size")
+    {
+        settings.appearance.font_size = layout::default_font(zoom);
+    }
+}
+
+/// The work area of the monitor `hwnd` is on and its DPI.
+fn window_monitor(hwnd: HWND) -> Option<(Rect, u32)> {
+    use windows_sys::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow};
+    let mut mi = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..MONITORINFO::default()
+    };
+    let (mut dx, mut dy) = (96u32, 96u32);
+    // SAFETY: our own window; correctly sized out-structures.
+    let ok = unsafe {
+        let m = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        GetDpiForMonitor(m, MDT_EFFECTIVE_DPI, &raw mut dx, &raw mut dy);
+        GetMonitorInfoW(m, &raw mut mi)
+    };
+    let w = mi.rcWork;
+    (ok != 0).then_some((
+        Rect {
+            left: w.left,
+            top: w.top,
+            right: w.right,
+            bottom: w.bottom,
+        },
+        dx.max(48),
+    ))
 }
 
 /// The work areas of the monitors and their DPI.
@@ -2487,6 +2529,11 @@ impl App {
     }
 
     /// The zoom keys (and the settings menu): a new text size, saved in `config.toml`.
+    /// The text size *Reset zoom* returns to (ADR 0091: larger on a large screen).
+    fn default_font(&self) -> f32 {
+        layout::default_font(self.screen_zoom)
+    }
+
     fn set_font_size(&mut self, size: f32) {
         if (size - self.settings.appearance.font_size).abs() < f32::EPSILON {
             return;
@@ -2551,7 +2598,8 @@ impl App {
             return;
         }
         let notice = cfg.notice();
-        let new = cfg.settings().clone();
+        let mut new = cfg.settings().clone();
+        screen_font(&mut new, &cfg, self.screen_zoom);
         self.cfg = cfg;
         self.cfg_unsaved = false;
         self.apply_settings(new);
@@ -4556,9 +4604,7 @@ impl App {
             Action::ZoomOut => {
                 self.set_font_size(Prefs::zoomed(self.settings.appearance.font_size, -1));
             }
-            Action::ZoomReset => {
-                self.set_font_size(Prefs::zoomed(self.settings.appearance.font_size, 0));
-            }
+            Action::ZoomReset => self.set_font_size(self.default_font()),
             Action::ScrollPageUp => self.scroll(rows),
             Action::ScrollPageDown => self.scroll(-rows),
             Action::ScrollLineUp => self.scroll(1),
@@ -6535,10 +6581,14 @@ impl App {
             }
             "zoom" => {
                 let step = cmd["step"].as_i64().unwrap_or(0);
-                self.set_font_size(Prefs::zoomed(
-                    self.settings.appearance.font_size,
-                    step.signum() as i32,
-                ));
+                if step == 0 {
+                    self.set_font_size(self.default_font());
+                } else {
+                    self.set_font_size(Prefs::zoomed(
+                        self.settings.appearance.font_size,
+                        step.signum() as i32,
+                    ));
+                }
             }
             // Step 20: what Windows reports, simulated (High Contrast, light mode, animations).
             "system" => {
@@ -7506,7 +7556,19 @@ pub fn run(o: Options) -> ExitCode {
         .map(config::load)
         .unwrap_or_else(|| config::load(std::path::Path::new("")));
     let mut migration: Option<Value> = None;
+    // ADR 0091: on a large screen the default text is larger (the primary monitor; not for
+    // the off-screen test window or the drop-down).
+    let screen_zoom = if o.test || o.dropdown {
+        1.0
+    } else {
+        let all = monitors();
+        all.iter()
+            .find(|(r, _)| r.left <= 0 && r.top <= 0 && r.right > 0 && r.bottom > 0)
+            .or(all.first())
+            .map_or(1.0, |(r, dpi)| layout::screen_zoom(*r, *dpi))
+    };
     let mut settings = cfg.settings().clone();
+    screen_font(&mut settings, &cfg, screen_zoom);
     if let (Some(dir), Some(legacy)) = (prefs_dir.as_deref(), loaded.prefs.legacy) {
         if loaded.read_only {
             // Nothing can be rewritten: use the old values in memory.
@@ -7544,6 +7606,7 @@ pub fn run(o: Options) -> ExitCode {
                 Ok((wrote, backup)) => {
                     cfg = config::load(dir);
                     settings = cfg.settings().clone();
+                    screen_font(&mut settings, &cfg, screen_zoom);
                     migration = Some(
                         json!({"event": "migrated", "from": 1, "to": super::prefs::VERSION,
                         "config_written": wrote, "backup": backup}),
@@ -7751,6 +7814,7 @@ pub fn run(o: Options) -> ExitCode {
         settings,
         cfg,
         cfg_unsaved: false,
+        screen_zoom,
         light_mode: apps_use_light_theme(),
         system_animations: animations,
         motion: Transitions::new(motion_on),
@@ -7813,7 +7877,15 @@ pub fn run(o: Options) -> ExitCode {
         let (cw, ch) = app
             .cells()
             .client_for(layout::DEFAULT_GRID.0, layout::DEFAULT_GRID.1);
-        Some(outer_for(cw, ch + app.top(), dpi, test, app.opts.dropdown))
+        let (w, h) = outer_for(cw, ch + app.top(), dpi, test, app.opts.dropdown);
+        // ADR 0091: a first window is larger on a large screen (the work area of the monitor
+        // it opened on); never smaller than the default grid.
+        let big = if test || app.opts.dropdown {
+            None
+        } else {
+            window_monitor(hwnd).map(|(r, d)| layout::first_size(r, d))
+        };
+        Some(big.map_or((w, h), |(bw, bh)| (w.max(bw), h.max(bh))))
     };
     // Windows 10 20H1+ dark (or, for kim-light, light) title bar; the caption, text and border
     // colours apply on Windows 11 and are ignored on Windows 10. Step 20: the window's icon is

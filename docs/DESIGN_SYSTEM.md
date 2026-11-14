@@ -162,7 +162,9 @@ repair* has the mark on `status.warning`; an update is an `accent` dot. Hover: `
 70 %, radius 12; pressed: the icon shrinks to 54. Dialogs are at most 340 wide (inside the
 window); the right-click menu is egui's context menu. Settings: *General*, *Shortcuts*,
 *Catalog*, *About* as selectable labels; the theme follows the system or is fixed to
-`kim-dark` / `kim-light`.
+`kim-dark` / `kim-light`. All sizes here are points at 100 %: since ADR 0091 the whole
+window is zoomed to fit a large screen (*Size: Auto*, up to 300 %) or to the size chosen in
+Settings → General.
 
 The two-pane catalog below is **superseded** (kept as the record of Step 06–47):
 

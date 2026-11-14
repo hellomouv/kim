@@ -975,7 +975,8 @@ config_version = 1
 [appearance]
 theme = "auto"           # auto | system | kim-dark | kim-light | high-contrast
 font_family = ""         # "" = Cascadia Mono, Consolas, D2Coding, Malgun Gothic, … (tried first)
-font_size = 13           # 8–36 logical px; the zoom keys change it
+font_size = 13           # 8–36 logical px; the zoom keys change it. Not set: 13, larger on a
+                         # large screen (ADR 0091: 23 on 5120 × 1440 at 100 %)
 line_height = 1.2        # 1.0–2.0, the cell height as a multiple of the text size
 padding = 8              # 0–16 logical px around the cell grid
 opacity = 100            # 50–100 %; High Contrast is always opaque

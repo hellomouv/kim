@@ -23,6 +23,11 @@ kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
+[target.'cfg(windows)'.dependencies]
+# ADR 0091: the screen's work area (the zoom for Size: Auto) and keeping a grown window on it.
+raw-window-handle = "0.6.2"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+
 [dev-dependencies]
 kim-winres = { version = "0.0.1", path = "../kim-winres" }
 egui_kittest = "=0.37.0"

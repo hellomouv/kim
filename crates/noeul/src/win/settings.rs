@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows_sys::Win32::Graphics::Gdi::{
-    COLOR_BTNFACE, CreateFontIndirectW, CreateSolidBrush, DeleteObject, GetSysColorBrush, HBRUSH,
-    HDC, HFONT, SetBkColor, SetTextColor,
+    COLOR_BTNFACE, CreateFontIndirectW, CreateSolidBrush, DeleteObject, FillRect, GetSysColorBrush,
+    HBRUSH, HDC, HFONT, SetBkColor, SetTextColor,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Controls::{BST_CHECKED, SetWindowTheme};
@@ -39,15 +39,15 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
     CB_SETCURSEL, CBS_DROPDOWNLIST, CallWindowProcW, CreateWindowExW, DLGC_WANTALLKEYS,
-    DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, ES_READONLY, GWLP_WNDPROC, GetDlgItem,
-    IsDialogMessageW, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
+    DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, ES_READONLY, GWLP_WNDPROC, GetClientRect,
+    GetDlgItem, IsDialogMessageW, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
     LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MSG, NONCLIENTMETRICSW, PostMessageW, RegisterClassExW,
-    SPI_GETNONCLIENTMETRICS, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER,
+    SPI_GETNONCLIENTMETRICS, SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER,
     SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
     WM_APP, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_GETDLGCODE, WM_KEYDOWN, WM_SETFONT,
-    WM_SETTINGCHANGE, WM_SYSCHAR, WM_SYSCOLORCHANGE, WM_SYSKEYDOWN, WM_THEMECHANGED, WNDCLASSEXW,
-    WNDPROC, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETDLGCODE, WM_KEYDOWN,
+    WM_SETFONT, WM_SETTINGCHANGE, WM_SYSCHAR, WM_SYSCOLORCHANGE, WM_SYSKEYDOWN, WM_THEMECHANGED,
+    WNDCLASSEXW, WNDPROC, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_CONTROLPARENT,
     WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
@@ -129,6 +129,40 @@ struct State {
     confirm_reset: bool,
     done: Done,
     recorder_proc: isize,
+    /// ADR 0091: the window is drawn this many percent larger on a large screen (100 in tests).
+    zoom: i32,
+}
+
+/// ADR 0091: the zoom in percent for a work area of `w` × `h` pixels at `dpi`: as large as keeps
+/// the 600 × 740 window within 90 % of it, in steps of 25 %, between 100 % and 200 %.
+pub fn zoom_for(w: i32, h: i32, dpi: i32) -> i32 {
+    let (bw, bh) = (600 * dpi / 96, 740 * dpi / 96);
+    let fit = (w as f32 * 0.9 / bw as f32).min(h as f32 * 0.9 / bh as f32);
+    (((fit * 4.0).floor() * 25.0) as i32).clamp(100, 200)
+}
+
+/// The zoom for the monitor `hwnd` is on.
+fn screen_zoom(hwnd: HWND) -> i32 {
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromWindow,
+    };
+    let mut mi = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        // SAFETY: plain data.
+        ..unsafe { std::mem::zeroed() }
+    };
+    // SAFETY: our own window; a correctly sized out-structure.
+    let ok = unsafe {
+        let m = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+        GetMonitorInfoW(m, &raw mut mi)
+    };
+    if ok == 0 {
+        return 100;
+    }
+    // SAFETY: our own window.
+    let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96) as i32;
+    let w = mi.rcWork;
+    zoom_for(w.right - w.left, w.bottom - w.top, dpi)
 }
 
 thread_local! {
@@ -232,6 +266,7 @@ pub fn open(interactive: bool) -> Result<(), String> {
             confirm_reset: false,
             done: Arc::new(Mutex::new(None)),
             recorder_proc: 0,
+            zoom: if interactive { screen_zoom(hwnd) } else { 100 },
         });
     });
     build(hwnd, dark);
@@ -534,8 +569,9 @@ fn follow_theme(hwnd: HWND) {
 /// Places the controls for the window's DPI and sets the message font at that DPI.
 fn layout(hwnd: HWND) {
     use id::*;
+    let zoom = STATE.with(|s| s.borrow().as_ref().map_or(100, |st| st.zoom));
     // SAFETY: our own window.
-    let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96) as i32;
+    let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96) as i32 * zoom / 100;
     let px = |v: i32| v * dpi / 96;
     let mut ncm = NONCLIENTMETRICSW {
         cbSize: size_of::<NONCLIENTMETRICSW>() as u32,
@@ -600,6 +636,20 @@ fn layout(hwnd: HWND) {
     }
     place(STATUS, 12, 616, 560, 40);
     place(CLOSE, 472, 658, 100, 28);
+    if zoom != 100 {
+        // SAFETY: our own window; only its size changes.
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                std::ptr::null_mut(),
+                0,
+                0,
+                px(600),
+                px(740),
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE,
+            );
+        }
+    }
     if let Some(old) = old.filter(|f| !f.is_null()) {
         // SAFETY: the previous font, no longer selected anywhere.
         unsafe { DeleteObject(old) };
@@ -1029,6 +1079,26 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             command(hwnd, (wp & 0xFFFF) as u16, ((wp >> 16) & 0xFFFF) as u16);
             0
         }
+        WM_ERASEBKGND => match STATE.with(|s| s.borrow().as_ref().and_then(|st| st.dark)) {
+            // The dark background behind the controls (the class brush is the light face colour;
+            // found by the real-desktop check of ADR 0091).
+            Some(brush) => {
+                let mut r = RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                };
+                // SAFETY: our own window and the DC Windows passed for this erase.
+                unsafe {
+                    GetClientRect(hwnd, &raw mut r);
+                    FillRect(wp as HDC, &raw const r, brush);
+                }
+                1
+            }
+            // SAFETY: the default handling of our own window's message.
+            None => unsafe { DefWindowProcW(hwnd, msg, wp, lp) },
+        },
         WM_DONE => {
             finished(hwnd);
             0
@@ -1143,6 +1213,16 @@ pub fn is_open() -> bool {
 #[cfg(test)]
 mod theme_tests {
     use super::wants_dark;
+
+    #[test]
+    fn the_window_is_larger_on_a_large_screen() {
+        // ADR 0091: 5120 × 1410 at 100 % → 150 %; 1920 × 1040 → 125 %; small screens 100 %.
+        assert_eq!(super::zoom_for(5120, 1410, 96), 150);
+        assert_eq!(super::zoom_for(1920, 1040, 96), 125);
+        assert_eq!(super::zoom_for(1366, 728, 96), 100);
+        assert_eq!(super::zoom_for(3840, 2100, 144), 150);
+        assert_eq!(super::zoom_for(7680, 4280, 96), 200);
+    }
 
     /// #66: the window is dark only when interactive, in the dark app mode and without High
     /// Contrast; `follow_theme` re-evaluates this on every theme change.

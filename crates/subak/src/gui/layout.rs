@@ -100,6 +100,33 @@ pub fn rescale(size: (i32, i32), old_dpi: u32, new_dpi: u32) -> (i32, i32) {
     (f(size.0), f(size.1))
 }
 
+/// ADR 0091: the size of a first window (nothing saved yet) on a monitor whose work area is
+/// `work` at `dpi`: 800 × 600 logical pixels, made larger on a large screen — up to twice that,
+/// in steps of 25 %, while it stays within 80 % of the work area.
+pub fn first_size(work: Rect, dpi: u32) -> (i32, i32) {
+    let (bw, bh) = (px(800.0, dpi), px(600.0, dpi));
+    let z = screen_zoom(work, dpi);
+    (
+        (bw as f32 * z).round() as i32,
+        (bh as f32 * z).round() as i32,
+    )
+}
+
+/// ADR 0091: how much larger than at 100 % a first window and the default text are on a monitor
+/// whose work area is `work` at `dpi` (1.0 … 2.0 in steps of 0.25; see [`first_size`]).
+pub fn screen_zoom(work: Rect, dpi: u32) -> f32 {
+    let (bw, bh) = (px(800.0, dpi), px(600.0, dpi));
+    let fit = (work.width() as f32 * 0.8 / bw as f32).min(work.height() as f32 * 0.8 / bh as f32);
+    ((fit * 4.0).floor() / 4.0).clamp(1.0, 2.0)
+}
+
+/// ADR 0091: the text size when `config.toml` does not set one: the default, `zoom` times
+/// larger, in whole pixels within the allowed range.
+pub fn default_font(zoom: f32) -> f32 {
+    let (min, max, default) = crate::config::FONT_SIZE;
+    (default * zoom).round().clamp(min, max)
+}
+
 /// A saved placement to restore, or `None` when not enough of it lies on any of `monitors`
 /// (their work areas): a monitor was removed, or the window was off-screen (a test run). The
 /// size is rescaled from the DPI it was saved at to `dpi`, the DPI of the monitor it lands on.
@@ -131,6 +158,33 @@ pub fn restore(p: &Placement, monitors: &[(Rect, u32)]) -> Option<(Rect, bool)> 
 mod tests {
     use super::*;
     use subak_term::render::{RenderOptions, Renderer, Theme};
+
+    fn work(w: i32, h: i32) -> Rect {
+        Rect {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        }
+    }
+
+    #[test]
+    fn a_first_window_is_larger_on_a_large_screen() {
+        // ADR 0091: 5120 × 1410 at 100 % (an ultrawide): 175 %.
+        assert_eq!(first_size(work(5120, 1410), 96), (1400, 1050));
+        // 1920 × 1040 at 100 %: 125 %.
+        assert_eq!(first_size(work(1920, 1040), 96), (1000, 750));
+        // Small screens keep 800 × 600 logical pixels; the scale still applies.
+        assert_eq!(first_size(work(1024, 728), 96), (800, 600));
+        assert_eq!(first_size(work(1280, 680), 144), (1200, 900));
+        // Never more than twice.
+        assert_eq!(first_size(work(7680, 4280), 96), (1600, 1200));
+        // The default text grows with it (13 px at 100 %).
+        assert!((screen_zoom(work(5120, 1410), 96) - 1.75).abs() < 1e-6);
+        assert!((default_font(1.75) - 23.0).abs() < 1e-6);
+        assert!((default_font(1.0) - crate::config::FONT_SIZE.2).abs() < 1e-6);
+        assert!((default_font(2.0) - 26.0).abs() < 1e-6);
+    }
 
     fn cells_at(dpi: u32) -> Cells {
         let mut r = Renderer::builtin(Theme::kim_dark(), RenderOptions::default());

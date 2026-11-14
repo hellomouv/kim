@@ -25,6 +25,25 @@ pub mod repo;
 pub mod shortcuts;
 pub mod sync;
 pub mod theme;
+
+/// ADR 0091: the editor's zoom on a screen whose work area is `w` × `h` points: as large as
+/// keeps its first size (1060 × 680 plus the title bar) within 90 % of the screen, in steps of
+/// 25 %, between 100 % and 200 %.
+pub fn window_scale(w: f32, h: f32) -> f32 {
+    let fit = (w * 0.9 / 1060.0).min(h * 0.9 / 712.0);
+    ((fit * 4.0).floor() / 4.0).clamp(1.0, 2.0)
+}
+
+#[cfg(test)]
+mod scale_tests {
+    #[test]
+    fn the_editor_is_larger_on_a_large_screen() {
+        assert!((super::window_scale(5120.0, 1410.0) - 1.75).abs() < 1e-6);
+        assert!((super::window_scale(1920.0, 1040.0) - 1.25).abs() < 1e-6);
+        assert!((super::window_scale(1366.0, 728.0) - 1.0).abs() < 1e-6);
+        assert!((super::window_scale(7680.0, 4280.0) - 2.0).abs() < 1e-6);
+    }
+}
 pub mod transfer;
 
 pub use app::{EditorApp, Options};

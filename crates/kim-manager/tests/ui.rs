@@ -9,7 +9,7 @@ use egui_kittest::kittest::Queryable;
 use kim::catalog::signature::{self, TrustedKey};
 use kim::paths::Paths;
 use kim::platform::Platform;
-use kim_manager::{Backend, Banner, KimManagerApp, ThemePref, TileState};
+use kim_manager::{Backend, Banner, KimManagerApp, Prefs, ThemePref, TileState};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -967,4 +967,56 @@ fn the_layout_holds_at_other_display_scales() {
         );
         assert!(g.right() > 330.0 && g.bottom() > 190.0, "{scale}: {g:?}");
     }
+}
+
+/// ADR 0091: Size (Settings → General) follows the screen by default (Auto) and can be fixed;
+/// the choice zooms the whole window at once, is saved in manager.json and read again by the
+/// next start (`Prefs::load_beside`, what kim-manager.exe reads before its window opens).
+#[test]
+fn the_size_follows_the_screen_or_the_choice_and_persists() {
+    // Auto: an ultrawide 5120 × 1410 → 275 %, 1920 × 1040 → 200 %, a small screen 100 %.
+    assert!((kim_manager::auto_scale(egui::vec2(5120.0, 1410.0)) - 2.75).abs() < 1e-6);
+    assert!((kim_manager::auto_scale(egui::vec2(1920.0, 1040.0)) - 2.0).abs() < 1e-6);
+    assert!((kim_manager::auto_scale(egui::vec2(1024.0, 600.0)) - 1.0).abs() < 1e-6);
+    assert!((kim_manager::auto_scale(egui::vec2(9000.0, 9000.0)) - 3.0).abs() < 1e-6);
+    let sb = Sandbox::new("size");
+    let be = all_released(&sb, "1.0.0");
+    let again = be.clone();
+    let (first, _) = app(be);
+    let mut h = sized(first, 580.0, 460.0);
+    let ctx = h.ctx.clone();
+    h.state_mut().set_window_scale(&ctx, 2.75, 2.75);
+    h.run();
+    assert!((h.ctx.zoom_factor() - 2.75).abs() < 1e-6);
+    h.get_by_label("Settings").click();
+    h.run();
+    assert!(
+        h.query_by_label("Auto (275%)").is_some(),
+        "Auto names its size"
+    );
+    h.get_by_label("150%").click();
+    h.run();
+    assert!((h.ctx.zoom_factor() - 1.5).abs() < 1e-6, "applied at once");
+    assert!((h.state().wanted_scale() - 1.5).abs() < 1e-6);
+    let prefs: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sb.0.join("manager.json")).unwrap()).unwrap();
+    assert_eq!(prefs["scale"], 150);
+    let loaded = Prefs::load_beside(&sb.0.join("settings.json"));
+    assert_eq!(loaded.scale, Some(150));
+    assert!((loaded.scale_or(2.75) - 1.5).abs() < 1e-6);
+    let (next, _) = app(again);
+    assert_eq!(next.prefs().scale, Some(150), "kept for the next start");
+    h.get_by_label("Auto (275%)").click();
+    // The window takes its size once the new zoom is in effect (a few frames).
+    h.run_steps(8);
+    assert!((h.ctx.zoom_factor() - 2.75).abs() < 1e-6, "Auto again");
+    let prefs: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sb.0.join("manager.json")).unwrap()).unwrap();
+    assert!(prefs["scale"].is_null());
+    // Out-of-range values in a hand-edited file stay within 100–300 %.
+    let odd = Prefs {
+        scale: Some(900),
+        ..Prefs::default()
+    };
+    assert!((odd.scale_or(1.0) - 3.0).abs() < 1e-6);
 }

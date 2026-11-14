@@ -95,6 +95,23 @@ mod single {
         }))
     }
 
+    /// The primary monitor's work area in points (read before the window exists: the process
+    /// is not DPI aware yet, so Windows answers in 96-DPI points).
+    pub fn work_area() -> Option<(f32, f32)> {
+        use windows_sys::Win32::Foundation::RECT;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETWORKAREA, SystemParametersInfoW};
+        let mut r = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        // SAFETY: SPI_GETWORKAREA writes one RECT.
+        let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, (&raw mut r).cast(), 0) };
+        (ok != 0 && r.right > r.left && r.bottom > r.top)
+            .then(|| ((r.right - r.left) as f32, (r.bottom - r.top) as f32))
+    }
+
     /// Whether the user's Windows display language is Korean (primary language 0x12).
     pub fn ui_language_is_korean() -> bool {
         // SAFETY: no arguments; returns the user's UI language ID.
@@ -209,12 +226,14 @@ fn run(
         cursor.left + cursor.width() / 2,
         cursor.top + cursor.height() / 2,
     );
+    // ADR 0091: everything is drawn larger on a large screen.
+    let zoom = single::work_area().map_or(1.0, |(w, h)| ddalgak_editor::window_scale(w, h));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Ddalgak rules")
             .with_app_id("mouv.ddalgak.editor")
-            .with_inner_size([1060.0, 680.0])
-            .with_min_inner_size([420.0, 360.0]),
+            .with_inner_size([1060.0 * zoom, 680.0 * zoom])
+            .with_min_inner_size([420.0 * zoom, 360.0 * zoom]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -222,6 +241,7 @@ fn run(
         "ddalgak-editor",
         options,
         Box::new(move |cc| {
+            cc.egui_ctx.set_zoom_factor(zoom);
             let ctx = cc.egui_ctx.clone();
             single::on_show(&owner, move || {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));

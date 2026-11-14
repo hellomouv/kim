@@ -209,6 +209,18 @@ pub struct KimManagerApp {
     prefs: Prefs,
     light: Option<bool>,
     launcher_size: Option<egui::Vec2>,
+    /// ADR 0091: the size chosen for this screen (Settings → General → Size: Auto) and the
+    /// zoom last applied to the window (`None` in tests: no real window to scale).
+    auto_scale: f32,
+    zoom: Option<f32>,
+    /// The real window (Windows: its HWND), where it was before it grew to stay on the screen
+    /// (pixels; it moves back when Settings or Information closes), and how many more frames
+    /// to check that it is within the screen's work area after a resize.
+    hwnd: Option<isize>,
+    moved_from: Option<(i32, i32)>,
+    screen_check: u8,
+    /// After a new size: the size in points to give the window once the zoom is in effect.
+    resize_to: Option<egui::Vec2>,
     /// The banner on the status line and when it was first shown (it fades).
     banner_at: Option<(String, f64)>,
 }
@@ -260,6 +272,12 @@ impl KimManagerApp {
             prefs: Prefs::default(),
             light: None,
             launcher_size: None,
+            auto_scale: 1.0,
+            zoom: None,
+            hwnd: None,
+            moved_from: None,
+            screen_check: 0,
+            resize_to: None,
             banner_at: None,
         };
         app.prefs = app
@@ -879,9 +897,32 @@ impl KimManagerApp {
             let want = egui::vec2(now.x.max(580.0), now.y.max(460.0));
             if want != now {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
+                self.screen_check = 10;
             }
         } else if let Some(size) = self.launcher_size.take() {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            #[cfg(windows)]
+            if let (Some(h), Some(p)) = (self.hwnd, self.moved_from.take()) {
+                screen::move_to(h, p);
+            }
+        }
+    }
+
+    /// ADR 0091: for a few frames after the window grew, a window that now reaches past the
+    /// bottom or right edge of its screen's work area moves up or left into it (and back when it
+    /// shrinks again). Read from Windows: egui's own idea of the position lags a zoom change.
+    fn keep_on_screen(&mut self, ctx: &egui::Context) {
+        if self.screen_check == 0 || self.hwnd.is_none() {
+            self.screen_check = 0;
+            return;
+        }
+        self.screen_check -= 1;
+        ctx.request_repaint();
+        #[cfg(windows)]
+        if let Some(h) = self.hwnd
+            && let Some(from) = screen::fit(h)
+        {
+            self.moved_from.get_or_insert(from);
         }
     }
 
@@ -912,11 +953,57 @@ impl KimManagerApp {
         }
     }
 
+    /// ADR 0091: the window shows everything `zoom` times larger (it was created at that size;
+    /// `auto` is what *Size: Auto* means on this screen).
+    pub fn set_window_scale(&mut self, ctx: &egui::Context, auto: f32, zoom: f32) {
+        self.auto_scale = auto;
+        self.zoom = Some(zoom);
+        ctx.set_zoom_factor(zoom);
+    }
+
+    /// The zoom Settings → General → Size asks for.
+    pub fn wanted_scale(&self) -> f32 {
+        self.prefs.scale_or(self.auto_scale)
+    }
+
+    /// A new size from Settings: everything grows or shrinks, the window with it.
+    fn apply_scale(&mut self, ctx: &egui::Context) {
+        let Some(zoom) = self.zoom else { return };
+        // The window keeps its size in points: sent once the new zoom is in effect (a size
+        // sent in the same frame would still be converted with the old one).
+        if let Some(points) = self.resize_to {
+            let native = ctx.input(|i| i.viewport().native_pixels_per_point.unwrap_or(1.0));
+            if (ctx.pixels_per_point() - native * zoom).abs() < 0.01 {
+                self.resize_to = None;
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                    MIN_SIZE[0],
+                    MIN_SIZE[1],
+                )));
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(points));
+                self.screen_check = 10;
+            } else {
+                ctx.request_repaint();
+            }
+        }
+        let want = self.wanted_scale();
+        if (want - zoom).abs() < f32::EPSILON {
+            return;
+        }
+        if self.resize_to.is_none() {
+            self.resize_to = Some(ctx.content_rect().size());
+        }
+        self.zoom = Some(want);
+        ctx.set_zoom_factor(want);
+        ctx.request_repaint();
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         self.poll();
         let ctx = ui.ctx().clone();
         self.apply_theme(&ctx);
+        self.apply_scale(&ctx);
         self.fit_window(&ctx);
+        self.keep_on_screen(&ctx);
         if self.capture.is_some() {
             self.capture_key(&ctx);
         } else {
@@ -1774,6 +1861,19 @@ impl KimManagerApp {
                 self.save_prefs();
             }
         });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Size");
+            let before = self.prefs.scale;
+            let auto = format!("Auto ({}%)", (self.auto_scale * 100.0).round());
+            ui.selectable_value(&mut self.prefs.scale, None, auto)
+                .on_hover_text("Fits this screen: larger on a big screen.");
+            for p in SCALES {
+                ui.selectable_value(&mut self.prefs.scale, Some(p), format!("{p}%"));
+            }
+            if before != self.prefs.scale {
+                self.save_prefs();
+            }
+        });
         ui.add_space(10.0);
         ui.label(egui::RichText::new("Installing and updating").strong());
         let mut changed = false;
@@ -2108,6 +2208,121 @@ pub enum ThemePref {
 #[serde(default)]
 pub struct Prefs {
     pub theme: ThemePref,
+    /// ADR 0091: the size in percent (`None`: Auto, fitted to the screen).
+    pub scale: Option<u16>,
+}
+
+impl Prefs {
+    /// The zoom to use: the chosen percentage (kept within 100–300 %) or `auto`.
+    pub fn scale_or(&self, auto: f32) -> f32 {
+        self.scale
+            .map_or(auto, |p| f32::from(p.clamp(100, 300)) / 100.0)
+    }
+
+    /// The preferences in `manager.json` next to `settings` (Kim's settings file); defaults
+    /// when the file is missing or unreadable.
+    pub fn load_beside(settings: &Path) -> Prefs {
+        std::fs::read(settings.with_file_name("manager.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// The launcher's size in points at 100 % (ADR 0090) and its minimum.
+pub const BASE_SIZE: [f32; 2] = [368.0, 224.0];
+pub const MIN_SIZE: [f32; 2] = [336.0, 196.0];
+/// The sizes Settings → General offers besides Auto (percent).
+pub const SCALES: [u16; 5] = [100, 150, 200, 250, 300];
+
+/// ADR 0091: the zoom for a screen whose work area is `work` points: as large as fits the
+/// largest view (Settings, 580 × 460 plus the title bar) on the screen with a small margin, in
+/// steps of 25 %, between 100 % and 300 %.
+pub fn auto_scale(work: egui::Vec2) -> f32 {
+    let fit = (work.x * 0.95 / 580.0).min(work.y * 0.98 / 492.0);
+    ((fit * 4.0).floor() / 4.0).clamp(1.0, 3.0)
+}
+
+/// ADR 0091: keeping the real window within its screen (Win32).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod screen {
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+    };
+
+    /// Moves the window up or left into its monitor's work area when it reaches past the
+    /// bottom or right edge; returns where it was (pixels) when it moved.
+    pub fn fit(hwnd: isize) -> Option<(i32, i32)> {
+        let h = hwnd as HWND;
+        let mut r = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        let mut mi = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            rcMonitor: r,
+            rcWork: r,
+            dwFlags: 0,
+        };
+        // SAFETY: our own window; correctly sized out-structures.
+        let ok = unsafe {
+            GetWindowRect(h, &raw mut r) != 0
+                && GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &raw mut mi) != 0
+        };
+        if !ok {
+            return None;
+        }
+        let w = mi.rcWork;
+        let x = r.left.min(w.right - (r.right - r.left)).max(w.left);
+        let y = r.top.min(w.bottom - (r.bottom - r.top)).max(w.top);
+        if (x, y) == (r.left, r.top) {
+            return None;
+        }
+        move_to(hwnd, (x, y));
+        Some((r.left, r.top))
+    }
+
+    /// Moves the window's upper-left corner to `pos` (pixels), keeping its size.
+    pub fn move_to(hwnd: isize, pos: (i32, i32)) {
+        // SAFETY: our own window; only its position changes.
+        unsafe {
+            SetWindowPos(
+                hwnd as HWND,
+                std::ptr::null_mut(),
+                pos.0,
+                pos.1,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+/// The primary monitor's work area (without the taskbar) in points, read before the window
+/// exists (the process is not DPI aware yet, so Windows answers in 96-DPI points).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn work_area() -> Option<egui::Vec2> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETWORKAREA, SystemParametersInfoW};
+    let mut r = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    // SAFETY: SPI_GETWORKAREA writes one RECT.
+    let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, (&raw mut r).cast(), 0) };
+    (ok != 0 && r.right > r.left && r.bottom > r.top)
+        .then(|| egui::vec2((r.right - r.left) as f32, (r.bottom - r.top) as f32))
 }
 
 /// How a tool is configured from its menu.
@@ -2291,10 +2506,21 @@ impl KimManagerApp {
 }
 
 impl eframe::App for KimManagerApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         if self.ctx.is_none() {
             self.ctx = Some(ui.ctx().clone());
         }
+        #[cfg(windows)]
+        if self.hwnd.is_none() {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(h) = frame.window_handle()
+                && let RawWindowHandle::Win32(w) = h.as_raw()
+            {
+                self.hwnd = Some(w.hwnd.get());
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = frame;
         KimManagerApp::ui(self, ui);
     }
 }

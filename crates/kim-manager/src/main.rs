@@ -8,7 +8,7 @@
 #![windows_subsystem = "windows"]
 
 use eframe::egui;
-use kim_manager::{Backend, KimManagerApp};
+use kim_manager::{Backend, KimManagerApp, Prefs};
 
 /// The Kim icon (the laver sheet) for the window's title bar and taskbar button.
 const ICON_PNG: &[u8] = include_bytes!("../../../assets/icon/kim-128.png");
@@ -20,11 +20,25 @@ fn main() -> eframe::Result {
         .position(|a| a == "--catalog")
         .and_then(|i| args.get(i + 1))
         .cloned();
+    // ADR 0091: everything is drawn larger on a large screen (Settings → General → Size).
+    #[cfg(windows)]
+    let work = kim_manager::work_area();
+    #[cfg(not(windows))]
+    let work = None;
+    let auto = work.map_or(1.0, kim_manager::auto_scale);
+    let backend = Backend::real().map_err(|e| eframe::Error::AppCreation(e.to_string().into()))?;
+    let zoom = backend
+        .settings_path
+        .as_deref()
+        .map_or(Prefs::default(), Prefs::load_beside)
+        .scale_or(auto);
+    let [w, h] = kim_manager::BASE_SIZE;
+    let [mw, mh] = kim_manager::MIN_SIZE;
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Kim")
         // ADR 0090: a small launcher: three tiles and the gear, generous space around them.
-        .with_inner_size([368.0, 224.0])
-        .with_min_inner_size([336.0, 196.0]);
+        .with_inner_size([w * zoom, h * zoom])
+        .with_min_inner_size([mw * zoom, mh * zoom]);
     if let Ok(icon) = eframe::icon_data::from_png_bytes(ICON_PNG) {
         viewport = viewport.with_icon(icon);
     }
@@ -37,8 +51,8 @@ fn main() -> eframe::Result {
         "kim-manager",
         options,
         Box::new(move |cc| {
-            let backend = Backend::real().map_err(|e| e.to_string())?;
             let mut app = KimManagerApp::new(backend, Some(&cc.egui_ctx));
+            app.set_window_scale(&cc.egui_ctx, auto, zoom);
             // Emergency start without any shortcut (HOTKEY_CONTRACT §8.3, KIM-SEC-023).
             if args.iter().any(|a| a == "--no-hotkeys") {
                 app.disable_hotkeys();
