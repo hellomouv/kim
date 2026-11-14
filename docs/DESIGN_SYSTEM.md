@@ -1,8 +1,11 @@
 # Kim Design System
 
-Status: **current** · Step 04 · Applies to Kim Manager and every Subak GUI surface ·
+Status: **current** · Step 04, ADR 0092 · Applies to every Kim program: Kim Manager, Subak,
+Noeul and Ddalgak ·
 Tokens: [design/tokens.json](../design/tokens.json) (checked by `cargo xtask design-check`) ·
-Toolkit: [ADR 0014](adr/0014-gui-technology.md)
+Code: `kim-design` (tokens, language, Windows preferences; no toolkit) and `kim-ui` (the egui
+theme and components) · Toolkit: [ADR 0014](adr/0014-gui-technology.md) ·
+Decision: [ADR 0092](adr/0092-unified-design-system.md)
 
 Kim looks like a quiet instrument: a nearly black surface, compact type, very little chrome, and
 one controlled lilac accent that marks *where you are* and *what needs you*. Terminal content is
@@ -20,8 +23,13 @@ the hero; everything else steps back.
 5. **Calm motion.** Short (80–160 ms), decelerating, purposeful; none when the user asks for
    reduced motion.
 6. **Keyboard is first-class.** Every action is reachable and visible-focused by keyboard.
-7. **Shared language, separate runtimes.** Both GUIs consume the same tokens; no headless
-   binary links GUI code ([ADR 0002](adr/0002-independent-tool-binaries.md)).
+7. **Shared language, separate runtimes.** Every program compiles the same `kim-design`
+   values (and, for egui windows, the same `kim-ui` components); nothing is shared at run time
+   and no headless binary links GUI code ([ADR 0002](adr/0002-independent-tool-binaries.md)).
+8. **Monochrome first.** Black and near-black surfaces, white and greys for text and controls;
+   purple only for focus, the selected item, the one primary action, a switch that is on and
+   subtle accents. No purple backgrounds, no colourful controls, no decorative panels or extra
+   borders: whitespace, alignment and type carry the structure.
 
 ## 2. Tokens
 
@@ -86,8 +94,16 @@ on an assumed dark background stay readable.
 
 ### 2.4 Space, radius, size
 
-- Space scale `0, 2, 4, 6, 8, 12, 16, 24, 32`. Default gaps: 8 inside controls, 12 between
-  groups, 16 dialog padding.
+- Space scale `0, 2, 4, 6, 8, 12, 16, 24, 32` (`kim_design::space`: `XXS 2 · XS 4 · S 8 · M 12 ·
+  L 16 · XL 24 · XXL 32`; 6 is kept only for existing Subak chrome). Default gaps: 8 inside
+  controls and between rows, 12 between groups, 16 window and dialog padding, 24 between
+  sections.
+- Sizes (`kim_design::size`, ADR 0092): control 28 (compact 24, large 32); icons 14 / 16 / 20 /
+  24; buttons at least 72 wide with 12 horizontal padding; switch 32 × 18 with a 14 thumb;
+  checkbox 16; navigation rail 168 with 32-high items (a settings rail 148); list rows 40; menu
+  items 26; the settings gear 28 at 12 from the corner; dialogs 420 (at most 440, narrower in a
+  narrow window, tighter spacing under 320 points of height); popovers and tooltips 280;
+  a settings view 640 × 480.
 - Radius `4` (controls, chips), `6` (menus, tabs), `10` (dialogs, floating icon). No radius on
   terminal panes.
 - Key sizes: tab bar 32, tab 96–220 wide, control 28 (compact 24), status dot 8, floating icon
@@ -245,6 +261,53 @@ assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
 - **Empty / disconnected / loading** states: one muted sentence plus one action (e.g. "Host
   not running — Start"), never a blank window.
 
+### 3.9 Buttons, switches and choices (ADR 0092, `kim-ui`)
+
+- **Buttons**: *primary* (accent fill, `text.on-accent`, semibold; one per view), *secondary*
+  (`bg.overlay`, 1 px `border.subtle`), *ghost* (no fill until hovered; rows and toolbars),
+  *danger* (`status.danger` outline and text, a 16 % tint on hover). Hover and pressed change
+  the fill (`accent.hover` / `accent.pressed`, `bg.hover` / `bg.selected`); keyboard focus draws
+  the 2 px `focus.ring` 1 px outside; disabled fades to 45 % and never acts.
+- **Switch** (shadcn-like): a pill track 32 × 18, `switch.off` grey when off and `accent` when
+  on, a round 14 thumb in `text.on-accent` that slides over `duration.base` (instantly with
+  reduced motion). Space or Enter toggles it; its accessible role is *switch* with its state.
+  A **switch row** is the usual form in settings: the title (and a muted description) on the
+  left, the switch on the right, the whole row clickable, one accessible name.
+- **Segmented choice** for 2–6 short options (theme, size, language): a raised track with the
+  selected segment in `bg.selected`, semibold. **Dropdowns** for longer lists; **checkboxes** only
+  for confirmations ("I understand…"), never for settings.
+- **Keycaps** show a shortcut (`Ctrl` `Shift` `K`, a sequence with a muted "then"); the
+  **shortcut field** shows them, records new keys when clicked (accent outline and "Press
+  keys…" while recording) and is named by its action.
+
+### 3.10 Settings views and the gear (ADR 0092)
+
+- Every program's main window has a small gear in its lower-right corner (ghost icon button,
+  28 points, 12 from both edges; selected while Settings is open). Settings never fill the main
+  view.
+- A settings view: the sections on a left rail (`bg.raised`), the selected section on the
+  right: its title (15 semibold), then **setting groups** (an 11 px semibold heading in
+  `text.secondary` over a `bg.raised` panel with a subtle border, radius 6) of **rows**
+  (title 12 px, description 11 px muted, the control right-aligned; a wide control below its
+  text), thin dividers between rows. Common settings first; rarely used ones in an *Advanced*
+  section (progressive disclosure). Changes apply at once; destructive ones ask.
+- Kim Manager (reference): General (Appearance: Theme, Size, Language; Installing and
+  updating: Offline mode, Check for updates when Kim starts, Channel), Shortcuts, Catalog,
+  About, and Done at the bottom of the rail (Esc too).
+
+### 3.11 Window structure (ADR 0092)
+
+- No internal top bar or toolbar by default; native caption buttons, dragging, resizing and
+  Windows snapping always work.
+- A left navigation rail only when a program has several primary sections (Ddalgak); Subak's
+  terminal tabs are the exception that stays visible.
+- The main view keeps the program's most important function; runtime state that matters
+  stays visible (a status line), configuration moves to Settings.
+- Empty states: a title, one muted sentence and at most one primary action. Errors: an inline
+  notice (tone glyph + message + code), validation under the field (`✕` + message, danger).
+  Confirmation dialogs name exactly what happens; the safe choice sits next to the action.
+  Loading: a 4 px bar (indeterminate: a moving segment, static with reduced motion).
+
 ## 4. Interaction
 
 ### 4.1 Keyboard-only
@@ -290,10 +353,29 @@ all durations become 0, pulses become static rings, progress shimmer becomes sta
 Subak's setting is `appearance.motion` (`system` follows Windows, `reduced` never animates,
 `full` always does).
 
+### 4.6 Language (ADR 0092)
+
+- Titles, navigation labels, feature names, buttons and technical actions are English in both
+  languages, so the same word means the same thing everywhere (Settings, Rules, Pins, Install,
+  Reset). Descriptions, help, validation and messages follow the chosen language.
+- English and Korean; the default is Windows' display language (`LangPref::System`, shown as
+  *System (한국어)*). Korean text uses Malgun Gothic from the fallback chain; layouts wrap
+  descriptions instead of fixing widths, so longer Korean or English text never overflows.
+  Korean IME input works in every text field (egui's IME support; Win32 controls natively).
+
+### 4.7 Theme, scroll, performance
+
+- Theme: *System* follows Windows' app mode, or always dark or light; the choice is saved by
+  each program. Scroll bars are thin and appear on hover. An idle window does not repaint: no
+  timer runs unless an animation or a transient read-out (`duration.hint`, 1.2 s) is showing.
+
 ## 5. Implementation notes
 
-- Tokens are consumed by a future `kim-design` crate (created when the second GUI needs it,
-  ADR 0002) that embeds `tokens.json` at build time; headless binaries never depend on it.
+- `kim-design` (ADR 0092) holds the tokens as Rust values (a test keeps them equal to
+  `tokens.json`), `px()` for DPI × zoom, `Lang`/`LangPref` and Windows' preferences; it has no
+  GUI toolkit, so the Win32 programs (Subak's window, Noeul, Ddalgak's tray app) use it.
+  `kim-ui` is the egui theme and components for the egui windows (Kim Manager, the Ddalgak
+  rule editor, Noeul's settings window). Headless binaries never depend on `kim-ui`.
 - Visual regression: GUIs render headlessly in tests (ADR 0014) and compare snapshots of key
   components at 100 % and 200 %.
 - Mock-ups: `design/mockups/*.png` are produced from the tokens by the reproducible generator

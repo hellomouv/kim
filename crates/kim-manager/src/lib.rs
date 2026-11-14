@@ -210,6 +210,8 @@ pub struct KimManagerApp {
     textures: HashMap<(String, bool), egui::TextureHandle>,
     prefs: Prefs,
     light: Option<bool>,
+    /// The design system is installed in the context (ADR 0092).
+    themed: bool,
     launcher_size: Option<egui::Vec2>,
     /// ADR 0091: the size chosen for this screen (Settings → General → Size: Auto) and the
     /// zoom last applied to the window (`None` in tests: no real window to scale).
@@ -274,6 +276,7 @@ impl KimManagerApp {
             textures: HashMap::new(),
             prefs: Prefs::default(),
             light: None,
+            themed: false,
             launcher_size: None,
             auto_scale: 1.0,
             zoom: None,
@@ -290,6 +293,7 @@ impl KimManagerApp {
             .unwrap_or_default();
         if let Some(ctx) = ctx {
             theme::apply(ctx);
+            app.themed = true;
         }
         app.reload();
         // Launch-time check only if the user enabled it (off by default, KIM-SEC-002). It only
@@ -1005,6 +1009,11 @@ impl KimManagerApp {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         self.poll();
         let ctx = ui.ctx().clone();
+        if !self.themed {
+            theme::apply(&ctx);
+            self.themed = true;
+            self.light = None;
+        }
         self.apply_theme(&ctx);
         self.apply_scale(&ctx);
         self.fit_window(&ctx);
@@ -1120,7 +1129,7 @@ impl KimManagerApp {
         if g.hovered() {
             ui.painter().circle_filled(gear.center(), 14.0, c.bg_hover);
         }
-        paint_gear(ui.painter(), gear.center(), 7.0, col);
+        kim_ui::paint_gear(ui.painter(), gear.center(), 7.0, col);
         if g.on_hover_text("Settings").clicked() {
             self.toggle_settings(Some(&ui.ctx().clone()));
         }
@@ -1292,114 +1301,121 @@ impl KimManagerApp {
         let busy_why = "Kim is busy with another install or uninstall";
         let mut pick = None;
         ui.set_min_width(190.0);
-        ui.label(
-            egui::RichText::new(self.tool_name(id))
-                .size(12.0)
-                .strong()
-                .color(c.text_secondary),
-        );
-        ui.separator();
-        match state {
-            TileState::Installed | TileState::Update => {
-                for (k, l) in launches(id).iter().enumerate() {
-                    if ui.button(l.label).clicked() {
-                        pick = Some(MenuAction::Open(k));
-                    }
-                }
-                match configure(id) {
-                    Configure::Program(_) => {
-                        if ui.button("Settings…").clicked() {
-                            pick = Some(MenuAction::Configure);
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.spacing_mut().interact_size.y = 22.0;
+        let room = (ui.ctx().content_rect().height() - 12.0).max(80.0);
+        egui::ScrollArea::vertical()
+            .max_height(room)
+            .auto_shrink([true, true])
+            .show(ui, |ui| {
+                match state {
+                    TileState::Installed | TileState::Update => {
+                        for (k, l) in launches(id).iter().enumerate() {
+                            if ui.button(l.label).clicked() {
+                                pick = Some(MenuAction::Open(k));
+                            }
+                        }
+                        match configure(id) {
+                            Configure::Program(_) => {
+                                if ui.button("Settings…").clicked() {
+                                    pick = Some(MenuAction::Configure);
+                                }
+                            }
+                            Configure::Note(why) => {
+                                ui.add_enabled(false, egui::Button::new("Settings…"))
+                                    .on_disabled_hover_text(why);
+                            }
+                        }
+                        if ui.button("Open installation folder").clicked() {
+                            pick = Some(MenuAction::Folder);
+                        }
+                        ui.separator();
+                        if state == TileState::Update {
+                            let v = self
+                                .views
+                                .iter()
+                                .find(|v| v.id == id)
+                                .and_then(|v| v.latest_compatible.clone())
+                                .unwrap_or_default();
+                            if ui
+                                .add_enabled(!busy, egui::Button::new(format!("Update to {v}…")))
+                                .on_disabled_hover_text(busy_why)
+                                .clicked()
+                            {
+                                pick = Some(MenuAction::Install);
+                            }
+                        }
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("Check for updates"))
+                            .on_disabled_hover_text(busy_why)
+                            .on_hover_text(
+                                "Reads the catalog again; never downloads or installs anything",
+                            )
+                            .clicked()
+                        {
+                            pick = Some(MenuAction::CheckUpdates);
+                        }
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("Reinstall…"))
+                            .on_disabled_hover_text(busy_why)
+                            .on_hover_text(
+                                "Installs this version again from the catalog, verified like any \
+                         install; your settings and data stay",
+                            )
+                            .clicked()
+                        {
+                            pick = Some(MenuAction::Reinstall);
+                        }
+                        if ui
+                            .add_enabled(
+                                !busy,
+                                egui::Button::new(
+                                    egui::RichText::new("Uninstall…").color(c.danger),
+                                ),
+                            )
+                            .on_disabled_hover_text(busy_why)
+                            .clicked()
+                        {
+                            pick = Some(MenuAction::Uninstall);
                         }
                     }
-                    Configure::Note(why) => {
-                        ui.add_enabled(false, egui::Button::new("Settings…"))
-                            .on_disabled_hover_text(why);
+                    TileState::NotInstalled | TileState::Damaged => {
+                        let label = if state == TileState::Damaged {
+                            "Repair…"
+                        } else {
+                            "Install…"
+                        };
+                        if ui
+                            .add_enabled(!busy, egui::Button::new(label))
+                            .on_disabled_hover_text(busy_why)
+                            .clicked()
+                        {
+                            pick = Some(MenuAction::Install);
+                        }
+                        if state == TileState::Damaged
+                            && ui
+                                .add_enabled(
+                                    !busy,
+                                    egui::Button::new(
+                                        egui::RichText::new("Uninstall…").color(c.danger),
+                                    ),
+                                )
+                                .on_disabled_hover_text(busy_why)
+                                .clicked()
+                        {
+                            pick = Some(MenuAction::Uninstall);
+                        }
                     }
-                }
-                if ui.button("Open installation folder").clicked() {
-                    pick = Some(MenuAction::Folder);
+                    TileState::Unavailable => {
+                        ui.add_enabled(false, egui::Button::new("Install…"))
+                            .on_disabled_hover_text(self.unavailable_reason(id));
+                    }
                 }
                 ui.separator();
-                if state == TileState::Update {
-                    let v = self
-                        .views
-                        .iter()
-                        .find(|v| v.id == id)
-                        .and_then(|v| v.latest_compatible.clone())
-                        .unwrap_or_default();
-                    if ui
-                        .add_enabled(!busy, egui::Button::new(format!("Update to {v}…")))
-                        .on_disabled_hover_text(busy_why)
-                        .clicked()
-                    {
-                        pick = Some(MenuAction::Install);
-                    }
+                if ui.button("Information").clicked() {
+                    pick = Some(MenuAction::Info);
                 }
-                if ui
-                    .add_enabled(!busy, egui::Button::new("Check for updates"))
-                    .on_disabled_hover_text(busy_why)
-                    .on_hover_text("Reads the catalog again; never downloads or installs anything")
-                    .clicked()
-                {
-                    pick = Some(MenuAction::CheckUpdates);
-                }
-                if ui
-                    .add_enabled(!busy, egui::Button::new("Reinstall…"))
-                    .on_disabled_hover_text(busy_why)
-                    .on_hover_text(
-                        "Installs this version again from the catalog, verified like any \
-                         install; your settings and data stay",
-                    )
-                    .clicked()
-                {
-                    pick = Some(MenuAction::Reinstall);
-                }
-                if ui
-                    .add_enabled(
-                        !busy,
-                        egui::Button::new(egui::RichText::new("Uninstall…").color(c.danger)),
-                    )
-                    .on_disabled_hover_text(busy_why)
-                    .clicked()
-                {
-                    pick = Some(MenuAction::Uninstall);
-                }
-            }
-            TileState::NotInstalled | TileState::Damaged => {
-                let label = if state == TileState::Damaged {
-                    "Repair…"
-                } else {
-                    "Install…"
-                };
-                if ui
-                    .add_enabled(!busy, egui::Button::new(label))
-                    .on_disabled_hover_text(busy_why)
-                    .clicked()
-                {
-                    pick = Some(MenuAction::Install);
-                }
-                if state == TileState::Damaged
-                    && ui
-                        .add_enabled(
-                            !busy,
-                            egui::Button::new(egui::RichText::new("Uninstall…").color(c.danger)),
-                        )
-                        .on_disabled_hover_text(busy_why)
-                        .clicked()
-                {
-                    pick = Some(MenuAction::Uninstall);
-                }
-            }
-            TileState::Unavailable => {
-                ui.add_enabled(false, egui::Button::new("Install…"))
-                    .on_disabled_hover_text(self.unavailable_reason(id));
-            }
-        }
-        ui.separator();
-        if ui.button("Information").clicked() {
-            pick = Some(MenuAction::Info);
-        }
+            });
         pick
     }
 
@@ -1580,12 +1596,16 @@ impl KimManagerApp {
             return;
         };
         let resp = ui.interact(rect, egui::Id::unique("status-line"), egui::Sense::click());
-        let galley = ui.painter().layout(
+        let mut job = egui::text::LayoutJob::simple(
             text.clone(),
             egui::FontId::proportional(11.0),
             color,
             rect.width(),
         );
+        job.wrap.max_rows = 2;
+        job.wrap.break_anywhere = false;
+        job.wrap.overflow_character = Some('…');
+        let galley = ui.painter().layout_job(job);
         let pos = egui::pos2(
             rect.left(),
             rect.bottom() - galley.size().y.min(rect.height()),
@@ -1620,8 +1640,12 @@ impl KimManagerApp {
             .is_some_and(|l| l.source == store::Source::Mirror);
         let mut close = false;
         let mut go = false;
-        let r = egui::Modal::new(egui::Id::unique("install-dialog")).show(ctx, |ui| {
+        let lang = self.lang();
+        let r = kim_ui::modal(ctx, "install-dialog").show(ctx, |ui| {
             ui.set_max_width(dialog_width(ctx));
+            if kim_ui::short(ctx) {
+                ui.spacing_mut().item_spacing.y = 4.0;
+            }
             ui.horizontal(|ui| {
                 if let Some(t) = self.texture(ctx, &id, false) {
                     ui.add(egui::Image::new(&t).fit_to_exact_size(egui::vec2(36.0, 36.0)));
@@ -1633,7 +1657,7 @@ impl KimManagerApp {
                         TileState::Update => format!("Update {name}?"),
                         _ => format!("Install {name}?"),
                     };
-                    ui.label(egui::RichText::new(title).size(14.0).strong());
+                    kim_ui::title(ui, &title);
                     if let Some(v) = &view {
                         ui.label(
                             egui::RichText::new(&v.summary)
@@ -1651,15 +1675,22 @@ impl KimManagerApp {
                 );
             if installable {
                 if let Some(v) = view.as_ref().and_then(|v| v.latest_compatible.clone()) {
-                    let from = if local {
-                        "a package built on this PC (local preview, not a published release)"
-                    } else {
-                        "the signed catalog"
+                    let text = match (lang, local) {
+                        (kim_ui::Lang::Ko, true) => format!(
+                            "버전 {v}, 이 PC에서 빌드한 패키지(로컬 미리보기, 공개 릴리스 아님). 현재 사용자에게만 설치하며 관리자 권한을 쓰지 않습니다."
+                        ),
+                        (kim_ui::Lang::Ko, false) => format!(
+                            "버전 {v}, 서명된 카탈로그에서. 현재 사용자에게만 설치하며 관리자 권한을 쓰지 않습니다."
+                        ),
+                        (_, true) => format!(
+                            "Version {v} from a package built on this PC (local preview, not a published release). For your user only, never as administrator."
+                        ),
+                        (_, false) => format!(
+                            "Version {v} from the signed catalog. For your user only, never as administrator."
+                        ),
                     };
                     ui.label(
-                        egui::RichText::new(format!(
-                            "Version {v} from {from}. For your user only, never as administrator."
-                        ))
+                        egui::RichText::new(text)
                         .size(11.0)
                         .color(c.text_muted),
                     );
@@ -1667,12 +1698,12 @@ impl KimManagerApp {
                 if let Some(d) = self.details.get(&id).filter(|d| !d.permissions.is_empty()) {
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("On this computer it")
+                        egui::RichText::new(lang.pick("On this computer it", "이 컴퓨터에서 하는 일"))
                             .size(11.0)
                             .color(c.text_secondary),
                     );
                     // Scrolls inside the dialog so its buttons stay in a small window.
-                    let room = (ctx.content_rect().height() - 150.0).max(36.0);
+                    let room = (ctx.content_rect().height() - 170.0).max(20.0);
                     egui::ScrollArea::vertical()
                         .max_height(room)
                         .auto_shrink([false, true])
@@ -1680,7 +1711,7 @@ impl KimManagerApp {
                             for p in &d.permissions {
                                 let label = p.label.map_or_else(|| p.id.clone(), str::to_string);
                                 let opt = if p.opt_in {
-                                    " (only after you turn it on)"
+                                    lang.pick(" (only after you turn it on)", " (직접 켠 뒤에만)")
                                 } else {
                                     ""
                                 };
@@ -1699,11 +1730,7 @@ impl KimManagerApp {
                         .color(c.text_muted),
                 );
             }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.button("Cancel").clicked() {
-                    close = true;
-                }
+            kim_ui::dialog_actions(ui, |ui| {
                 if installable {
                     let blocked = if self.is_busy() {
                         Some("Kim is busy with another install or uninstall")
@@ -1718,16 +1745,15 @@ impl KimManagerApp {
                         TileState::Update => "Update",
                         _ => "Install",
                     };
-                    let b = egui::Button::new(
-                        egui::RichText::new(label).color(c.text_on_accent).strong(),
-                    )
-                    .fill(c.accent);
-                    let resp = ui.add_enabled(blocked.is_none(), b);
+                    let resp = ui.add_enabled(blocked.is_none(), kim_ui::Button::primary(label));
                     if let Some(why) = blocked {
                         resp.on_disabled_hover_text(why);
                     } else if resp.clicked() {
                         go = true;
                     }
+                }
+                if ui.add(kim_ui::Button::secondary("Cancel")).clicked() {
+                    close = true;
                 }
             });
         });
@@ -1757,12 +1783,12 @@ impl KimManagerApp {
         let mut close = false;
         let max_h = (ctx.content_rect().height() - 60.0).max(160.0);
         let width = (ctx.content_rect().width() - 48.0).clamp(220.0, 520.0);
-        let r = egui::Modal::new(egui::Id::unique("info-dialog")).show(ctx, |ui| {
+        let r = kim_ui::modal(ctx, "info-dialog").show(ctx, |ui| {
             // A fixed width; long commands and paths wrap instead of widening the dialog.
             ui.set_width(width);
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
             let name = self.tool_name(&id);
-            ui.label(egui::RichText::new(&name).size(14.0).strong());
+            kim_ui::title(ui, &name);
             egui::ScrollArea::vertical()
                 .max_height(max_h - 70.0)
                 .show(ui, |ui| {
@@ -1810,205 +1836,306 @@ impl KimManagerApp {
                         tool_sections(ui, &name, d);
                     }
                 });
-            ui.add_space(6.0);
-            if ui.button("Close").clicked() {
-                close = true;
-            }
+            kim_ui::dialog_actions(ui, |ui| {
+                if ui.add(kim_ui::Button::secondary("Close")).clicked() {
+                    close = true;
+                }
+            });
         });
         if close || r.should_close() {
             self.info = None;
         }
     }
 
-    /// The Settings panel (the gear): Kim's own settings, in four short sections.
+    /// The Settings view (the gear, ADR 0092): the sections on a left rail, the selected one on
+    /// the right in setting groups.
     fn settings_panel(&mut self, ui: &mut egui::Ui) {
+        use kim_ui::design::{size, space};
         let c = theme::Colors::get();
-        egui::Frame::new()
-            .inner_margin(egui::Margin::symmetric(20, 16))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Settings").size(15.0).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Done").clicked() {
-                            self.toggle_settings(Some(&ui.ctx().clone()));
+        let full = ui.max_rect();
+        let nav = egui::Rect::from_min_size(
+            full.min,
+            egui::vec2(size::SETTINGS_NAV_WIDTH, full.height()),
+        );
+        ui.painter().rect_filled(nav, 0.0, c.bg_raised);
+        let mut rail = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(nav.shrink2(egui::vec2(space::S, space::L)))
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        rail.horizontal(|ui| {
+            ui.add_space(space::XS);
+            kim_ui::title(ui, "Settings");
+        });
+        rail.add_space(space::M);
+        rail.spacing_mut().item_spacing.y = 2.0;
+        for (tab, label) in [
+            (SettingsTab::General, "General"),
+            (SettingsTab::Shortcuts, "Shortcuts"),
+            (SettingsTab::Catalog, "Catalog"),
+            (SettingsTab::About, "About"),
+        ] {
+            if kim_ui::nav_item(&mut rail, self.settings_tab == tab, label).clicked() {
+                self.settings_tab = tab;
+                self.capture = None;
+            }
+        }
+        rail.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+            if ui
+                .add(kim_ui::Button::secondary("Done").min_width(ui.available_width()))
+                .on_hover_text(self.tr("Back to the launcher (Esc)", "런처로 돌아갑니다 (Esc)"))
+                .clicked()
+            {
+                self.toggle_settings(Some(&ui.ctx().clone()));
+            }
+        });
+        let body = egui::Rect::from_min_max(egui::pos2(nav.right(), full.top()), full.max);
+        let mut page = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(body.shrink2(egui::vec2(space::L + 4.0, space::L)))
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        if page.input(|i| i.key_pressed(egui::Key::Escape)) && self.capture.is_none() {
+            self.toggle_settings(Some(&page.ctx().clone()));
+            return;
+        }
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(&mut page, |ui| {
+                ui.set_width(ui.available_width() - space::XS);
+                match self.settings_tab {
+                    SettingsTab::General => self.settings_general(ui),
+                    SettingsTab::Shortcuts => self.settings_shortcuts(ui),
+                    SettingsTab::Catalog => self.settings_catalog(ui),
+                    SettingsTab::About => self.settings_about(ui),
+                }
+                if let Some(b) = self.banner.clone() {
+                    let (tone, t, code) = match b {
+                        Banner::Info(m) => (kim_ui::Tone::Info, m, None),
+                        Banner::Success(m) => (kim_ui::Tone::Success, m, None),
+                        Banner::Error { message, code } => {
+                            (kim_ui::Tone::Error, message, Some(code))
                         }
-                    });
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (SettingsTab::General, "General"),
-                        (SettingsTab::Shortcuts, "Shortcuts"),
-                        (SettingsTab::Catalog, "Catalog"),
-                        (SettingsTab::About, "About"),
-                    ] {
-                        if ui
-                            .selectable_label(self.settings_tab == tab, label)
-                            .clicked()
-                        {
-                            self.settings_tab = tab;
-                            self.capture = None;
-                        }
+                    };
+                    if kim_ui::notice(ui, tone, &t, code.as_deref(), Some("Dismiss")) {
+                        self.banner = None;
                     }
-                });
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        match self.settings_tab {
-                            SettingsTab::General => self.settings_general(ui),
-                            SettingsTab::Shortcuts => self.settings_shortcuts(ui),
-                            SettingsTab::Catalog => self.settings_catalog(ui),
-                            SettingsTab::About => self.settings_about(ui),
-                        }
-                        if let Some(b) = &self.banner {
-                            ui.add_space(8.0);
-                            let (t, col) = match b {
-                                Banner::Info(m) => (m.clone(), c.text_secondary),
-                                Banner::Success(m) => (m.clone(), c.success),
-                                Banner::Error { message, .. } => (message.clone(), c.danger),
-                            };
-                            ui.label(egui::RichText::new(t).size(11.0).color(col));
-                        }
-                    });
+                }
             });
     }
 
+    /// The text in the chosen language (titles and button names stay English, ADR 0092).
+    fn tr<'a>(&self, en: &'a str, ko: &'a str) -> &'a str {
+        self.lang().pick(en, ko)
+    }
+
+    /// Sets the language of descriptions and messages for this window (not saved; tests and
+    /// `--lang`).
+    pub fn set_language(&mut self, l: LanguagePref) {
+        self.prefs.language = l;
+    }
+
+    /// The language of descriptions and messages (Settings → General → Language).
+    pub fn lang(&self) -> kim_ui::Lang {
+        self.prefs.language.pref().resolve()
+    }
+
     fn settings_general(&mut self, ui: &mut egui::Ui) {
-        let c = theme::Colors::get();
-        ui.label(egui::RichText::new("Appearance").strong());
-        ui.horizontal(|ui| {
+        kim_ui::title(ui, "General");
+        ui.add_space(kim_ui::design::space::S);
+        kim_ui::setting_group(ui, "Appearance", |ui| {
+            let d = self.tr(
+                "Follows Windows, or always dark or light.",
+                "Windows 설정을 따르거나 항상 어둡게 또는 밝게 표시합니다.",
+            );
             let before = self.prefs.theme;
-            ui.selectable_value(&mut self.prefs.theme, ThemePref::System, "System");
-            ui.selectable_value(&mut self.prefs.theme, ThemePref::Dark, "Dark");
-            ui.selectable_value(&mut self.prefs.theme, ThemePref::Light, "Light");
-            if before != self.prefs.theme {
-                self.save_prefs();
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Size");
-            let before = self.prefs.scale;
+            kim_ui::setting_row(ui, "Theme", Some(d), |ui| {
+                kim_ui::segmented(
+                    ui,
+                    &mut self.prefs.theme,
+                    &[
+                        (ThemePref::System, "System"),
+                        (ThemePref::Dark, "Dark"),
+                        (ThemePref::Light, "Light"),
+                    ],
+                );
+            });
+            kim_ui::row_divider(ui);
+            let d = self.tr(
+                "Auto fits this screen: larger on a big screen.",
+                "자동은 이 화면에 맞춥니다. 큰 화면에서는 더 크게 보입니다.",
+            );
+            let scale_before = self.prefs.scale;
             let auto = format!("Auto ({}%)", (self.auto_scale * 100.0).round());
-            ui.selectable_value(&mut self.prefs.scale, None, auto)
-                .on_hover_text("Fits this screen: larger on a big screen.");
-            for p in SCALES {
-                ui.selectable_value(&mut self.prefs.scale, Some(p), format!("{p}%"));
-            }
-            if before != self.prefs.scale {
+            let mut opts: Vec<(Option<u16>, String)> = vec![(None, auto)];
+            opts.extend(SCALES.iter().map(|p| (Some(*p), format!("{p}%"))));
+            kim_ui::setting_stack(ui, "Size", Some(d), |ui| {
+                let o: Vec<(Option<u16>, &str)> =
+                    opts.iter().map(|(v, l)| (*v, l.as_str())).collect();
+                kim_ui::segmented(ui, &mut self.prefs.scale, &o);
+            });
+            kim_ui::row_divider(ui);
+            let d = self.tr(
+                "For descriptions and messages; names of buttons and features stay English.",
+                "설명과 안내 메시지의 언어입니다. 버튼과 기능 이름은 영어로 표시됩니다.",
+            );
+            let lang_before = self.prefs.language;
+            let system = kim_ui::LangPref::System.label();
+            kim_ui::setting_row(ui, "Language", Some(d), |ui| {
+                kim_ui::segmented(
+                    ui,
+                    &mut self.prefs.language,
+                    &[
+                        (LanguagePref::System, system.as_str()),
+                        (LanguagePref::En, "English"),
+                        (LanguagePref::Ko, "한국어"),
+                    ],
+                );
+            });
+            if before != self.prefs.theme
+                || scale_before != self.prefs.scale
+                || lang_before != self.prefs.language
+            {
                 self.save_prefs();
             }
         });
-        ui.add_space(10.0);
-        ui.label(egui::RichText::new("Installing and updating").strong());
-        let mut changed = false;
-        changed |= ui
-            .checkbox(&mut self.settings.offline_mode, "Offline mode")
-            .on_hover_text(
-                "Refuse every network operation. Packages built on this PC still install.",
+        let offline_d = self
+            .tr(
+                "Refuses every network operation. Packages built on this PC still install.",
+                "모든 네트워크 작업을 막습니다. 이 PC에서 빌드한 패키지는 설치할 수 있습니다.",
             )
-            .changed();
-        changed |= ui
-            .checkbox(
-                &mut self.settings.check_updates_on_launch,
-                "Check for updates when Kim starts",
+            .to_string();
+        let check_d = self
+            .tr(
+                "Only shows available updates. Never downloads or installs anything.",
+                "새 버전이 있는지 보여 주기만 합니다. 아무것도 내려받거나 설치하지 않습니다.",
             )
-            .on_hover_text("Only shows available updates. Never downloads or installs anything.")
-            .changed();
-        if changed {
-            self.save_settings();
-        }
-        ui.horizontal(|ui| {
-            ui.label("Channel");
+            .to_string();
+        let channel_d = self
+            .tr(
+                "Preview offers releases that are still being tested.",
+                "Preview는 아직 시험 중인 릴리스도 보여 줍니다.",
+            )
+            .to_string();
+        kim_ui::setting_group(ui, "Installing and updating", |ui| {
+            let mut changed = false;
+            changed |= ui
+                .add(
+                    kim_ui::SwitchRow::new(&mut self.settings.offline_mode, "Offline mode")
+                        .description(&offline_d),
+                )
+                .changed();
+            kim_ui::row_divider(ui);
+            changed |= ui
+                .add(
+                    kim_ui::SwitchRow::new(
+                        &mut self.settings.check_updates_on_launch,
+                        "Check for updates when Kim starts",
+                    )
+                    .description(&check_d),
+                )
+                .changed();
+            if changed {
+                self.save_settings();
+            }
+            kim_ui::row_divider(ui);
             let before = self.channel;
-            ui.selectable_value(&mut self.channel, Channel::Stable, "Stable");
-            ui.selectable_value(&mut self.channel, Channel::Preview, "Preview");
+            kim_ui::setting_row(ui, "Channel", Some(&channel_d), |ui| {
+                kim_ui::segmented(
+                    ui,
+                    &mut self.channel,
+                    &[(Channel::Stable, "Stable"), (Channel::Preview, "Preview")],
+                );
+            });
             if before != self.channel {
                 self.reload();
             }
         });
-        ui.label(
-            egui::RichText::new(
-                "Kim never installs, updates or removes a tool by itself: only when you choose to.",
-            )
-            .size(11.0)
-            .color(c.text_muted),
+        let note = self.tr(
+            "Kim never installs, updates or removes a tool by itself: only when you choose to.",
+            "Kim은 도구를 스스로 설치, 업데이트, 제거하지 않습니다. 사용자가 고를 때만 합니다.",
         );
+        ui.label(kim_ui::caption(ui, note));
     }
 
     fn settings_shortcuts(&mut self, ui: &mut egui::Ui) {
         let c = theme::Colors::get();
+        kim_ui::title(ui, "Shortcuts");
+        ui.add_space(kim_ui::design::space::S);
         if self.shortcuts.is_off() {
-            ui.colored_label(
-                c.warning,
+            let m = self.tr(
                 "All shortcuts are off for this window (--no-hotkeys or KIM_NO_HOTKEYS).",
+                "이 창의 모든 단축키가 꺼져 있습니다 (--no-hotkeys 또는 KIM_NO_HOTKEYS).",
             );
+            kim_ui::notice(ui, kim_ui::Tone::Warning, m, None, None);
         }
-        if let Some(p) = &self.shortcuts.problem {
-            ui.colored_label(c.warning, p);
+        if let Some(p) = self.shortcuts.problem.clone() {
+            kim_ui::notice(ui, kim_ui::Tone::Warning, &p, None, None);
         }
         let cli = kim_cli();
         let mut act = None;
-        egui::Grid::new("settings-shortcuts")
-            .num_columns(3)
-            .spacing([14.0, 6.0])
-            .show(ui, |ui| {
-                for r in self.shortcuts.rows() {
-                    ui.label(egui::RichText::new(&r.title).size(12.0));
-                    let capturing = self.capture.as_deref() == Some(r.action.as_str());
-                    let keys = if capturing {
-                        "Press keys… (Esc cancels)".to_string()
+        let recording = self
+            .tr("Press keys… (Esc cancels)", "키를 누르세요… (Esc 취소)")
+            .to_string();
+        let off = self.tr("Off", "꺼짐").to_string();
+        kim_ui::setting_group(ui, "Kim Manager", |ui| {
+            let rows = self.shortcuts.rows();
+            for (i, r) in rows.iter().enumerate() {
+                if i > 0 {
+                    kim_ui::row_divider(ui);
+                }
+                let capturing = self.capture.as_deref() == Some(r.action.as_str());
+                let bindable = shortcuts::is_bindable(&r.action);
+                let desc = if bindable {
+                    None
+                } else {
+                    Some(r.state.as_str())
+                };
+                kim_ui::setting_row(ui, &r.title, desc, |ui| {
+                    if bindable {
+                        let why = "Changing shortcuts needs kim.exe next to this window";
+                        if ui
+                            .add_enabled(cli.is_some(), kim_ui::Button::ghost("Reset").compact())
+                            .on_disabled_hover_text(why)
+                            .on_hover_text("Back to Kim's default")
+                            .clicked()
+                        {
+                            act = Some((r.action.clone(), "reset"));
+                        }
+                        if ui
+                            .add_enabled(cli.is_some(), kim_ui::Button::ghost("Off").compact())
+                            .on_disabled_hover_text(why)
+                            .on_hover_text("Turn this shortcut off")
+                            .clicked()
+                        {
+                            act = Some((r.action.clone(), "disable"));
+                        }
+                    }
+                    let keys = if r.keys.is_empty() || r.keys == "—" {
+                        String::new()
                     } else {
                         r.keys.clone()
                     };
-                    ui.label(egui::RichText::new(keys).monospace().size(12.0));
-                    if shortcuts::is_bindable(&r.action) {
-                        ui.horizontal(|ui| {
-                            let why = "Changing shortcuts needs kim.exe next to this window";
-                            if ui
-                                .add_enabled(
-                                    cli.is_some() && !capturing,
-                                    egui::Button::new("Change").small(),
-                                )
-                                .on_disabled_hover_text(why)
-                                .clicked()
-                            {
-                                act = Some((r.action.clone(), "change"));
-                            }
-                            if ui
-                                .add_enabled(cli.is_some(), egui::Button::new("Off").small())
-                                .on_disabled_hover_text(why)
-                                .on_hover_text("Turn this shortcut off")
-                                .clicked()
-                            {
-                                act = Some((r.action.clone(), "disable"));
-                            }
-                            if ui
-                                .add_enabled(cli.is_some(), egui::Button::new("Reset").small())
-                                .on_disabled_hover_text(why)
-                                .on_hover_text("Back to Kim's default")
-                                .clicked()
-                            {
-                                act = Some((r.action.clone(), "reset"));
-                            }
-                        });
-                    } else {
-                        ui.label(egui::RichText::new(&r.state).size(11.0).color(c.text_muted));
+                    // Click the field (or Enter on it) to record new keys.
+                    let field = kim_ui::shortcut_field(
+                        ui, &r.title, &keys, capturing, &off, &recording, 120.0,
+                    );
+                    if bindable && cli.is_some() && !capturing && field.clicked() {
+                        act = Some((r.action.clone(), "change"));
                     }
-                    ui.end_row();
-                }
-            });
+                });
+            }
+        });
         match act {
             Some((action, "change")) => self.capture = Some(action),
             Some((action, verb)) => self.hotkeys_cli(&["hotkeys", verb, &action]),
             None => {}
         }
-        ui.add_space(6.0);
-        ui.label(
-            egui::RichText::new("Shortcuts work only while this window has focus. Saved in hotkeys.json; `kim hotkeys …` changes the same file.")
-                .size(11.0)
-                .color(c.text_muted),
+        let note = self.tr(
+            "Shortcuts work only while this window has focus. Saved in hotkeys.json; `kim hotkeys …` changes the same file.",
+            "단축키는 이 창이 활성일 때만 동작합니다. hotkeys.json에 저장되며 `kim hotkeys …` 명령도 같은 파일을 바꿉니다.",
         );
+        ui.label(egui::RichText::new(note).size(11.0).color(c.text_muted));
     }
 
     /// While a shortcut is being changed: the next key press with its modifiers becomes it.
@@ -2088,52 +2215,64 @@ impl KimManagerApp {
     }
 
     fn settings_catalog(&mut self, ui: &mut egui::Ui) {
-        let c = theme::Colors::get();
+        kim_ui::title(ui, "Catalog");
+        ui.add_space(kim_ui::design::space::S);
+        let lang = self.lang();
         if let Some(l) = &self.loaded {
             let src = match l.source {
-                store::Source::Bundled => "built into Kim",
-                store::Source::Cache => "downloaded earlier",
-                store::Source::Mirror => "packages built on this PC (local preview)",
+                store::Source::Bundled => lang.pick("built into Kim", "Kim에 포함된 카탈로그"),
+                store::Source::Cache => lang.pick("downloaded earlier", "이전에 내려받은 카탈로그"),
+                store::Source::Mirror => lang.pick(
+                    "packages built on this PC (local preview)",
+                    "이 PC에서 빌드한 패키지 (로컬 미리보기)",
+                ),
             };
-            egui::Grid::new("catalog-meta")
-                .num_columns(2)
-                .spacing([16.0, 4.0])
-                .show(ui, |ui| {
-                    let row = |ui: &mut egui::Ui, k: &str, v: String| {
-                        ui.label(egui::RichText::new(k).size(11.0).color(c.text_muted));
-                        ui.label(egui::RichText::new(v).size(12.0));
-                        ui.end_row();
-                    };
-                    row(
-                        ui,
-                        "Catalog",
-                        format!("v{} · {src}", l.catalog.catalog_version),
-                    );
-                    row(ui, "Signed by", l.signer.key_id.clone());
-                    row(ui, "Expires", l.catalog.expires_at.clone());
-                    row(ui, "Source", kim::redact::url(&self.backend.catalog_source));
-                });
-            if l.stale {
-                ui.colored_label(
-                    c.warning,
-                    "The catalog has expired; refresh it when online.",
+            let rows = [
+                ("Catalog", format!("v{} · {src}", l.catalog.catalog_version)),
+                ("Signed by", l.signer.key_id.clone()),
+                ("Expires", l.catalog.expires_at.clone()),
+                ("Source", kim::redact::url(&self.backend.catalog_source)),
+            ];
+            let stale = l.stale;
+            kim_ui::setting_group(ui, "Signed catalog", |ui| {
+                for (i, (k, v)) in rows.iter().enumerate() {
+                    if i > 0 {
+                        kim_ui::row_divider(ui);
+                    }
+                    kim_ui::setting_row(ui, k, None, |ui| {
+                        ui.add(egui::Label::new(kim_ui::secondary(ui, v.clone())).truncate());
+                    });
+                }
+            });
+            if stale {
+                kim_ui::notice(
+                    ui,
+                    kim_ui::Tone::Warning,
+                    lang.pick(
+                        "The catalog has expired; refresh it when online.",
+                        "카탈로그가 만료되었습니다. 온라인일 때 새로 고치세요.",
+                    ),
+                    None,
+                    None,
                 );
             }
         }
-        ui.add_space(6.0);
         let local = self.mirror.is_some();
         let blocked = if self.is_busy() {
-            Some("Kim is busy")
+            Some(lang.pick("Kim is busy", "Kim이 다른 작업 중입니다"))
         } else if self.settings.offline_mode && !local {
-            Some("Offline mode is on")
+            Some(lang.pick("Offline mode is on", "오프라인 모드가 켜져 있습니다"))
         } else {
             None
         };
-        let resp = ui.add_enabled(blocked.is_none(), egui::Button::new("Refresh now"));
+        let resp = ui.add_enabled(blocked.is_none(), kim_ui::Button::secondary("Refresh now"));
         if let Some(why) = blocked {
             resp.on_disabled_hover_text(why);
         } else if resp
-            .on_hover_text("Reads the signed catalog again. Never installs anything.")
+            .on_hover_text(lang.pick(
+                "Reads the signed catalog again. Never installs anything.",
+                "서명된 카탈로그를 다시 읽습니다. 아무것도 설치하지 않습니다.",
+            ))
             .clicked()
         {
             self.refresh_catalog();
@@ -2142,21 +2281,34 @@ impl KimManagerApp {
 
     fn settings_about(&mut self, ui: &mut egui::Ui) {
         let c = theme::Colors::get();
+        kim_ui::title(ui, "About");
+        ui.add_space(kim_ui::design::space::S);
+        let lang = self.lang();
         ui.horizontal(|ui| {
             if let Some(t) = self.texture(ui.ctx(), "kim", false) {
                 ui.add(egui::Image::new(&t).fit_to_exact_size(egui::vec2(40.0, 40.0)));
             }
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new(format!("Kim {}", kim::KIM_VERSION)).strong());
                 ui.label(
-                    egui::RichText::new("A tiny home for Subak, Noeul and Ddalgak.")
-                        .size(11.0)
-                        .color(c.text_secondary),
+                    egui::RichText::new(format!("Kim {}", kim::KIM_VERSION))
+                        .font(kim_ui::ui_font(
+                            ui.ctx(),
+                            kim_ui::design::font::EMPHASIS,
+                            true,
+                        ))
+                        .color(c.text_primary),
                 );
+                ui.label(kim_ui::secondary(
+                    ui,
+                    lang.pick(
+                        "A tiny home for Subak, Noeul and Ddalgak.",
+                        "Subak, Noeul, Ddalgak을 위한 작은 집입니다.",
+                    ),
+                ));
             });
         });
-        ui.add_space(6.0);
-        for (k, v) in [
+        ui.add_space(kim_ui::design::space::M);
+        let rows = [
             (
                 "Programs",
                 self.backend.paths.programs.display().to_string(),
@@ -2165,18 +2317,26 @@ impl KimManagerApp {
                 "Kim's data",
                 self.backend.paths.kim_data.display().to_string(),
             ),
-        ] {
-            ui.label(
-                egui::RichText::new(format!("{k}: {v}"))
-                    .size(11.0)
-                    .color(c.text_muted),
-            );
-        }
-        ui.label(
-            egui::RichText::new("Local-first: no account, no telemetry, no automatic installs or updates. MIT OR Apache-2.0.")
-                .size(11.0)
-                .color(c.text_muted),
-        );
+        ];
+        kim_ui::setting_group(ui, "Folders", |ui| {
+            for (i, (k, v)) in rows.iter().enumerate() {
+                if i > 0 {
+                    kim_ui::row_divider(ui);
+                }
+                ui.label(
+                    egui::RichText::new(format!("{k}: {v}"))
+                        .size(11.0)
+                        .color(c.text_secondary),
+                );
+            }
+        });
+        ui.label(kim_ui::caption(
+            ui,
+            lang.pick(
+                "Local-first: no account, no telemetry, no automatic installs or updates. MIT OR Apache-2.0.",
+                "로컬 우선: 계정, 원격 수집, 자동 설치나 업데이트가 없습니다. MIT OR Apache-2.0.",
+            ),
+        ));
     }
 }
 
@@ -2229,11 +2389,33 @@ pub enum ThemePref {
     Light,
 }
 
+/// ADR 0092: the language choice, kept in `manager.json` (`system`, `en`, `ko`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LanguagePref {
+    #[default]
+    System,
+    En,
+    Ko,
+}
+
+impl LanguagePref {
+    pub fn pref(self) -> kim_ui::LangPref {
+        match self {
+            LanguagePref::System => kim_ui::LangPref::System,
+            LanguagePref::En => kim_ui::LangPref::En,
+            LanguagePref::Ko => kim_ui::LangPref::Ko,
+        }
+    }
+}
+
 /// Kim Manager's own preferences (ADR 0090): only how the window looks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Prefs {
     pub theme: ThemePref,
+    /// ADR 0092: the language of descriptions and messages.
+    pub language: LanguagePref,
     /// ADR 0091: the size in percent (`None`: Auto, fitted to the screen).
     pub scale: Option<u16>,
 }
@@ -2415,22 +2597,6 @@ pub fn desaturate(rgba: &mut [u8]) {
     }
 }
 
-/// The gear: a ring with eight teeth (a painted shape, never a font glyph).
-fn paint_gear(p: &egui::Painter, center: egui::Pos2, r: f32, col: egui::Color32) {
-    let s = egui::Stroke::new(2.0, col);
-    for k in 0..8 {
-        #[allow(clippy::cast_precision_loss)]
-        let a = k as f32 * std::f32::consts::FRAC_PI_4;
-        let d = egui::vec2(a.cos(), a.sin());
-        p.line_segment(
-            [center + d * (r - 1.0), center + d * (r + 3.0)],
-            egui::Stroke::new(2.6, col),
-        );
-    }
-    p.circle_stroke(center, r - 1.0, s);
-    p.circle_stroke(center, r * 0.35, egui::Stroke::new(1.6, col));
-}
-
 impl KimManagerApp {
     /// The shortcut list (§11.1): every action with its keys and state, fixed keys included.
     /// Changing shortcuts is done with `kim hotkeys …`; the in-window binding editor is a later
@@ -2439,13 +2605,9 @@ impl KimManagerApp {
         let c = theme::Colors::get();
         let rows = self.shortcuts.rows();
         let mut close = false;
-        let r = egui::Modal::new(egui::Id::unique("keyboard-shortcuts")).show(ctx, |ui| {
+        let r = kim_ui::modal(ctx, "keyboard-shortcuts").show(ctx, |ui| {
             ui.set_max_width((ctx.content_rect().width() - 48.0).clamp(220.0, 560.0));
-            ui.label(
-                egui::RichText::new("Keyboard shortcuts")
-                    .size(15.0)
-                    .strong(),
-            );
+            kim_ui::title(ui, "Keyboard shortcuts");
             if self.shortcuts.is_off() {
                 ui.colored_label(
                     c.warning,
@@ -2479,9 +2641,11 @@ impl KimManagerApp {
                 .size(11.0)
                 .color(c.text_muted),
             );
-            if ui.button("Close").clicked() {
-                close = true;
-            }
+            kim_ui::dialog_actions(ui, |ui| {
+                if ui.add(kim_ui::Button::secondary("Close")).clicked() {
+                    close = true;
+                }
+            });
         });
         if close || r.should_close() {
             self.show_shortcuts = false;
@@ -2499,27 +2663,33 @@ impl KimManagerApp {
             .unwrap_or_default();
         let width = dialog_width(ctx);
         if let Some(conf) = &mut self.confirm {
-            egui::Modal::new(egui::Id::unique("confirm-uninstall")).show(ctx, |ui| {
+            let lang = self.prefs.language.pref().resolve();
+            let r = kim_ui::modal(ctx, "confirm-uninstall").show(ctx, |ui| {
                 ui.set_max_width(width);
-                ui.label(egui::RichText::new(format!("Uninstall {name}?")).size(14.0).strong());
-                ui.label("Program files are removed. Your settings and data are kept unless you choose otherwise.");
-                ui.checkbox(&mut conf.purge, "Also delete this tool's settings and data");
+                kim_ui::title(ui, &format!("Uninstall {name}?"));
+                ui.label(kim_ui::secondary(ui, lang.pick(
+                    "Program files are removed. Your settings and data are kept unless you choose otherwise.",
+                    "프로그램 파일을 지웁니다. 따로 고르지 않으면 설정과 데이터는 남겨 둡니다.",
+                )));
+                ui.checkbox(&mut conf.purge, lang.pick("Also delete this tool's settings and data", "이 도구의 설정과 데이터도 지우기"));
                 if conf.purge {
-                    ui.colored_label(c.danger, "Deleting data is permanent.");
-                    ui.checkbox(&mut conf.understood, "I understand that the data cannot be recovered");
+                    ui.colored_label(c.danger, lang.pick("Deleting data is permanent.", "데이터 삭제는 되돌릴 수 없습니다."));
+                    ui.checkbox(&mut conf.understood, lang.pick("I understand that the data cannot be recovered", "데이터를 복구할 수 없다는 것을 이해했습니다"));
                 }
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Keep installed").clicked() {
-                        close = true;
-                    }
+                kim_ui::dialog_actions(ui, |ui| {
                     let ok = !conf.purge || conf.understood;
                     let label = if conf.purge { "Uninstall and delete data" } else { "Uninstall" };
-                    if ui.add_enabled(ok, egui::Button::new(egui::RichText::new(label).color(c.danger))).clicked() {
+                    if ui.add_enabled(ok, kim_ui::Button::danger(label)).clicked() {
                         go = Some((conf.tool.clone(), conf.purge));
+                    }
+                    if ui.add(kim_ui::Button::secondary("Keep installed")).clicked() {
+                        close = true;
                     }
                 });
             });
+            if r.should_close() {
+                close = true;
+            }
         }
         if close {
             self.confirm = None;

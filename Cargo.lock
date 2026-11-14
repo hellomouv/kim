@@ -1667,6 +1667,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kim-design"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "kim-e2e"
 version = "0.0.0"
 dependencies = [
@@ -1704,6 +1712,7 @@ dependencies = [
  "egui_kittest",
  "kim",
  "kim-hotkeys",
+ "kim-ui",
  "kim-winres",
  "raw-window-handle",
  "serde",
@@ -1723,6 +1732,16 @@ dependencies = [
  "sha2",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "kim-ui"
+version = "0.0.1"
+dependencies = [
+ "egui",
+ "egui_kittest",
+ "kim-design",
+ "kim-hotkeys",
 ]
 
 [[package]]

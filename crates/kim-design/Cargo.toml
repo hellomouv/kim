@@ -1,0 +1,27 @@
+[package]
+name = "kim-design"
+version = "0.0.1"
+description = "The Kim design system's tokens: colours of both themes, the spacing, size, type and motion scales, the UI language and the system's theme and motion preferences (no GUI toolkit)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[target."cfg(windows)".dependencies]
+# The UI language, the "apps use light theme" choice and "Show animations in Windows".
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_System_Registry",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+serde_json = "1.0.154"

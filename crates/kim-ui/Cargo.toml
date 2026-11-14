@@ -1,0 +1,21 @@
+[package]
+name = "kim-ui"
+version = "0.0.1"
+description = "The Kim design system's egui components (theme, switch, buttons, settings rows, dialogs, navigation, keycaps) for Kim Manager, the Ddalgak rule editor and Noeul's settings window"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kim-design = { version = "0.0.1", path = "../kim-design" }
+kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
+egui = { version = "=0.37.0", default-features = false, features = ["default_fonts"] }
+
+[dev-dependencies]
+egui_kittest = "=0.37.0"

@@ -92,6 +92,9 @@ fn app(sb: &Sandbox, engine: Arc<dyn Engine>) -> EditorApp {
 fn harness(app: EditorApp) -> Harness<'static, EditorApp> {
     Harness::builder()
         .with_size(egui::vec2(1280.0, 820.0))
+        // The header asks the engine for its state once a second; under load that answer can
+        // arrive inside a run and cost two more frames (it made `run` exceed 4 steps).
+        .with_max_steps(12)
         .build_ui_state(|ui, app: &mut EditorApp| app.ui(ui), app)
 }
 

@@ -159,6 +159,8 @@ type Started = Arc<Mutex<Vec<(PathBuf, Vec<String>)>>>;
 fn app(be: Backend) -> (KimManagerApp, Started) {
     let started: Started = Arc::default();
     let mut app = KimManagerApp::new(be, None);
+    // The descriptions follow Windows' language by default; the tests read the English ones.
+    app.set_language(kim_manager::LanguagePref::En);
     let rec = started.clone();
     app.set_launcher(Arc::new(move |p: &Path, a: &[&str]| {
         rec.lock().unwrap().push((
@@ -450,6 +452,10 @@ fn right_click_menus_fit_the_state() {
     ] {
         assert!(h.query_by_label(item).is_some(), "installed: {item}");
     }
+    // Regression (real desktop, 1012 × 616 at 275 %): the longest menu fits the window; the
+    // last item was cut off below it.
+    let last = h.get_by_label("Information").rect();
+    assert!(last.bottom() <= 224.0, "Information is visible: {last:?}");
     h.get_by_label("Open Ddalgak").click();
     h.run();
     let v = paths.tool_dir("ddalgak").join("versions").join("1.0.0");
@@ -840,9 +846,10 @@ fn settings_list_the_shortcuts_with_change_buttons() {
     h.run();
     h.get_by_label("Shortcuts").click();
     h.run();
-    assert!(h.query_by_label("Refresh the catalog").is_some());
-    assert!(h.query_by_label("F5").is_some());
-    assert!(h.query_all_by_label("Change").count() >= 5);
+    // ADR 0092: each row's shortcut field is named by the action and shows its keys as keycaps.
+    let row = h.get_by_label("Refresh the catalog");
+    assert_eq!(row.value().as_deref(), Some("F5"));
+    assert!(h.query_all_by_label("Reset").count() >= 5);
 }
 
 /// `--no-hotkeys` starts with every shortcut off without touching hotkeys.json (KIM-SEC-023).
@@ -1054,7 +1061,7 @@ fn the_size_follows_the_screen_or_the_choice_and_persists() {
         "Auto names its size"
     );
     h.get_by_label("150%").click();
-    h.run();
+    h.run_steps(8);
     assert!((h.ctx.zoom_factor() - 1.5).abs() < 1e-6, "applied at once");
     assert!((h.state().wanted_scale() - 1.5).abs() < 1e-6);
     let prefs: serde_json::Value =
@@ -1078,4 +1085,34 @@ fn the_size_follows_the_screen_or_the_choice_and_persists() {
         ..Prefs::default()
     };
     assert!((odd.scale_or(1.0) - 3.0).abs() < 1e-6);
+}
+
+/// ADR 0092: titles and button names stay English; descriptions and messages follow the chosen
+/// language (Settings → General → Language, saved in manager.json).
+#[test]
+fn descriptions_follow_the_chosen_language() {
+    let sb = Sandbox::new("language");
+    let (app, _) = app(all_released(&sb, "1.0.0"));
+    let mut h = sized(app, 580.0, 460.0);
+    h.run();
+    h.get_by_label("Settings").click();
+    h.run();
+    h.get_by_label("한국어").click();
+    h.run();
+    assert!(
+        h.query_by_label_contains("Kim은 도구를 스스로").is_some(),
+        "the note is Korean"
+    );
+    for english in ["General", "Offline mode", "Done", "Light"] {
+        assert!(
+            h.query_all_by_label(english).count() >= 1,
+            "{english} stays English"
+        );
+    }
+    let prefs: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sb.0.join("manager.json")).unwrap()).unwrap();
+    assert_eq!(prefs["language"], "ko");
+    h.get_by_label("English").click();
+    h.run();
+    assert!(h.query_by_label_contains("Kim never installs").is_some());
 }
