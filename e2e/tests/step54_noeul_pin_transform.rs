@@ -284,7 +284,8 @@ fn a_transforms_groups_and_recovery_are_discoverable_headlessly() {
     let shown = n.ok(&["config", "show"]);
     assert_eq!(
         shown["settings"]["pins"],
-        json!({"border": "on", "shadow": "off"})
+        // `backup` (Step 60) is the third key of [pins], off by default.
+        json!({"backup": "off", "border": "on", "shadow": "off"})
     );
 }
 

@@ -126,6 +126,12 @@ fn run(exe: &Path, sandbox: &Path, args: &[&str]) -> (i32, Value) {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn kim_installs_noeul_which_provides_interop_and_runs_on_its_own() {
+    // The scenario talks to the per-user default endpoint while no Noeul runs; on a PC where
+    // the user runs Noeul, its calls would reach that instance, so it does not run there.
+    if kim_e2e::process_running("noeul.exe") {
+        eprintln!("skipped: noeul.exe runs on this PC (the user's own instance is never used)");
+        return;
+    }
     let sb = TempDir::new("noeul62");
     let p = sb.path();
     std::fs::create_dir_all(p.join("Roaming")).unwrap();

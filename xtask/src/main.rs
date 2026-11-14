@@ -319,6 +319,9 @@ fn run_e2e(root: &Path, force: bool, scheduled: bool) -> Result<(), String> {
             "ddalgak",
             "--package",
             "ddalgak-editor",
+            // step43 packs Kim Setup with kim-manager.exe next to kim.exe.
+            "--package",
+            "kim-manager",
         ],
     )?;
     // Debug builds carry test hooks that release builds compile out: `kim` accepts a development

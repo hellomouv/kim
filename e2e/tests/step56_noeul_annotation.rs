@@ -360,11 +360,12 @@ fn b_draw_type_undo_pin_edit_and_save_on_the_synthetic_desktop() {
         st["captures"]["overlay"]["phase"] == "selected"
     });
     // The toolbar sits below the selection from the 640-pixel monitor's left edge: the
-    // rectangle tool's button is centred at (192, 324), the text tool's at (384, 324).
+    // rectangle tool's button is centred at (192, 324), the text tool's at (416, 324) (after
+    // the marker, #99).
     click(ov, 192, 324);
     n.eventually("the rectangle tool", |st| ann(st)["tool"] == "rectangle");
     drag(ov, (150, 150), (250, 220));
-    click(ov, 384, 324);
+    click(ov, 416, 324);
     n.eventually("the text tool", |st| ann(st)["tool"] == "text");
     click(ov, 160, 240);
     n.eventually("typing", |st| ann(st)["editing_text"] == true);

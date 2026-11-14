@@ -343,11 +343,12 @@ fn b_the_user_pastes_every_source_off_screen_without_touching_the_clipboard() {
     // What pins nothing says why.
     let pin_clip = ["pin", "--clipboard", "--at", "-19990,-19990"];
     n.clipboard(&[
-        ("CF_UNICODETEXT", b"a password"),
+        // A value that no message contains (the message itself names "a password manager").
+        ("CF_UNICODETEXT", b"hunter2-s3cret"),
         ("ExcludeClipboardContentFromMonitorProcessing", b""),
     ]);
     let doc = n.fails(&pin_clip, 3, "nothing_to_pin");
-    assert!(!doc.to_string().contains("a password"));
+    assert!(!doc.to_string().contains("hunter2-s3cret"), "{doc:#}");
     let mut bomb = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
     bomb.extend_from_slice(&40_000u32.to_be_bytes());
     bomb.extend_from_slice(&40_000u32.to_be_bytes());

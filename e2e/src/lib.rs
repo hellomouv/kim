@@ -37,6 +37,24 @@ pub fn bin_debug(name: &str) -> PathBuf {
     path
 }
 
+/// Whether a program named `exe` (e.g. `noeul.exe`) runs on this PC: a scenario that checks
+/// what happens when a tool's own instance is *not* running cannot check it on a developer PC
+/// where the user runs that tool (the instance answers on the per-user default endpoint). Read
+/// only (`tasklist`); the CI runner runs none of them.
+#[cfg(windows)]
+pub fn process_running(exe: &str) -> bool {
+    use std::os::windows::process::CommandExt;
+    Command::new("tasklist")
+        .args(["/FO", "CSV", "/NH", "/FI", &format!("IMAGENAME eq {exe}")])
+        .creation_flags(0x0800_0000)
+        .output()
+        .is_ok_and(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .to_lowercase()
+                .contains(&exe.to_lowercase())
+        })
+}
+
 /// A unique, empty directory under the system temp dir, removed on drop.
 #[derive(Debug)]
 pub struct TempDir(PathBuf);

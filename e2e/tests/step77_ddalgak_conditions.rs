@@ -59,7 +59,7 @@ fn rules() -> Value {
                     { "path": "C:\\Program Files\\KeePassXC\\KeePassXC.exe" } ] }))),
                 engine("meeting", "Ctrl+Alt+Shift+F23", Some(json!({ "apps": [ { "exe": "ms-teams.exe" } ],
                     "window_title": { "contains": "Meeting" } }))),
-                engine("newer", "Ctrl+Alt+Shift+F24", Some(json!({ "window_class": "Chrome_WidgetWin_1" })))
+                engine("newer", "Ctrl+Alt+Shift+F24", Some(json!({ "battery": "charging" })))
             ] } ]
     })
 }

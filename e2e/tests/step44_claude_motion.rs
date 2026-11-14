@@ -236,6 +236,9 @@ fn each_terminal_mark_moves_by_its_own_claude_state_only_while_shown() {
     };
 
     let w = Window::open(&gui, &ep, "agent", &appdata);
+    // Windows' "Show animations" decides the marks' motion; the CI runner has it off, so the
+    // scenario simulates it on (the test window's `system` command) instead of reading the PC.
+    w.cmd(&json!({"cmd": "system", "animations": true}));
     hook(
         "agent",
         json!({"session_id": "e1", "hook_event_name": "UserPromptSubmit", "prompt": "p"}),

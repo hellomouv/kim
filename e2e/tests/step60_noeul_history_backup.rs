@@ -163,7 +163,8 @@ fn a_history_and_backup_are_off_by_default_and_clearable_without_noeul() {
     let show = n.ok(&["config", "show"]);
     assert_eq!(
         show["settings"]["history"],
-        json!({"count": 20, "memory_mb": 256, "disk": "off", "keep_days": 7, "keep_cancelled": "off"})
+        // `auto_save` (#99 HIST-06) is off by default too.
+        json!({"auto_save": "off", "count": 20, "memory_mb": 256, "disk": "off", "keep_days": 7, "keep_cancelled": "off"})
     );
     assert_eq!(show["settings"]["pins"]["backup"], "off");
     let (_, list) = n.json(&["hotkeys", "list"]);

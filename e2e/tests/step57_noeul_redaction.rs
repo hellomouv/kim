@@ -259,7 +259,7 @@ fn a_the_privacy_tools_are_discoverable_headlessly() {
             a["bindings"].as_array().unwrap().is_empty(),
             "{tool}: bindable, no default"
         );
-        assert_eq!(a["context"], "annotate", "{tool}");
+        assert_eq!(a["scope"], "context:annotate", "{tool}");
     }
     assert!(
         action("annotate.redact")["title"]
@@ -274,7 +274,9 @@ fn a_the_privacy_tools_are_discoverable_headlessly() {
         .unwrap_or_default()
         .to_string();
     assert!(
-        summary.contains("irreversible solid redaction"),
+        // The summary was shortened (#99): it names redaction; the action title says
+        // "irreversible" (checked above).
+        summary.contains("redaction"),
         "{summary}"
     );
 }
@@ -339,17 +341,17 @@ fn b_redact_mosaic_erase_and_save_without_the_original_on_the_synthetic_desktop(
         st["captures"]["overlay"]["phase"] == "selected"
     });
     // The toolbar's first row sits below the selection from the 640-pixel monitor's left edge:
-    // the mosaic tool's button is centred at (416, 324), the eraser's at (480, 324) and the
-    // redaction's at (512, 324).
-    click(ov, 512, 324);
+    // the mosaic tool's button is centred at (448, 324), the eraser's at (512, 324) and the
+    // redaction's at (544, 324) (after the marker, #99).
+    click(ov, 544, 324);
     n.eventually("the redaction tool, black", |st| {
         ann(st)["tool"] == "redact" && ann(st)["color"] == "black"
     });
     drag(ov, (150, 150), (250, 220));
-    click(ov, 416, 324);
+    click(ov, 448, 324);
     n.eventually("the mosaic tool", |st| ann(st)["tool"] == "mosaic");
     drag(ov, (280, 130), (380, 260));
-    click(ov, 480, 324);
+    click(ov, 512, 324);
     n.eventually("the eraser", |st| ann(st)["tool"] == "eraser");
     drag(ov, (200, 140), (200, 230)); // straight through the redaction
     let st = n.eventually("three privacy objects", |st| {

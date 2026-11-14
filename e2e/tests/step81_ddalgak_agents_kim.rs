@@ -156,6 +156,11 @@ fn call(id: u64, name: &str, args: &Value) -> Value {
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step81_kim_installs_ddalgak_which_serves_interop_and_a_guarded_mcp_adapter() {
     require_e2e();
+    // As step62: the calls use the per-user default endpoint; never with the user's own app.
+    if kim_e2e::process_running("ddalgak-gui.exe") {
+        eprintln!("skipped: ddalgak-gui.exe runs on this PC (the user's own app is never used)");
+        return;
+    }
     let sb = TempDir::new("ddalgak81");
     let p = sb.path();
     std::fs::create_dir_all(p.join("Roaming")).unwrap();

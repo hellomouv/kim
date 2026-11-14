@@ -402,7 +402,8 @@ fn the_running_app_switches_modes_releases_and_never_restores_them() {
     assert_eq!(d["data"]["change"]["to"], "sym");
     let m = e.mode();
     assert_eq!(m["chain"], json!(["sym", "nav", "base"]));
-    assert_eq!(m["indicator"]["label"], "Signs");
+    // Scenario B never renames `sym` (only A does); never reached on the elevated CI runner.
+    assert_eq!(m["indicator"]["label"], "Symbols");
     e.ok(&["mode", "toggle", "sym"]);
     assert_eq!(e.mode()["active"], "base");
     e.ok(&["mode", "set", "game"]);

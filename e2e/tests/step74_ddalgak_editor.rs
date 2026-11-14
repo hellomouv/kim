@@ -134,6 +134,11 @@ fn the_editor_binary_answers_help_and_version_without_a_window() {
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn the_editor_saves_through_the_store_and_shows_active_only_after_the_engine_reload() {
     require_e2e();
+    // The CI runner is elevated: the app refuses to turn its engine on (as in step72).
+    if ddalgak::win::is_elevated() {
+        eprintln!("skipped (elevated): the app refuses to turn its engine on as administrator");
+        return;
+    }
     let sb = TempDir::new("step74-editor");
     let env = Env {
         sb: &sb,

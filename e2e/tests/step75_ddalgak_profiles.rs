@@ -292,6 +292,11 @@ fn an_agent_keeps_versions_switches_exports_and_imports_profiles_headlessly() {
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn a_running_app_switches_profiles_atomically_and_never_by_an_import() {
     require_e2e();
+    // The CI runner is elevated: the app refuses to turn its engine on (as in step72).
+    if ddalgak::win::is_elevated() {
+        eprintln!("skipped (elevated): the app refuses to turn its engine on as administrator");
+        return;
+    }
     let sb = TempDir::new("step75-app");
     let e = env(&sb, bin("ddalgak"), "app");
     e.write_rules(&rules_doc("on"));
