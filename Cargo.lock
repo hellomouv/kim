@@ -1956,6 +1956,7 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "image",
+ "kim-design",
  "kim-hotkeys",
  "kim-winres",
  "moxcms",
@@ -1965,6 +1966,21 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "noeul-settings"
+version = "0.0.1"
+dependencies = [
+ "eframe",
+ "egui_kittest",
+ "kim-design",
+ "kim-hotkeys",
+ "kim-ui",
+ "kim-winres",
+ "noeul",
+ "serde_json",
  "windows-sys 0.61.2",
 ]
 

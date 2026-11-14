@@ -22,7 +22,7 @@ pub struct SetArgs {
     /// capture.detection (window, element, off), capture.magnifier (on, off), capture.pointer
     /// (on, off: the mouse pointer in the pictures F1 and the capture keys take),
     /// gestures.double_click (pin, copy, save, none), gestures.middle_click (pin, copy, none),
-    /// gestures.preset (noeul, snipaste), pins.border and pins.shadow (on, off), paste.paths
+    /// gestures.preset (noeul, snipaste), pins.border and pins.shadow (on, off), pins.double_click (close, none), paste.paths
     /// (on, off: a copied path to an image file pins the file) or paste.file_cards (on, off:
     /// copied non-image files become a card of their names)
     pub key: String,

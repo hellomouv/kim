@@ -159,7 +159,10 @@ impl Model {
                     .filter(|b| b["active"] != false)
                     .filter_map(|b| b["keys"].as_str().map(String::from))
                     .collect(),
-                changed: a["source"].as_str().is_some_and(|s| s != "default"),
+                // `unbound` is an action without default keys, not a user change.
+                changed: a["source"]
+                    .as_str()
+                    .is_some_and(|s| s != "default" && s != "unbound"),
                 bindable: a["bindable"] != false,
             })
             .collect();

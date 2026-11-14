@@ -45,10 +45,10 @@ const TOOLS: [Tool; 4] = [
     // resident instance, MCP adapter and interop provider).
     Tool {
         id: "noeul",
-        crates: &["noeul"],
-        exes: &["noeul.exe", "noeulw.exe"],
+        crates: &["noeul", "noeul-settings"],
+        exes: &["noeul.exe", "noeulw.exe", "noeul-settings.exe"],
         entrypoint: "noeul.exe",
-        summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider)",
+        summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider; noeul-settings.exe: the settings window, ADR 0093)",
     },
     // Step 81: Ddalgak, so Kim can install it (the headless CLI with its MCP adapter and interop
     // provider, the tray app that owns the engine, and the rule editor).

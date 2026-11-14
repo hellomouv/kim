@@ -26,6 +26,7 @@ workspace = true
 clap = { version = "4.6.7", features = ["derive"] }
 # Shortcuts: manifest, user layer, conflicts and the `RegisterHotKey` backend (ADR 0017).
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
+kim-design = { version = "0.0.1", path = "../kim-design" }
 # PNG for Copy (the clipboard's `PNG` format) and Save (NOEUL-FR-030/031, Step 51): pure Rust,
 # MIT/Apache-2.0, already in the workspace lock with its dependencies (no new crate).
 png = { version = "0.18.1", default-features = false }

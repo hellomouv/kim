@@ -202,9 +202,41 @@ fn run_noeul(args: &[String]) -> Value {
         )
 }
 
-/// Opens the window, or brings it forward when it is open. `interactive`: `false` only under the
-/// debug-build test hook (off-screen, never activated).
+/// ADR 0093: the settings window is `noeul-settings.exe`, a program of its own next to
+/// `noeul.exe` (the Kim design system in egui; Noeul links no GUI framework, ADR 0023). It
+/// is started for the user's Settings (with this instance's `--endpoint` when it is not the
+/// default); the window below remains for the test hook and when the program is missing.
 pub fn open(interactive: bool) -> Result<(), String> {
+    if interactive && let Some(exe) = companion() {
+        let mut cmd = std::process::Command::new(exe);
+        if let Some(e) = ENDPOINT.get() {
+            cmd.args(["--endpoint", e]);
+        }
+        // CREATE_NO_WINDOW: no console; the program shows its own window and ends with it.
+        cmd.creation_flags(0x0800_0000)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        // Let the new process bring its window to the front (the user asked for it).
+        // SAFETY: a plain call; failure only means Windows keeps the focus where it is.
+        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(u32::MAX) };
+        return match cmd.spawn() {
+            Ok(_) => Ok(()),
+            Err(_) => open_window(interactive),
+        };
+    }
+    open_window(interactive)
+}
+
+/// `noeul-settings.exe` next to this program, when it is there.
+fn companion() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let p = exe.parent()?.join("noeul-settings.exe");
+    p.is_file().then_some(p)
+}
+
+/// The built-in settings window (Step 61): the test hook's, and the fallback.
+fn open_window(interactive: bool) -> Result<(), String> {
     if let Some(h) = STATE.with(|s| s.borrow().as_ref().map(|s| s.hwnd)) {
         if interactive {
             // SAFETY: our own window.

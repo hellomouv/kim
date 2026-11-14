@@ -451,14 +451,18 @@ pub fn dropdown<T: PartialEq + Clone>(
     changed
 }
 
-/// A single-line text field at the control height with a hint.
-pub fn text_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32) -> Response {
-    ui.add(
+/// A single-line text field at the control height with a hint; `label` is its accessible name
+/// (a settings row paints its title, so the field carries the name itself).
+pub fn text_field(ui: &mut Ui, text: &mut String, label: &str, hint: &str, width: f32) -> Response {
+    let r = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(hint)
             .desired_width(width)
             .margin(Margin::symmetric(space::S as i8, 5)),
-    )
+    );
+    ui.ctx()
+        .accesskit_node_builder(r.id, |b| b.set_label(label.to_string()));
+    r
 }
 
 /// An item of a left navigation rail: full width, the selected one marked by the selected fill

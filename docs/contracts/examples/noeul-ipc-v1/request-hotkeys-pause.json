@@ -1,0 +1,6 @@
+{
+  "type": "request",
+  "id": 9,
+  "method": "hotkeys.pause",
+  "params": { "seconds": 30 }
+}

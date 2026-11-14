@@ -329,6 +329,11 @@ impl Pin {
             resizable: self.state.thumbnail.is_none(),
             sharp: self.state.sharp,
             selected: self.state.selected,
+            zoom: if self.state.thumbnail.is_some() {
+                zoom::FULL
+            } else {
+                self.zoom
+            },
         }
     }
 
@@ -558,6 +563,7 @@ impl Pins {
                 resizable: true,
                 sharp: false,
                 selected: false,
+                zoom,
             },
             focus,
             guard,
@@ -753,6 +759,11 @@ impl Pins {
             resizable: state.thumbnail.is_none(),
             sharp: state.sharp,
             selected: state.selected,
+            zoom: if state.thumbnail.is_some() {
+                zoom::FULL
+            } else {
+                p.zoom
+            },
         };
         let pic = shown(frame, &annotations, state.orientation);
         p.window
@@ -818,6 +829,11 @@ impl Pins {
                 resizable: c.state.thumbnail.is_none(),
                 sharp: c.state.sharp,
                 selected: c.state.selected,
+                zoom: if c.state.thumbnail.is_some() {
+                    zoom::FULL
+                } else {
+                    c.zoom
+                },
             },
             focus,
             guard: None,

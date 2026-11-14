@@ -139,6 +139,7 @@ fn off_screen_pin_window_lifecycle() {
         ev,
         [
             PinEvent::Key(PinId(77), esc, false),
+            PinEvent::DoubleClick(PinId(77)),
             PinEvent::Key(PinId(77), left, true),
             PinEvent::Menu(PinId(77), None),
             PinEvent::Menu(PinId(77), Some((FAR, FAR + 3))),
@@ -148,7 +149,7 @@ fn off_screen_pin_window_lifecycle() {
             PinEvent::Closed(PinId(77)),
             PinEvent::DpiChanged(PinId(77)),
         ],
-        "the double-click produced nothing (NOEUL-FR-026)"
+        "the double-click asks to close the pin (ADR 0094; the core decides)"
     );
     pin.set_position(FAR - 100, FAR - 50);
     assert_eq!(rect_of(hwnd).0, FAR - 100);
@@ -172,10 +173,12 @@ fn off_screen_pin_window_lifecycle() {
     assert_eq!(ledger.live(), (0, 0));
 }
 
-/// The tail of a double-click: for the guard time every press is swallowed and the window
-/// refuses activation; afterwards a click may activate it again.
+/// ADR 0094: the tail of a double-click. For the guard time the release, the middle button,
+/// the menu and a double-click never act on the new pin, and it is not activated; but a press
+/// is no longer eaten, so dragging starts at once (it used to wait half a second). Afterwards a
+/// plain double-click asks the core to close the pin.
 #[test]
-fn a_new_pin_swallows_the_rest_of_the_gesture() {
+fn a_new_pin_ignores_the_rest_of_the_gesture_but_drags_at_once() {
     let ledger = Ledger::new();
     let frame = Frame::solid(&ledger, Rect::new(FAR, FAR, 8, 8), [1, 2, 3, 255]).unwrap();
     let guarded_spec = WindowSpec {
@@ -185,21 +188,24 @@ fn a_new_pin_swallows_the_rest_of_the_gesture() {
     let pin = create(PinId(91), &frame, &guarded_spec, Style::INTERACTIVE).unwrap();
     let hwnd = pin.hwnd();
     let _ = take_events();
+    // HTCLIENT: a double-click that does not start the system's move loop in this test.
+    const HTCLIENT: usize = 1;
     // SAFETY: synchronous messages to our own window on this thread.
     unsafe {
         assert_eq!(
             SendMessageW(hwnd, WM_MOUSEACTIVATE, hwnd as usize, 0),
-            MA_NOACTIVATEANDEAT as LRESULT,
-            "the third click of a triple click neither activates nor reaches the pin"
+            MA_NOACTIVATE as LRESULT,
+            "a press during the guard reaches the pin (a drag can start) but does not activate it"
         );
-        assert_eq!(
-            SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION as usize, 0),
-            0
-        );
+        assert_eq!(SendMessageW(hwnd, WM_NCLBUTTONUP, HTCAPTION as usize, 0), 0);
         SendMessageW(hwnd, WM_NCMBUTTONUP, HTCAPTION as usize, 0);
         SendMessageW(hwnd, WM_CONTEXTMENU, hwnd as usize, -1);
+        SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTCLIENT, 0);
     }
-    assert!(take_events().is_empty(), "nothing reached the core");
+    assert!(
+        take_events().is_empty(),
+        "nothing reached the core: no close, no menu"
+    );
     std::thread::sleep(Duration::from_millis(350));
     // SAFETY: as above.
     unsafe {
@@ -209,8 +215,49 @@ fn a_new_pin_swallows_the_rest_of_the_gesture() {
             "after the guard a click may activate it"
         );
         SendMessageW(hwnd, WM_NCMBUTTONUP, HTCAPTION as usize, 0);
+        SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTCLIENT, 0);
     }
-    assert_eq!(take_events(), [PinEvent::MiddleClick(PinId(91))]);
+    assert_eq!(
+        take_events(),
+        [
+            PinEvent::MiddleClick(PinId(91)),
+            PinEvent::DoubleClick(PinId(91))
+        ]
+    );
+    drop(pin);
+}
+
+/// ADR 0094: a zoom change shows the percentage on the pin's window for a moment; the first
+/// present and 100 % show nothing, and the window's timer takes it away again.
+#[test]
+fn a_zoom_change_shows_the_percentage_for_a_moment() {
+    let ledger = Ledger::new();
+    let frame = Frame::solid(&ledger, Rect::new(FAR, FAR, 200, 120), [9, 9, 9, 255]).unwrap();
+    let mut pin = create(
+        PinId(93),
+        &frame,
+        &spec(frame.rect()),
+        Style::OFF_SCREEN_TEST,
+    )
+    .unwrap();
+    let hwnd = pin.hwnd();
+    assert!(!badge_shown(hwnd), "the first present shows no zoom");
+    let zoomed = View {
+        zoom: 150,
+        ..bare(Rect::new(FAR, FAR, 300, 180))
+    };
+    pin.present(&frame, &zoomed).unwrap();
+    assert!(badge_shown(hwnd), "150 % shows after the change");
+    // The window's own one-shot timer ends it.
+    // SAFETY: a synchronous message to our own window on this thread.
+    unsafe { SendMessageW(hwnd, WM_TIMER, BADGE_TIMER, 0) };
+    assert!(!badge_shown(hwnd), "gone after its time");
+    let back = View {
+        zoom: 100,
+        ..bare(frame.rect())
+    };
+    pin.present(&frame, &back).unwrap();
+    assert!(!badge_shown(hwnd), "never at 100 %");
     drop(pin);
 }
 
@@ -583,7 +630,10 @@ fn shift_double_click_and_ctrl_drop_are_reported() {
         [
             PinEvent::ShiftDoubleClick(PinId(403)),
             PinEvent::Dropped(PinId(403), r.x, r.y),
+            // ADR 0094: a plain double-click asks to close the pin (the core decides).
+            PinEvent::DoubleClick(PinId(403)),
             PinEvent::Moved(PinId(403), r.x, r.y),
+            PinEvent::DoubleClick(PinId(403)),
             PinEvent::Moved(PinId(403), r.x, r.y),
         ]
     );

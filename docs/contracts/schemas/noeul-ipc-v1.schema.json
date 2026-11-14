@@ -137,7 +137,7 @@
       "properties": {
         "type": { "const": "request" },
         "id": { "type": "integer", "minimum": 1 },
-        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "settings.open", "history.list", "history.pin", "history.forget", "history.clear", "backup.status", "backup.save", "backup.restore", "backup.clear", "hotkeys.reload", "settings.reload", "quit"] },
+        "method": { "enum": ["status", "activate", "capture", "capture.region", "capture.cancel", "pin.list", "pin.create", "pin.hide", "pin.show", "pin.close", "pin.reopen", "pin.set", "group.list", "group.switch", "settings.open", "history.list", "history.pin", "history.forget", "history.clear", "backup.status", "backup.save", "backup.restore", "backup.clear", "hotkeys.reload", "settings.reload", "hotkeys.pause", "quit"] },
         "params": { "$ref": "#/$defs/params" }
       }
     },
@@ -178,7 +178,8 @@
         "sharp": { "description": "pin.set (#99): sharp pixels when zoomed out.", "type": "boolean" },
         "topmost": { "description": "pin.set (#99): above other windows or in the normal z-order.", "type": "boolean" },
         "color": { "description": "pin.set (#99, `COLOR-05`): a colour card's new colour (HEX, rgb() or hsl()); other pins are left alone.", "type": "string", "minLength": 1, "maxLength": 64 },
-        "move_to_group": { "description": "pin.set: move the pins to this group.", "$ref": "#/$defs/group_name" }
+        "move_to_group": { "description": "pin.set: move the pins to this group.", "$ref": "#/$defs/group_name" },
+        "seconds": { "description": "hotkeys.pause (ADR 0093): release the global hotkeys for this many seconds (at most 120) while the settings window records keys; 0 registers them again now.", "type": "integer", "minimum": 0, "maximum": 3600 }
       }
     },
     "response_ok": {
@@ -215,6 +216,7 @@
             { "$ref": "#/$defs/backup_clear_result" },
             { "$ref": "#/$defs/reload_result" },
             { "$ref": "#/$defs/settings_reload_result" },
+            { "$ref": "#/$defs/hotkeys_pause_result" },
             { "$ref": "#/$defs/quit_result" }
           ]
         }
@@ -328,14 +330,15 @@
         "magnifier": { "description": "`[capture] magnifier` (Step 52, NOEUL-FR-041): whether the overlay shows the magnifier when it opens.", "enum": ["on", "off"] },
         "pointer": { "description": "`[capture] pointer` (Step 58, NOEUL-FR-016): whether the mouse pointer is drawn into the pictures F1, capture.monitor and capture.window take.", "enum": ["on", "off"] },
         "pins": {
-          "description": "`[pins]` (Step 54, UX spec §10): the outline and the shadow around every pin; `backup` (Step 60, NOEUL-FR-066): the opt-in pin backup.",
+          "description": "`[pins]` (Step 54, UX spec §10): the outline and the shadow around every pin; `backup` (Step 60, NOEUL-FR-066): the opt-in pin backup; `double_click` (ADR 0094): a double-click on a pin closes it (`close`, the default) or does nothing.",
           "type": "object",
-          "required": ["border", "shadow", "backup"],
+          "required": ["border", "shadow", "backup", "double_click"],
           "additionalProperties": false,
           "properties": {
             "border": { "enum": ["on", "off"] },
             "shadow": { "enum": ["on", "off"] },
-            "backup": { "enum": ["on", "off"] }
+            "backup": { "enum": ["on", "off"] },
+            "double_click": { "enum": ["close", "none"] }
           }
         },
         "privacy": {
@@ -1103,6 +1106,15 @@
         "problem": { "type": ["string", "null"] },
         "hotkeys": { "$ref": "#/$defs/hotkeys_state" }
       }
+    },
+    "hotkeys_pause_result": {
+      "description": "`hotkeys.pause` (ADR 0093): the global hotkeys are released until `seconds` pass or a pause of 0 resumes them (`resumed`: they were paused).",
+      "oneOf": [
+        { "type": "object", "required": ["paused", "seconds"], "additionalProperties": false,
+          "properties": { "paused": { "const": true }, "seconds": { "type": "integer", "minimum": 1, "maximum": 120 } } },
+        { "type": "object", "required": ["paused", "resumed"], "additionalProperties": false,
+          "properties": { "paused": { "const": false }, "resumed": { "type": "boolean" } } }
+      ]
     },
     "settings_reload_result": {
       "description": "`settings.reload` (Step 51): config.toml read again; the gestures, keyboard help and quick-save folder apply from the next capture.",

@@ -139,3 +139,27 @@ fn the_gear_sits_in_the_lower_right_corner() {
     h.run();
     assert!(*h.state());
 }
+
+#[test]
+fn the_key_picker_takes_clicks() {
+    let mut h = Harness::new_ui_state(
+        |ui, s: &mut (keys::KeyPicker, Option<String>)| {
+            setup(ui.ctx(), Theme::Dark);
+            if let keys::Picked::Confirm(t) =
+                s.0.ui(ui, &["F5", "PrintScreen", "CapsLock"], true, Lang::En)
+            {
+                s.1 = Some(t);
+            }
+        },
+        (keys::KeyPicker::default(), None),
+    );
+    h.run();
+    h.get_by_label("RCtrl").click();
+    h.run();
+    h.get_by_label("CapsLock").click();
+    h.run();
+    assert_eq!(h.state().0.chord().as_deref(), Some("RCtrl+CapsLock"));
+    h.get_by_label("Confirm").click();
+    h.run();
+    assert_eq!(h.state().1.as_deref(), Some("RCtrl+CapsLock"));
+}

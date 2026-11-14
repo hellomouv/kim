@@ -239,8 +239,10 @@ Shipped since Step 51, before the settings window (Step 61): the Gestures sectio
 `noeul config reset gestures --yes` (all with `--dry-run` and `--json`). A running Noeul uses
 them from the next capture. `noeul config show` and `noeul hotkeys list` show the gestures and
 name the "Snipaste-style gestures" preset; the preset also writes its keys (`Enter` copies,
-`Ctrl+T` pins) into `hotkeys.json`, and reset undoes them. The double-click on a pin does nothing
-and is not a setting yet.
+`Ctrl+T` pins) into `hotkeys.json`, and reset undoes them. A double-click on a pin closes it by
+default; `[pins] double_click = "none"` turns that off (ADR 0094). Since ADR 0093 the settings
+window is `noeul-settings.exe` in the Kim design system (sections General, Capture, Pins,
+Shortcuts, Appearance, Advanced); the Step 61 window remains as its fallback.
 
 ### 3.6 Notices
 
@@ -325,7 +327,7 @@ stateDiagram-v2
    sequence number is unchanged and no file appears (NOEUL-SEC-005).
 10. **The new pin ignores the rest of the gesture.** For one system double-click time after it
     appears, a pin ignores presses, so a triple or quadruple click yields one untouched pin. A
-    double-click on a pin has no default action at any time (NOEUL-FR-026).
+    double-click on a pin closes it by default (NOEUL-FR-026, ADR 0094: `[pins] double_click`), but never during the guard after its creation, when a press only drags it.
 11. **Failure keeps the work.** If the pin cannot be created, the overlay stays in `Selected`
     with an error banner; copy and save still work (NOEUL-FR-025).
 12. **Other paths.** Middle-click in the interior pins (setting: Pin, Copy, Nothing). The

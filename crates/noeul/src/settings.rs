@@ -278,6 +278,8 @@ pub struct Settings {
     pub history: History,
     /// Back the pins up (`[pins] backup`; Step 60, off by default).
     pub pin_backup: bool,
+    /// ADR 0094: a double-click on a pin closes it (`[pins] double_click`, on by default).
+    pub pin_double_click_closes: bool,
     /// Who may capture and read the clipboard without the keyboard (`[privacy]`; Step 62).
     pub privacy: Privacy,
     /// `[output]` (#99): file format, JPEG quality, copy as a file too.
@@ -367,6 +369,7 @@ impl Default for Settings {
             color: crate::color::Style::default(),
             history: History::default(),
             pin_backup: false,
+            pin_double_click_closes: true,
             privacy: Privacy::default(),
             output: crate::output::Options::default(),
         }
@@ -420,6 +423,7 @@ impl Loaded {
                 "border": if s.pin_look.border { "on" } else { "off" },
                 "shadow": if s.pin_look.shadow { "on" } else { "off" },
                 "backup": if s.pin_backup { "on" } else { "off" },
+                "double_click": if s.pin_double_click_closes { "close" } else { "none" },
             },
             "privacy": {
                 "cli": s.privacy.cli.as_str(),
@@ -583,6 +587,12 @@ const KEYS: &[Key] = &[
         name: "backup",
         takes: "\"on\" or \"off\"",
         default: "\"off\"",
+    },
+    Key {
+        section: "pins",
+        name: "double_click",
+        takes: "\"close\" or \"none\"",
+        default: "\"close\"",
     },
     Key {
         section: "privacy",
@@ -787,6 +797,13 @@ fn apply(settings: &mut Settings, section: &str, name: &str, v: &toml::Value) ->
             }
         }
         ("pins", "backup") => settings.pin_backup = on_off(s)?,
+        ("pins", "double_click") => {
+            settings.pin_double_click_closes = match s {
+                Some("close") => true,
+                Some("none") => false,
+                _ => return Err(()),
+            };
+        }
         ("privacy", "cli") => settings.privacy.cli = s.and_then(CliAccess::parse).ok_or(())?,
         ("privacy", "mcp_captures") => settings.privacy.mcp_captures = on_off(s)?,
         ("history", "count") => {

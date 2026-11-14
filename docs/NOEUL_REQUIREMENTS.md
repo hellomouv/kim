@@ -102,7 +102,7 @@ rules, edge cases and tests are in [NOEUL_UX_SPEC §4](NOEUL_UX_SPEC.md#4-the-si
 | NOEUL-FR-023 | Copy and save are separate, discoverable actions that never pin: `capture.copy` (`Ctrl+C`) and the Copy button copy and close; `capture.save` (`Ctrl+S`) opens a save dialog; `capture.quick-save` (`Ctrl+Shift+S`) saves to the quick-save folder. Tooltips, the context menu and the shortcut list show every key and gesture. | P0 | N1 | T, M |
 | NOEUL-FR-024 | The gesture is a setting: the double-click inside a selection does `pin` (default), `copy`, `save` or `none`. An opt-in "Snipaste-style gestures" preset (double-click and `Enter` copy, `Ctrl+T` and middle-click pin) is shown by name in settings and in the shortcut list, and is undone by reset. Defaults never change silently. | P1 | N5 | T |
 | NOEUL-FR-025 | Pinning never depends on the clipboard. If a pin cannot be created (memory, window creation), the overlay and the selection stay open with an error so the user can copy or save instead; nothing is lost silently. | P0 | N1 | T |
-| NOEUL-FR-026 | A double-click on a pin has no default action; in particular it never closes the pin, so the remaining clicks of the gesture that created a pin cannot destroy it. | P0 | N1 | T |
+| NOEUL-FR-026 | A double-click on a pin closes that pin by default (`[pins] double_click = "close"`; `"none"` turns it off, ADR 0094); the remaining clicks of the gesture that created a pin never close it, open its menu or zoom it, but a press drags it at once. | P0 | N1 | T |
 
 ### 3.4 Output and clipboard writes
 

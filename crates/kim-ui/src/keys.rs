@@ -143,6 +143,7 @@ impl KeyPicker {
         crate::text_field(
             ui,
             &mut self.search,
+            lang.pick("Search keys", "키 검색"),
             lang.pick(
                 "Search keys (e.g. Print, Caps, F5)",
                 "키 검색 (예: Print, Caps, F5)",
@@ -150,9 +151,13 @@ impl KeyPicker {
             ui.available_width(),
         );
         let q = self.search.trim().to_lowercase();
+        // A fixed height: filtering never resizes (and so never moves) the dialog under the
+        // pointer.
         egui::ScrollArea::vertical()
             .id_salt("kim-ui-key-picker")
+            .min_scrolled_height(132.0)
             .max_height(132.0)
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for k in keys

@@ -8,7 +8,7 @@ checkpoint."*
 ## Now
 
 - Branch: `main` · last pushed commit: see `git log -1 origin/main`
-- Current Step: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100, #99 delivered and closed; #98 in progress (T2, T3 done; T1 15 of 18 rows; T4 under way: shells, profiles, contrast, quick commands, keywords, merge done; T5, T6 left); then #97 and the #44 Windows part
+- Current work: maintainer request 2026-11-15 (design system and UX across all four apps; ADR 0092–0094 so far). Before it: follow-up trackers (user request 2026-11-12: every Windows issue that can be done here). #102, #101, #100, #99 delivered and closed; #98 in progress (T2, T3 done; T1 15 of 18 rows; T4 under way: shells, profiles, contrast, quick commands, keywords, merge done; T5, T6 left); then #97 and the #44 Windows part
 - Real-UI checks (ADR 0088, user 2026-11-13: full real desktop testing with save/restore of settings and clipboard; never the user's open windows): driver and keep-awake helper in the session scratchpad. Closed with real evidence: #99, #55, #56, #58, #14, #15, #16, #18, #19, #20, #57, #61, #62, #64, #66, #68, #77, #79, #80, #81, #82, #83; open with exact blockers: #8, #31 (sleep/sign-out/reboot), #63 (second monitor, HDR). Fixed on the way: Ctrl+click selection, snapping edges, zoom drift, pin quick-save format (Noeul); term_bench lone Alt, tray double toggle, clipboard open retry, mark-mode wide steps, question width (Subak); smoke scripts (tab process, glued rows). Next: Ddalgak issues still open only for physical-input or environment blockers (reported on each issue): #71/#78 emergency chord (+ reboot), #73 remaps, #74 hotstrings, #75 website in the maintainer's browser, #76 held button + 2nd monitor, #84 elevated window + sleep; #87 waits on those. #99 CLOSED (all 28 planned rows supported or partial with gaps named; APP-03 is Linux, #69). Now #98 (Tabby parity): T2 done (f2980b3), T3 done (ba75330, a8327c2, 4cd5ae1); T1 batches e42fbc8, eef87a9, 06ebf16, 187fc08, dd1ddda, 8141171; next rest of T1, then T4, T5, T6; then #97, #44 Windows part
 - Last delivered Step: Step 82 (#87, Ddalgak hardening; OPEN for DDALGAK_ACCEPTANCE and the release). Step 31 (#31)
   possible, left OPEN: lock/sleep/hibernate/reboot/power rows need the maintainer
@@ -19,6 +19,8 @@ checkpoint."*
   repos/madebymouv/kim/issues?state=open` (no PRs) is 0; re-query after every issue
 
 ## Verification log (latest first)
+
+- 2026-11-15: user request "Unified Design System and Complete UX Refinement" (ADR 0092–0094, in progress): `kim-design` + `kim-ui` crates; Kim Manager on them (settings rail, switch rows, language en/ko, dialogs; real desktop dark/light/Korean, menu fits); `noeul-settings.exe` (sections, IPC `hotkeys.pause`, real clicks wrote config.toml); new pins drag at once (real: first move 62–76 ms after a press 0–200 ms after the pin appeared), double-click closes only that pin, zoom read-out (real: 125 % shown, gone after 1.6 s), triple/quadruple click makes one pin. Next: Subak tabs/shells/Linux commands, Ddalgak redesign, review. `cargo xtask ci` per increment.
 
 - 2026-11-14: ADR 0091 follow-ups — Subak tab bar grows with the screen factor (real clicks switch tabs); Kim right-click *Reinstall…* (same version again, verified, data kept; ui test); e2e leftovers from release40 stopped and removed; a real display-scaling change to 150 % (saved, restored to 100 %, registry values checked): Kim Auto 175 %, Settings on screen; Subak 1.0 by design. kim-manager ui 19/19; `cargo xtask ci` EXIT 0.
 

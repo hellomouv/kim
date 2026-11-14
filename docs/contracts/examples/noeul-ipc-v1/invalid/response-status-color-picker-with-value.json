@@ -243,7 +243,8 @@
       "pins": {
         "border": "on",
         "shadow": "on",
-        "backup": "off"
+        "backup": "off",
+        "double_click": "close"
       },
       "history": {
         "count": 20,

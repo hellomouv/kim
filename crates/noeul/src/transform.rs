@@ -438,6 +438,10 @@ pub struct View {
     pub sharp: bool,
     /// #99 (`PIN-20`): selected with other pins: outlined in [`SELECTED_BGRA`] (always shown).
     pub selected: bool,
+    /// ADR 0094: the pin's zoom in percent (100 for a thumbnail). After a change the window
+    /// shows it for a moment in the picture's top-right corner ([`paint_zoom_badge`]); never at
+    /// 100 %, never in the picture itself (copies and saves use the pin's frame, not its window).
+    pub zoom: u32,
 }
 
 /// #99 (`PIN-17`): how far to move `r` (x, y) so one of its edges lines up with an edge of one
@@ -539,6 +543,7 @@ impl View {
             resizable: true,
             sharp: false,
             selected: false,
+            zoom: zoom::FULL,
         }
     }
 
@@ -647,6 +652,89 @@ fn premul(bgra: [u8; 4], cover: f64) -> [u8; 4] {
 /// `dst`: the shadow and outline outside the picture, `frame` scaled to `view.rect`'s size, and
 /// the click-through badge. While resizable, every pixel of the margin has an alpha of at least 1
 /// so the whole band is hit by the mouse (a layered window lets clicks through where alpha is 0).
+/// ADR 0094: the zoom read-out's text: `125%`, nothing at 100 %.
+pub fn zoom_label(zoom: u32) -> Option<String> {
+    (zoom != zoom::FULL).then(|| format!("{zoom}%"))
+}
+
+/// The zoom read-out's pill: its rectangle relative to the window surface, for a text `tw` × `th`
+/// device pixels wide and high; `None` when the picture is too small to hold it.
+pub fn zoom_badge_rect(view: &View, tw: u32, th: u32) -> Option<Rect> {
+    let pad_x = scale_px(6, view.dpi);
+    let pad_y = scale_px(2, view.dpi);
+    let inset = scale_px(6, view.dpi);
+    let (w, h) = (tw + 2 * pad_x, th + 2 * pad_y);
+    if w + 2 * inset > view.rect.width || h + 2 * inset > view.rect.height {
+        return None;
+    }
+    let m = view.margin();
+    let x = m + view.rect.width - inset - w;
+    let y = m + inset;
+    Some(Rect::new(
+        i32::try_from(x).ok()?,
+        i32::try_from(y).ok()?,
+        w,
+        h,
+    ))
+}
+
+/// Paints the zoom read-out (a near-black pill at 82 % with the percentage in near-white, the
+/// Kim design system's overlay colours) over a painted window surface `dst`; `glyphs` is the
+/// typeset text (its mask is the coverage). Returns whether it was painted.
+pub fn paint_zoom_badge(dst: &mut [u8], view: &View, glyphs: &crate::annotation::Glyphs) -> bool {
+    let Some(r) = zoom_badge_rect(view, glyphs.width, glyphs.line_height.max(glyphs.height)) else {
+        return false;
+    };
+    let win = view.window();
+    let ww = win.width as usize;
+    let px = dst.as_chunks_mut::<4>().0;
+    let (x0, y0) = (r.x as usize, r.y as usize);
+    let (w, h) = (r.width as usize, r.height as usize);
+    let radius = h as f64 / 2.0;
+    // `bg.base` of kim-dark at 82 % and `text.primary` (premultiplied BGRA).
+    let (bg, bga) = ([0x12u32, 0x0E, 0x0E], 0.82f64);
+    let fg = [0xF0u32, 0xE6, 0xE8];
+    let over = |p: &mut [u8; 4], c: [u32; 3], a: f64| {
+        let ia = 1.0 - a;
+        for k in 0..3 {
+            p[k] = (f64::from(c[k]) * a + f64::from(p[k]) * ia).round() as u8;
+        }
+        p[3] = (255.0 * a + f64::from(p[3]) * ia).round() as u8;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            // A pill: the ends are half discs (anti-aliased by distance).
+            let fx = x as f64 + 0.5;
+            let fy = y as f64 + 0.5;
+            let cx = fx.clamp(radius, w as f64 - radius);
+            let d = ((fx - cx).powi(2) + (fy - radius).powi(2)).sqrt();
+            let cover = (radius - d + 0.5).clamp(0.0, 1.0);
+            if cover <= 0.0 {
+                continue;
+            }
+            let i = (y0 + y) * ww + x0 + x;
+            if let Some(p) = px.get_mut(i) {
+                over(p, bg, bga * cover);
+            }
+        }
+    }
+    let tx = x0 + (w - glyphs.width as usize) / 2;
+    let ty = y0 + (h - glyphs.height as usize) / 2;
+    for y in 0..glyphs.height as usize {
+        for x in 0..glyphs.width as usize {
+            let a = glyphs.mask[y * glyphs.width as usize + x];
+            if a == 0 {
+                continue;
+            }
+            let i = (ty + y) * ww + tx + x;
+            if let Some(p) = px.get_mut(i) {
+                over(p, fg, f64::from(a) / 255.0);
+            }
+        }
+    }
+    true
+}
+
 pub fn paint(frame: &Frame, view: &View, dst: &mut [u8]) {
     let win = view.window();
     let (ww, wh) = (win.width as usize, win.height as usize);
@@ -726,6 +814,52 @@ pub fn paint(frame: &Frame, view: &View, dst: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR 0094: the zoom read-out is painted only inside its pill in the picture's top-right
+    /// corner, never at 100 % and never on a pin too small for it.
+    #[test]
+    fn the_zoom_read_out_sits_in_the_top_right_corner_only() {
+        use crate::annotation::{BlockType, Typesetter};
+        assert_eq!(zoom_label(100), None);
+        assert_eq!(zoom_label(125).as_deref(), Some("125%"));
+        let rect = Rect::new(0, 0, 300, 200);
+        let v = View {
+            zoom: 150,
+            ..View::plain(rect)
+        };
+        let win = v.window();
+        let mut px = vec![0u8; (win.width * win.height * 4) as usize];
+        let g = BlockType.typeset("150%", 12);
+        assert!(paint_zoom_badge(&mut px, &v, &g));
+        let r = zoom_badge_rect(&v, g.width, g.line_height.max(g.height)).unwrap();
+        for y in 0..win.height as i32 {
+            for x in 0..win.width as i32 {
+                let i = ((y as u32 * win.width + x as u32) * 4) as usize;
+                if px[i + 3] != 0 {
+                    assert!(
+                        x >= r.x
+                            && x < r.x + r.width as i32
+                            && y >= r.y
+                            && y < r.y + r.height as i32,
+                        "painted outside the pill at {x},{y}"
+                    );
+                }
+            }
+        }
+        let m = v.margin() as i32;
+        assert!(r.x + r.width as i32 > m + 150, "right half");
+        assert!(r.y < m + 100, "top half");
+        let tiny = View {
+            zoom: 150,
+            ..View::plain(Rect::new(0, 0, 24, 12))
+        };
+        let tw = tiny.window();
+        let mut px = vec![0u8; (tw.width * tw.height * 4) as usize];
+        assert!(
+            !paint_zoom_badge(&mut px, &tiny, &g),
+            "no room, no read-out"
+        );
+    }
     use crate::frame::Ledger;
 
     const ALL: [Orientation; 8] = [

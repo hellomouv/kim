@@ -29,8 +29,12 @@
 //!   pointer, `Ctrl`+wheel changes the opacity; a middle-click returns to 100 % and opaque; a
 //!   right-click (or `Shift+F10`, or the menu key) opens its context menu; `Shift`+double-click
 //!   toggles thumbnail mode; dropping it with `Ctrl` held onto another pin joins that pin's group.
-//!   A plain double-click does nothing (NOEUL-FR-026). For the guard time a new pin was given,
-//!   every press on it is swallowed (UX spec §4.2 rule 10).
+//!   A plain double-click closes the pin when `[pins] double_click = "close"` (the default since
+//!   ADR 0094; `"none"` does nothing, NOEUL-FR-026). For the guard time a new pin was given (one
+//!   double-click time after the double-click that made it), the rest of that gesture cannot act
+//!   on it: its release, a double-click, the middle and right buttons and the menu are ignored —
+//!   but a left press starts a drag at once (ADR 0094: the old guard swallowed every press, so a
+//!   pin could not be dragged for half a second after it appeared).
 //! - **Click-through** (NOEUL-FR-063): `WS_EX_TRANSPARENT` on the layered window, so the system
 //!   hit-tests through it to the window below; the pin keeps keyboard focus if it had it (its
 //!   `Ctrl+Shift+T` turns it back) and shows the badge.
@@ -77,18 +81,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT,
     HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_SIZEALL,
     IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IsIconic, IsWindow, IsWindowVisible,
-    LoadCursorW, MA_ACTIVATE, MA_NOACTIVATEANDEAT, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    KillTimer, LoadCursorW, MA_ACTIVATE, MA_NOACTIVATE, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     PostMessageW, RegisterClassExW, SM_CXDRAG, SM_CYDRAG, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetCursor,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA, UpdateLayeredWindow, WA_INACTIVE, WM_ACTIVATE,
-    WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_DPICHANGED, WM_DROPFILES,
-    WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-    WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVING, WM_NCDESTROY, WM_NCHITTEST,
-    WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMBUTTONDBLCLK, WM_NCMBUTTONDOWN,
-    WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP, WM_NULL, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SETCURSOR, WM_SYSKEYDOWN, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, ULW_ALPHA, UpdateLayeredWindow, WA_INACTIVE,
+    WM_ACTIVATE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_DPICHANGED,
+    WM_DROPFILES, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVING, WM_NCDESTROY,
+    WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMBUTTONDBLCLK,
+    WM_NCMBUTTONDOWN, WM_NCMBUTTONUP, WM_NCRBUTTONDBLCLK, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP,
+    WM_NULL, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SYSKEYDOWN, WM_TIMER, WNDCLASSEXW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 const CLASS: &str = "NoeulPin";
@@ -124,6 +128,10 @@ struct Slot {
     capture: bool,
     /// #99 (`PIN-08`): where (screen) the right button went down on the picture.
     right_from: Option<(i32, i32)>,
+    /// ADR 0094: the window was presented at least once (a first present shows no zoom).
+    presented: bool,
+    /// ADR 0094: the zoom read-out is shown now (the surface without it is in [`BADGES`]).
+    badge: bool,
 }
 
 thread_local! {
@@ -135,6 +143,16 @@ thread_local! {
     /// #99 (`PIN-17`): the edges a pin being moved may snap to (visible top-level windows,
     /// other pins included), read once when the move begins.
     static SNAP_TO: RefCell<Vec<Rect>> = const { RefCell::new(Vec::new()) };
+}
+
+/// ADR 0094: the zoom read-out's one-shot timer (the window's own; no timer while hidden).
+const BADGE_TIMER: usize = 0x4E5A;
+
+thread_local! {
+    /// Lays the zoom read-out's text out (Segoe UI with fallback), made on first use.
+    static TYPE: RefCell<Option<crate::win::typeset::GdiType>> = const { RefCell::new(None) };
+    /// ADR 0094: while a pin shows its zoom read-out, its surface without it (to put back).
+    static BADGES: RefCell<BTreeMap<isize, Vec<u8>>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 /// How close (device pixels) an edge must come to snap while `Shift` is held.
@@ -456,10 +474,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 return 1;
             }
         }
-        // The rest of the creating gesture is swallowed: no activation, no move, no menu.
+        // ADR 0094: during the guard a press is not eaten (a drag starts at once) and does not
+        // activate the pin (it already has the focus it was created with).
         WM_MOUSEACTIVATE => {
             if guarded(hwnd) {
-                return MA_NOACTIVATEANDEAT as LRESULT;
+                return MA_NOACTIVATE as LRESULT;
             }
             // SAFETY: plain query; the window that has focus before this click activates us.
             let before = unsafe { GetForegroundWindow() };
@@ -480,11 +499,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 }
             }
         }
-        WM_NCLBUTTONDOWN | WM_NCRBUTTONDOWN | WM_NCMBUTTONDOWN | WM_NCLBUTTONUP
-        | WM_NCRBUTTONUP | WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN
+        // The rest of the creating gesture: its release, the other buttons and a double-click
+        // never act on the new pin. A left press (below) moves it at once.
+        WM_NCRBUTTONDOWN | WM_NCMBUTTONDOWN | WM_NCLBUTTONUP | WM_NCRBUTTONUP | WM_LBUTTONDOWN
+        | WM_RBUTTONDOWN | WM_MBUTTONDOWN
             if guarded(hwnd) =>
         {
             return 0;
+        }
+        // A double-click during the guard is the third and fourth press of a quick click series:
+        // a plain press (a drag may start), never a close or a thumbnail.
+        WM_NCLBUTTONDBLCLK if guarded(hwnd) => {
+            // SAFETY: the default handling of our own window's press (the move loop).
+            return unsafe { DefWindowProcW(hwnd, WM_NCLBUTTONDOWN, wp, lp) };
         }
         // #99 (`PIN-20`): `Ctrl`+press on the picture: the system move loop runs as usual (a
         // `Ctrl`+drag onto another pin still joins its group); when it ends with the pin where it
@@ -536,16 +563,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 s.right_from = None;
             });
         }
-        // `Shift`+double-click toggles thumbnail mode; a plain double-click on a pin has no
-        // default action (NOEUL-FR-026); never maximize.
+        // `Shift`+double-click toggles thumbnail mode; a plain double-click asks the core to
+        // close the pin (ADR 0094, `[pins] double_click`); never maximize.
         WM_NCLBUTTONDBLCLK => {
-            if down(VK_SHIFT)
+            if let Some(id) = pin_of(hwnd)
                 && !down(VK_CONTROL)
                 && !down(VK_MENU)
-                && !guarded(hwnd)
-                && let Some(id) = pin_of(hwnd)
             {
-                push(PinEvent::ShiftDoubleClick(id));
+                push(if down(VK_SHIFT) {
+                    PinEvent::ShiftDoubleClick(id)
+                } else {
+                    PinEvent::DoubleClick(id)
+                });
             }
             return 0;
         }
@@ -669,6 +698,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
         }
         // One image pixel per device pixel on every monitor: the suggested size is ignored, and
         // the core redraws the outline for the new scale once the displays are quiet (Step 58).
+        WM_TIMER if wp == BADGE_TIMER => {
+            hide_badge(hwnd);
+            return 0;
+        }
         WM_DPICHANGED => {
             if let Some(id) = pin_of(hwnd) {
                 push(PinEvent::DpiChanged(id));
@@ -857,6 +890,25 @@ fn upload(hwnd: HWND, frame: &Frame, view: &View) -> Result<(), String> {
     }
     let mut surface = Surface::new(win.width, win.height)?;
     transform::paint(frame, view, surface.pixels());
+    // ADR 0094: after the zoom changed (not on the first present), the read-out shows for
+    // `HINT_MS`; it stays through other changes while its timer runs, never at 100 %.
+    let before = slot(hwnd).map(|s| (s.view.zoom, s.presented, s.badge));
+    let changed = matches!(before, Some((z, true, _)) if z != view.zoom);
+    let showing = before.is_some_and(|b| b.2);
+    let mut clean = None;
+    if let Some(text) = transform::zoom_label(view.zoom).filter(|_| changed || showing) {
+        let size = (12 * view.dpi).div_ceil(crate::capture::BASE_DPI).max(9);
+        let glyphs = TYPE.with(|t| {
+            use crate::annotation::Typesetter;
+            t.borrow_mut()
+                .get_or_insert_with(crate::win::typeset::GdiType::new)
+                .typeset(&text, size)
+        });
+        let plain = surface.pixels().to_vec();
+        if transform::paint_zoom_badge(surface.pixels(), view, &glyphs) {
+            clean = Some(plain);
+        }
+    }
     let blend = blend(view.opacity);
     let pos = POINT { x: win.x, y: win.y };
     let size = SIZE {
@@ -889,13 +941,82 @@ fn upload(hwnd: HWND, frame: &Frame, view: &View) -> Result<(), String> {
         ));
     }
     set_transparent(hwnd, view.click_through);
+    let badge = clean.is_some();
+    BADGES.with(|b| match clean {
+        Some(c) => {
+            b.borrow_mut().insert(hwnd as isize, c);
+        }
+        None => {
+            b.borrow_mut().remove(&(hwnd as isize));
+        }
+    });
     with_slot(hwnd, |s| {
         s.view = *view;
+        s.presented = true;
+        s.badge = badge;
         if !view.resizable {
             s.drag = None;
         }
     });
+    let ms = kim_design::motion::HINT_MS;
+    // SAFETY: the window's own one-shot timer; (re)armed on a zoom change, killed otherwise.
+    unsafe {
+        if badge && changed {
+            SetTimer(hwnd, BADGE_TIMER, ms, None);
+        } else if !badge {
+            KillTimer(hwnd, BADGE_TIMER);
+        }
+    }
     Ok(())
+}
+
+/// ADR 0094: the zoom read-out's time is up: the surface without it goes back on screen.
+fn hide_badge(hwnd: HWND) {
+    // SAFETY: the window's own timer.
+    unsafe { KillTimer(hwnd, BADGE_TIMER) };
+    let Some(view) = slot(hwnd).map(|s| s.view) else {
+        return;
+    };
+    let Some(pixels) = BADGES.with(|b| b.borrow_mut().remove(&(hwnd as isize))) else {
+        return;
+    };
+    let win = view.window();
+    let Ok(mut surface) = Surface::new(win.width, win.height) else {
+        return;
+    };
+    if surface.pixels().len() != pixels.len() {
+        return;
+    }
+    surface.pixels().copy_from_slice(&pixels);
+    let blend = blend(view.opacity);
+    let pos = POINT { x: win.x, y: win.y };
+    let size = SIZE {
+        cx: win.width as i32,
+        cy: win.height as i32,
+    };
+    let src = POINT { x: 0, y: 0 };
+    // SAFETY: as in `upload`: the screen DC is released right after.
+    unsafe {
+        let screen = GetDC(std::ptr::null_mut());
+        UpdateLayeredWindow(
+            hwnd,
+            screen,
+            &raw const pos,
+            &raw const size,
+            surface.dc,
+            &raw const src,
+            0,
+            &raw const blend,
+            ULW_ALPHA,
+        );
+        ReleaseDC(std::ptr::null_mut(), screen);
+    }
+    with_slot(hwnd, |s| s.badge = false);
+}
+
+/// ADR 0094 (tests): whether the zoom read-out shows on this pin window now.
+pub fn badge_shown(hwnd: HWND) -> bool {
+    slot(hwnd).is_some_and(|s| s.badge)
 }
 
 /// How pin windows sit on the desktop.
@@ -1172,6 +1293,8 @@ pub fn create(id: PinId, frame: &Frame, spec: &WindowSpec, style: Style) -> Resu
                 drag: None,
                 right_from: None,
                 capture: style.activate,
+                presented: false,
+                badge: false,
             },
         );
     });

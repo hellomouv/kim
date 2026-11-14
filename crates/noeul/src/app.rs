@@ -541,6 +541,9 @@ pub enum PinEvent {
     Dropped(PinId, i32, i32),
     /// `Shift`+double-click: thumbnail mode on or off (Step 54).
     ShiftDoubleClick(PinId),
+    /// ADR 0094: a plain double-click on the pin (after its creation guard): it closes when
+    /// `[pins] double_click` is `close` (the default), nothing happens with `none`.
+    DoubleClick(PinId),
     /// #99 (`PIN-08`): a right-drag on the picture swept this box (device pixels): a thumbnail
     /// of that size. (A right-click without a drag still opens the menu.)
     RightDrag(PinId, (u32, u32)),
@@ -735,6 +738,9 @@ pub struct App<S: Shell> {
     id: Identity,
     started_at: SystemTime,
     started: Instant,
+    /// ADR 0093: the global hotkeys are released for the settings window until then.
+    hotkeys_paused: Option<Instant>,
+    pause_timer: Option<Duration>,
     quit: bool,
     last_action: Option<(String, &'static str)>,
     overlay: Option<OverlaySession>,
@@ -838,6 +844,8 @@ impl<S: Shell> App<S> {
             id,
             started_at: SystemTime::now(),
             started: Instant::now(),
+            hotkeys_paused: None,
+            pause_timer: None,
             quit: false,
             last_action: None,
             overlay: None,
@@ -946,6 +954,12 @@ impl<S: Shell> App<S> {
                           "hotkeys": self.hotkeys.status_json()}))
             }
             "settings.reload" => Ok(json!({"reloaded": true, "settings": self.reload_settings()})),
+            // ADR 0093: the settings window records keys; the global hotkeys are released so
+            // the keys reach it, and come back when it says so or after `seconds` at most.
+            "hotkeys.pause" => {
+                let secs = params["seconds"].as_u64().unwrap_or(30).min(120);
+                Ok(self.pause_hotkeys(secs))
+            }
             "quit" => self.quit_request(ipc::flag(params, "force")?, dry_run),
             other => Err(NoeulError::new(
                 Code::Usage,
@@ -3422,6 +3436,13 @@ impl<S: Shell> App<S> {
                 self.last_action = Some(("pin.resize".into(), r));
             }
             PinEvent::ShiftDoubleClick(id) => self.action("pin.thumbnail", Some(id)),
+            PinEvent::DoubleClick(id) => {
+                if self.settings.settings.pin_double_click_closes {
+                    self.action("pin.close", Some(id));
+                } else {
+                    self.last_action = Some(("pin.double-click".into(), "none"));
+                }
+            }
             PinEvent::RightDrag(id, (bw, bh)) => {
                 if self.pins.set_thumbnail_box(id, bw, bh) == Ok(true) {
                     self.last_action = Some(("pin.thumbnail".into(), "changed"));
@@ -3897,12 +3918,51 @@ impl<S: Shell> App<S> {
         Ok(())
     }
 
+    /// ADR 0093: `hotkeys.pause` — `seconds` > 0 releases every global hotkey until then (the
+    /// runtime arms a one-shot timer, [`App::take_pause_timer`]); 0 registers them again now.
+    pub fn pause_hotkeys(&mut self, seconds: u64) -> Value {
+        if seconds == 0 {
+            let was = self.hotkeys_paused.take().is_some();
+            if was {
+                self.hotkeys.reload();
+            }
+            return json!({"paused": false, "resumed": was});
+        }
+        if self.hotkeys_paused.is_none() {
+            self.hotkeys.release_all();
+        }
+        let d = Duration::from_secs(seconds);
+        self.hotkeys_paused = Some(Instant::now() + d);
+        self.pause_timer = Some(d);
+        json!({"paused": true, "seconds": seconds})
+    }
+
+    /// The delay to arm the pause timer with, once per pause.
+    pub fn take_pause_timer(&mut self) -> Option<Duration> {
+        self.pause_timer.take()
+    }
+
+    /// The pause timer fired: the hotkeys come back if the pause has run out.
+    pub fn pause_due(&mut self) {
+        if self
+            .hotkeys_paused
+            .is_some_and(|t| Instant::now() + Duration::from_millis(50) >= t)
+        {
+            self.pause_hotkeys(0);
+        }
+    }
+
+    /// Whether the global hotkeys are paused for the settings window.
+    pub fn hotkeys_paused(&self) -> bool {
+        self.hotkeys_paused.is_some()
+    }
+
     /// A pressed global hotkey (from the registration thread's waker).
     pub fn hotkey_pressed(&mut self, id: kim_hotkeys::register::HotkeyId) {
         // The first-frame latency of the overlay counts from here (NOEUL-NFR-003).
         let trigger = Instant::now();
         // Step 61: keys being recorded in the settings window never run their action.
-        if self.shell.settings_recording() {
+        if self.shell.settings_recording() || self.hotkeys_paused.is_some() {
             self.last_action = Some(("hotkey".into(), "recording"));
             return;
         }
@@ -5466,6 +5526,8 @@ pub(crate) mod tests {
             ("group.switch", json!({"group": "default"})),
             ("hotkeys.reload", json!({})),
             ("settings.reload", json!({})),
+            ("hotkeys.pause", json!({"seconds": 30})),
+            ("hotkeys.pause", json!({"seconds": 0})),
             ("status", json!({})),
             ("capture.region", json!({"dry_run": true})),
             ("capture.region", json!({})),
@@ -6127,6 +6189,60 @@ pub(crate) mod tests {
             assert!(actions.contains(&want), "{want} in the menu");
             assert!(crate::hotkeys::IMPLEMENTED.contains(&want));
         }
+    }
+
+    /// ADR 0094: a plain double-click on a pin closes only that pin (the default); with
+    /// `[pins] double_click = "none"` it does nothing.
+    #[test]
+    fn a_double_click_closes_only_that_pin_unless_turned_off() {
+        let mut a = keyed("pin-dblclick-94");
+        a.shell.pointer_at = Some((0, 0));
+        a.shell.clipboard = Some((40, 20));
+        a.action("paste.float", None);
+        a.shell.pointer_at = Some((200, 200));
+        a.action("paste.float", None);
+        let (one, two) = (PinId(1), PinId(2));
+        assert!(a.pins.contains(one) && a.pins.contains(two));
+        a.pin_event(PinEvent::DoubleClick(one));
+        assert!(!a.pins.contains(one), "the double-clicked pin closed");
+        assert!(a.pins.contains(two), "the other pin stays");
+        let cfg = a.paths.config_file();
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cfg,
+            "schema_version = 1
+
+[pins]
+double_click = \"none\"
+",
+        )
+        .unwrap();
+        a.reload_settings();
+        a.pin_event(PinEvent::DoubleClick(two));
+        assert!(a.pins.contains(two), "turned off: nothing happens");
+    }
+
+    /// ADR 0093: the settings window pauses the global hotkeys while it records keys; they come
+    /// back when it says so, or when the pause (at most 120 s) runs out.
+    #[test]
+    fn hotkeys_pause_for_the_settings_window_and_come_back() {
+        let mut a = keyed("hotkeys-pause-93");
+        let r = a.request("hotkeys.pause", &json!({"seconds": 30})).unwrap();
+        assert_eq!(r["paused"], true);
+        assert!(a.hotkeys_paused());
+        assert_eq!(a.take_pause_timer(), Some(Duration::from_secs(30)));
+        a.pause_due();
+        assert!(a.hotkeys_paused(), "not run out yet");
+        let r = a.request("hotkeys.pause", &json!({"seconds": 0})).unwrap();
+        assert_eq!(r["resumed"], true);
+        assert!(!a.hotkeys_paused());
+        a.request("hotkeys.pause", &json!({"seconds": 999}))
+            .unwrap();
+        assert_eq!(
+            a.take_pause_timer(),
+            Some(Duration::from_secs(120)),
+            "capped"
+        );
     }
 
     /// Scroll direction: away from the user zooms in, towards zooms out; with Ctrl the same

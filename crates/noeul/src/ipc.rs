@@ -57,6 +57,7 @@ pub const METHODS: &[(&str, bool)] = &[
     ("backup.clear", true),
     ("hotkeys.reload", true),
     ("settings.reload", true),
+    ("hotkeys.pause", true),
     ("quit", true),
 ];
 

@@ -102,6 +102,8 @@ const WM_NOEUL_WAKE: u32 = WM_APP + 0x4E; // 'N'
 const WM_NOEUL_TRAY: u32 = WM_APP + 0x4F;
 /// The control window's one-shot timer for a pending display change (Step 58).
 const DISPLAY_TIMER: usize = 0x4E44;
+/// ADR 0093: the end of a hotkey pause for the settings window.
+const PAUSE_TIMER: usize = 0x4E50;
 /// Step 60: the pin backup's one-shot timer (armed only after the pins changed).
 const BACKUP_TIMER: usize = 0x4E42;
 /// Most connections served at once; more are refused with `busy`.
@@ -483,6 +485,11 @@ fn pump(app: &mut App<WinShell>) {
     if let Some(delay) = app.take_display_timer() {
         arm_display_timer(CONTROL.get() as HWND, delay);
     }
+    if let Some(delay) = app.take_pause_timer() {
+        let ms = u32::try_from(delay.as_millis()).unwrap_or(u32::MAX);
+        // SAFETY: a one-shot timer of our own control window (replaced when armed again).
+        unsafe { SetTimer(CONTROL.get() as HWND, PAUSE_TIMER, ms, None) };
+    }
     // Step 60: new history pictures to disk (when on), the backup timer when the pins changed.
     app.housekeeping();
     if let Some(delay) = app.take_backup_timer() {
@@ -650,6 +657,16 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             if done.is_none() {
                 DISPLAY_MISSED.set(missed);
                 arm_display_timer(hwnd, crate::displays::SETTLE);
+            }
+            return 0;
+        }
+        // ADR 0093: a hotkey pause ran out: the hotkeys are registered again.
+        WM_TIMER if wp == PAUSE_TIMER => {
+            // SAFETY: our own window's timer.
+            unsafe { KillTimer(hwnd, PAUSE_TIMER) };
+            if with_app(App::pause_due).is_none() {
+                // SAFETY: as above; the core is busy, try again shortly.
+                unsafe { SetTimer(hwnd, PAUSE_TIMER, 500, None) };
             }
             return 0;
         }
