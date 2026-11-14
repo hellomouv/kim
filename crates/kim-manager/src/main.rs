@@ -22,8 +22,9 @@ fn main() -> eframe::Result {
         .cloned();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Kim")
-        .with_inner_size([900.0, 560.0])
-        .with_min_inner_size([720.0, 480.0]);
+        // ADR 0090: a small launcher: three tiles and the gear, generous space around them.
+        .with_inner_size([368.0, 224.0])
+        .with_min_inner_size([336.0, 196.0]);
     if let Ok(icon) = eframe::icon_data::from_png_bytes(ICON_PNG) {
         viewport = viewport.with_icon(icon);
     }

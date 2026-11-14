@@ -790,6 +790,7 @@ name = "ddalgak"
 version = "0.0.1"
 dependencies = [
  "kim-hotkeys",
+ "kim-winres",
  "regex",
  "serde",
  "serde_json",
@@ -805,6 +806,7 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "kim-hotkeys",
+ "kim-winres",
  "serde_json",
  "windows-sys 0.61.2",
 ]
@@ -1703,6 +1705,7 @@ dependencies = [
  "kim",
  "kim-hotkeys",
  "kim-winres",
+ "serde",
  "serde_json",
  "sha2",
  "zip",
@@ -1933,6 +1936,7 @@ dependencies = [
  "clap",
  "image",
  "kim-hotkeys",
+ "kim-winres",
  "moxcms",
  "png",
  "regex",

@@ -21,7 +21,7 @@ use kim::paths::Paths;
 use kim::platform::Platform;
 use kim::settings::Settings;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -63,7 +63,7 @@ impl Backend {
 
 /// ADR 0089: starts a program of an installed tool: `(program, arguments)`. Tests record the
 /// call instead of starting anything.
-pub type Launcher = Arc<dyn Fn(&std::path::Path, &[&str]) -> std::io::Result<()> + Send + Sync>;
+pub type Launcher = Arc<dyn Fn(&Path, &[&str]) -> std::io::Result<()> + Send + Sync>;
 
 /// One program the details panel offers to start for an installed tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,32 +73,45 @@ pub struct Launch {
     /// The program in the installed version's folder.
     pub program: &'static str,
     pub args: &'static [&'static str],
+    /// ADR 0090: programs of the same version started first (a tool's background part, which
+    /// keeps a single instance of itself; a second start leaves the running one alone).
+    pub also: &'static [&'static str],
+    /// ADR 0090: what the status line says after the start (empty: "Started …").
+    pub hint: &'static str,
 }
 
-/// ADR 0089: what "Open" starts for each installed tool (its window or its notification-area
-/// app). Only programs of the installed version are started, only when the user presses the
-/// button, and Kim Manager never stops them.
+/// ADR 0089/0090: what each installed tool's tile and menu start (its window, or its
+/// notification-area app). Only programs of the installed version are started, only when the
+/// user clicks, and Kim Manager never stops them. The first entry is the tile's left-click.
 pub fn launches(tool: &str) -> &'static [Launch] {
     const SUBAK: &[Launch] = &[Launch {
         label: "Open Subak",
         program: "subak-gui.exe",
         args: &[],
+        also: &[],
+        hint: "",
     }];
     const NOEUL: &[Launch] = &[Launch {
         label: "Start Noeul",
         program: "noeulw.exe",
         args: &[],
+        also: &[],
+        hint: "Noeul runs in the notification area: F1 captures a region, F3 pins the clipboard.",
     }];
     const DDALGAK: &[Launch] = &[
         Launch {
-            label: "Start Ddalgak",
-            program: "ddalgak-gui.exe",
-            args: &[],
-        },
-        Launch {
-            label: "Open rule editor",
+            label: "Open Ddalgak",
             program: "ddalgak-editor.exe",
             args: &[],
+            also: &["ddalgak-gui.exe"],
+            hint: "Ddalgak runs in the notification area (its engine stays off until you turn it on); the rule editor is open.",
+        },
+        Launch {
+            label: "Start in the notification area only",
+            program: "ddalgak-gui.exe",
+            args: &[],
+            also: &[],
+            hint: "Ddalgak runs in the notification area; its engine stays off until you turn it on.",
         },
     ];
     match tool {
@@ -111,7 +124,7 @@ pub fn launches(tool: &str) -> &'static [Launch] {
 
 /// The real [`Launcher`]: a detached start in the program's own folder, without a console.
 pub fn real_launcher() -> Launcher {
-    Arc::new(|program: &std::path::Path, args: &[&str]| {
+    Arc::new(|program: &Path, args: &[&str]| {
         let mut c = std::process::Command::new(program);
         c.args(args)
             .stdin(std::process::Stdio::null())
@@ -135,6 +148,8 @@ enum Msg {
     Progress(Event),
     Finished(Result<String, KimError>),
     Refreshed(Result<String, KimError>),
+    /// ADR 0090: a result for the status line (e.g. Noeul's settings window).
+    Notice(Banner),
 }
 
 #[derive(Debug)]
@@ -183,6 +198,19 @@ pub struct KimManagerApp {
     /// ADR 0089: a local mirror (`--catalog file://…`) used instead of the cache this session.
     mirror: Option<String>,
     launcher: Launcher,
+    // ADR 0090: the launcher.
+    install_prompt: Option<String>,
+    info: Option<String>,
+    show_settings: bool,
+    settings_tab: SettingsTab,
+    /// The action whose shortcut is being changed (Settings → Shortcuts).
+    capture: Option<String>,
+    textures: HashMap<(String, bool), egui::TextureHandle>,
+    prefs: Prefs,
+    light: Option<bool>,
+    launcher_size: Option<egui::Vec2>,
+    /// The banner on the status line and when it was first shown (it fades).
+    banner_at: Option<(String, f64)>,
 }
 
 impl std::fmt::Debug for KimManagerApp {
@@ -223,7 +251,22 @@ impl KimManagerApp {
             ctx: ctx.cloned(),
             mirror: None,
             launcher: real_launcher(),
+            install_prompt: None,
+            info: None,
+            show_settings: false,
+            settings_tab: SettingsTab::default(),
+            capture: None,
+            textures: HashMap::new(),
+            prefs: Prefs::default(),
+            light: None,
+            launcher_size: None,
+            banner_at: None,
         };
+        app.prefs = app
+            .prefs_path()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
         if let Some(ctx) = ctx {
             theme::apply(ctx);
         }
@@ -279,17 +322,24 @@ impl KimManagerApp {
             .iter()
             .find(|v| v.id == tool)
             .map_or(tool.to_string(), |v| v.name.clone());
-        self.banner = Some(if !path.is_file() {
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let missing = std::iter::once(launch.program)
+            .chain(launch.also.iter().copied())
+            .find(|p| !dir.join(p).is_file());
+        self.banner = Some(if let Some(m) = missing {
             Banner::Error {
-                message: format!(
-                    "{} {version} has no {}; repair or reinstall it",
-                    name, launch.program
-                ),
+                message: format!("{name} {version} has no {m}; repair or reinstall it"),
                 code: "not_found".into(),
             }
         } else {
-            match (self.launcher)(&path, launch.args) {
-                Ok(()) => Banner::Success(format!("Started {} ({}).", name, launch.program)),
+            let started = launch
+                .also
+                .iter()
+                .try_for_each(|p| (self.launcher)(&dir.join(p), &[]))
+                .and_then(|()| (self.launcher)(&path, launch.args));
+            match started {
+                Ok(()) if !launch.hint.is_empty() => Banner::Success(launch.hint.to_string()),
+                Ok(()) => Banner::Success(format!("Started {name}.")),
                 Err(e) => Banner::Error {
                     message: format!("cannot start {}: {e}", path.display()),
                     code: "io".into(),
@@ -519,8 +569,11 @@ impl KimManagerApp {
             });
             return;
         }
+        // ADR 0090: a repair (the record is fine but the program the tile starts is missing)
+        // installs the same version again, verified like any install.
         let opts = PlanOptions {
             channel: Some(self.channel),
+            reinstall: self.tile_state(tool) == TileState::Damaged,
             ..PlanOptions::default()
         };
         let plan = match install::plan_install(
@@ -554,6 +607,7 @@ impl KimManagerApp {
             cancel: cancel.clone(),
         });
         self.banner = None;
+        let name = self.tool_name(tool);
         let b = self.backend.clone();
         let tx = self.tx.clone();
         let ctx = self.ctx.clone();
@@ -573,7 +627,7 @@ impl KimManagerApp {
                 &cancel,
             )
             .map(|o| {
-                let mut s = format!("{} {} is installed.", o.tool, o.to);
+                let mut s = format!("{name} {} is installed.", o.to);
                 if !o.running.is_empty() {
                     s.push_str(" The running copy was not stopped; the new version is used next time it starts.");
                 }
@@ -616,18 +670,16 @@ impl KimManagerApp {
             total: 0,
             cancel: Arc::new(AtomicBool::new(false)),
         });
+        let name = self.tool_name(tool);
         let b = self.backend.clone();
         let tx = self.tx.clone();
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let result = install::execute_uninstall(&plan, &b.paths).map(|o| {
                 if o.kept_data.is_empty() {
-                    format!("{} was uninstalled.", o.tool)
+                    format!("{name} was uninstalled.")
                 } else {
-                    format!(
-                        "{} was uninstalled. Your settings and data were kept.",
-                        o.tool
-                    )
+                    format!("{name} was uninstalled. Your settings and data were kept.")
                 }
             });
             let _ = tx.send(Msg::Finished(result));
@@ -665,6 +717,7 @@ impl KimManagerApp {
                     });
                     self.reload();
                 }
+                Msg::Notice(b) => self.set_banner(b),
                 Msg::Refreshed(result) => {
                     self.refreshing = false;
                     self.banner = Some(match result {
@@ -693,6 +746,36 @@ impl KimManagerApp {
         true
     }
 
+    /// `manager.json` next to Kim's settings file: the window's own look (ADR 0090).
+    fn prefs_path(&self) -> Option<PathBuf> {
+        self.backend
+            .settings_path
+            .as_ref()
+            .map(|p| p.with_file_name("manager.json"))
+    }
+
+    /// The theme choice.
+    pub fn prefs(&self) -> Prefs {
+        self.prefs
+    }
+
+    fn save_prefs(&mut self) {
+        let Some(p) = self.prefs_path() else { return };
+        let text = serde_json::to_string_pretty(&self.prefs).unwrap_or_default()
+            + "
+";
+        let r = p
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&p, text));
+        if let Err(e) = r {
+            self.set_banner(Banner::Error {
+                message: format!("cannot save {}: {e}", p.display()),
+                code: "io".into(),
+            });
+        }
+    }
+
     fn save_settings(&mut self) {
         if let Some(p) = &self.backend.settings_path
             && let Err(e) = self.settings.save_to(p)
@@ -704,39 +787,1410 @@ impl KimManagerApp {
         }
     }
 
-    // --- UI --------------------------------------------------------------------------------
+    // --- UI (ADR 0090: the launcher) --------------------------------------------------------
 
-    pub fn ui(&mut self, ui: &mut egui::Ui) {
-        self.poll();
-        self.handle_shortcuts(&ui.ctx().clone());
-        let c = theme::Colors::get();
-        egui::Panel::top("header")
-            .frame(
-                egui::Frame::new()
-                    .fill(c.bg_raised)
-                    .inner_margin(egui::Margin::symmetric(16, 10)),
-            )
-            .show(ui, |ui| self.header(ui));
-        egui::Panel::left("tools")
-            .resizable(false)
-            .exact_size(320.0)
-            .frame(egui::Frame::new().fill(c.bg_raised).inner_margin(8))
-            .show(ui, |ui| self.tool_list(ui));
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(c.bg_base)
-                    .inner_margin(egui::Margin::symmetric(24, 16)),
-            )
-            .show(ui, |ui| self.details(ui));
-        if self.confirm.is_some() {
-            self.confirm_dialog(ui.ctx());
-        }
-        if self.show_shortcuts {
-            self.shortcuts_dialog(ui.ctx());
+    /// What the launcher shows for `id`, from the installed inventory and the catalog: installed
+    /// only when Kim's install record is valid **and** the program the tile starts is on disk.
+    pub fn tile_state(&self, id: &str) -> TileState {
+        let Some(v) = self.views.iter().find(|v| v.id == id) else {
+            return TileState::Unavailable;
+        };
+        let program_present = || {
+            let (Some(version), Some(first)) = (&v.installed_version, launches(id).first()) else {
+                return false;
+            };
+            self.backend
+                .paths
+                .tool_dir(id)
+                .join("versions")
+                .join(version)
+                .join(first.program)
+                .is_file()
+        };
+        match v.status {
+            ToolStatus::Installed if program_present() => TileState::Installed,
+            ToolStatus::UpdateAvailable if program_present() => TileState::Update,
+            ToolStatus::Installed | ToolStatus::UpdateAvailable | ToolStatus::Damaged => {
+                TileState::Damaged
+            }
+            ToolStatus::Available => TileState::NotInstalled,
+            ToolStatus::Incompatible | ToolStatus::Unreleased => TileState::Unavailable,
         }
     }
 
+    /// The tile's accessible name: the tool and its state in words.
+    pub fn tile_label(&self, id: &str) -> String {
+        let name = self.tool_name(id);
+        let v = self.views.iter().find(|v| v.id == id);
+        let installed = v
+            .and_then(|v| v.installed_version.clone())
+            .unwrap_or_default();
+        match self.tile_state(id) {
+            TileState::Installed => format!("{name}, installed {installed}"),
+            TileState::Update => format!(
+                "{name}, installed {installed}, update {} available",
+                v.and_then(|v| v.latest_compatible.clone())
+                    .unwrap_or_default()
+            ),
+            TileState::NotInstalled => format!("{name}, not installed"),
+            TileState::Damaged => format!("{name}, needs repair"),
+            TileState::Unavailable => format!("{name}, not available"),
+        }
+    }
+
+    fn tool_name(&self, id: &str) -> String {
+        self.views
+            .iter()
+            .find(|v| v.id == id)
+            .map_or_else(|| id.to_string(), |v| v.name.clone())
+    }
+
+    /// Whether the Settings panel is open.
+    pub fn settings_visible(&self) -> bool {
+        self.show_settings
+    }
+
+    /// The tool whose install confirmation is open.
+    pub fn installing_prompt(&self) -> Option<&str> {
+        self.install_prompt.as_deref()
+    }
+
+    /// The tool whose information is open.
+    pub fn info_visible(&self) -> Option<&str> {
+        self.info.as_deref()
+    }
+
+    /// Opens or closes Settings (the gear does this).
+    pub fn toggle_settings(&mut self, _ctx: Option<&egui::Context>) {
+        self.show_settings = !self.show_settings;
+        self.capture = None;
+    }
+
+    /// A compact window grows while Settings or Information is open and returns to its size
+    /// afterwards.
+    fn fit_window(&mut self, ctx: &egui::Context) {
+        let big = self.show_settings || self.info.is_some();
+        if big == self.launcher_size.is_some() {
+            return;
+        }
+        if big {
+            let now = ctx.content_rect().size();
+            self.launcher_size = Some(now);
+            let want = egui::vec2(now.x.max(580.0), now.y.max(460.0));
+            if want != now {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
+            }
+        } else if let Some(size) = self.launcher_size.take() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+        }
+    }
+
+    /// A left-click on a tile: start an installed tool at once; otherwise ask before installing.
+    pub fn activate(&mut self, id: &str) {
+        self.selected = Some(id.to_string());
+        match self.tile_state(id) {
+            TileState::Installed | TileState::Update => {
+                if let Some(first) = launches(id).first() {
+                    self.open(id, first);
+                }
+            }
+            TileState::NotInstalled | TileState::Damaged | TileState::Unavailable => {
+                self.install_prompt = Some(id.to_string());
+            }
+        }
+    }
+
+    fn apply_theme(&mut self, ctx: &egui::Context) {
+        let light = match self.prefs.theme {
+            ThemePref::Light => true,
+            ThemePref::Dark => false,
+            ThemePref::System => ctx.input(|i| i.raw.system_theme) == Some(egui::Theme::Light),
+        };
+        if self.light != Some(light) {
+            self.light = Some(light);
+            theme::set_light(ctx, light);
+        }
+    }
+
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        self.poll();
+        let ctx = ui.ctx().clone();
+        self.apply_theme(&ctx);
+        self.fit_window(&ctx);
+        if self.capture.is_some() {
+            self.capture_key(&ctx);
+        } else {
+            self.handle_shortcuts(&ctx);
+        }
+        let c = theme::Colors::get();
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(c.bg_base))
+            .show(ui, |ui| {
+                if self.show_settings {
+                    self.settings_panel(ui);
+                } else {
+                    self.launcher(ui);
+                }
+            });
+        if self.confirm.is_some() {
+            self.confirm_dialog(&ctx);
+        }
+        if self.install_prompt.is_some() {
+            self.install_dialog(&ctx);
+        }
+        if self.info.is_some() {
+            self.info_dialog(&ctx);
+        }
+        if self.show_shortcuts {
+            self.shortcuts_dialog(&ctx);
+        }
+    }
+
+    /// The whole main view: three tiles from the upper-left corner, the gear in the
+    /// lower-right corner and, only while there is something to say, one quiet line of text.
+    fn launcher(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        let full = ui.max_rect();
+        const MARGIN: f32 = 24.0;
+        const TILE: egui::Vec2 = egui::vec2(88.0, 100.0);
+        const GAP: f32 = 8.0;
+        if let Some(e) = &self.load_error {
+            ui.painter().text(
+                full.left_top() + egui::vec2(MARGIN, MARGIN),
+                egui::Align2::LEFT_TOP,
+                format!("Kim cannot read its catalog: {e}"),
+                egui::FontId::proportional(12.0),
+                c.danger,
+            );
+        }
+        let mut clicked = None;
+        let mut menu_action = None;
+        for (i, id) in LAUNCHER_TOOLS.iter().enumerate() {
+            if !self.views.iter().any(|v| v.id == *id) {
+                continue;
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let min = full.left_top() + egui::vec2(MARGIN + i as f32 * (TILE.x + GAP), MARGIN);
+            let rect = egui::Rect::from_min_size(min, TILE);
+            let resp = ui.interact(rect, egui::Id::unique(("tile", id)), egui::Sense::click());
+            let label = self.tile_label(id);
+            let state = self.tile_state(id);
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+            self.paint_tile(ui, id, rect, &resp, state);
+            if resp.clicked() {
+                clicked = Some(id.to_string());
+            }
+            if resp.secondary_clicked() {
+                self.selected = Some(id.to_string());
+            }
+            let resp = resp.on_hover_text(match state {
+                TileState::Installed | TileState::Update => {
+                    format!("Open {}", self.tool_name(id))
+                }
+                TileState::NotInstalled => format!("Install {}…", self.tool_name(id)),
+                TileState::Damaged => format!("Repair {}…", self.tool_name(id)),
+                TileState::Unavailable => format!("{} is not available yet", self.tool_name(id)),
+            });
+            resp.context_menu(|ui| {
+                if let Some(a) = self.tool_menu(ui, id, state) {
+                    menu_action = Some((id.to_string(), a));
+                    ui.close();
+                }
+            });
+        }
+        if let Some(id) = clicked {
+            self.activate(&id);
+        }
+        if let Some((id, a)) = menu_action {
+            self.menu(&id, a);
+        }
+
+        // The gear, anchored to the lower-right corner.
+        let gear = egui::Rect::from_center_size(
+            // Never over the tiles, even in a window squeezed below its minimum size.
+            egui::pos2(
+                full.right() - 22.0,
+                (full.bottom() - 22.0).max(full.top() + MARGIN + TILE.y + 16.0),
+            ),
+            egui::vec2(28.0, 28.0),
+        );
+        let g = ui.interact(
+            gear,
+            egui::Id::unique("settings-gear"),
+            egui::Sense::click(),
+        );
+        g.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Settings"));
+        let col = if g.hovered() || g.has_focus() {
+            c.text_primary
+        } else {
+            c.text_muted
+        };
+        if g.hovered() {
+            ui.painter().circle_filled(gear.center(), 14.0, c.bg_hover);
+        }
+        paint_gear(ui.painter(), gear.center(), 7.0, col);
+        if g.on_hover_text("Settings").clicked() {
+            self.toggle_settings(Some(&ui.ctx().clone()));
+        }
+
+        // One quiet line for progress and results, lower left; it fades after a while.
+        let line = egui::Rect::from_min_max(
+            egui::pos2(
+                full.left() + MARGIN,
+                (full.bottom() - 52.0).max(full.top() + MARGIN + TILE.y),
+            ),
+            egui::pos2(gear.left() - 8.0, full.bottom() - 10.0),
+        );
+        self.status_line(ui, line);
+    }
+
+    fn texture(
+        &mut self,
+        ctx: &egui::Context,
+        id: &str,
+        gray: bool,
+    ) -> Option<egui::TextureHandle> {
+        let key = (id.to_string(), gray);
+        if let Some(t) = self.textures.get(&key) {
+            return Some(t.clone());
+        }
+        let png = icon_png(id)?;
+        let icon = eframe::icon_data::from_png_bytes(png).ok()?;
+        let mut rgba = icon.rgba;
+        if gray {
+            desaturate(&mut rgba);
+        }
+        let image = egui::ColorImage::from_rgba_unmultiplied(
+            [icon.width as usize, icon.height as usize],
+            &rgba,
+        );
+        let t = ctx.load_texture(
+            format!("tile-{id}-{gray}"),
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        self.textures.insert(key, t.clone());
+        Some(t)
+    }
+
+    fn paint_tile(
+        &mut self,
+        ui: &egui::Ui,
+        id: &str,
+        rect: egui::Rect,
+        resp: &egui::Response,
+        state: TileState,
+    ) {
+        let c = theme::Colors::get();
+        let installed = matches!(state, TileState::Installed | TileState::Update);
+        let painter = ui.painter();
+        if resp.hovered()
+            || resp.has_focus()
+            || self.selected.as_deref() == Some(id) && resp.context_menu_opened()
+        {
+            painter.rect_filled(rect, 12.0, c.bg_hover.gamma_multiply(0.7));
+        }
+        if resp.has_focus() {
+            painter.rect_stroke(
+                rect,
+                12.0,
+                egui::Stroke::new(1.5, c.focus),
+                egui::StrokeKind::Inside,
+            );
+        }
+        let pressed = resp.is_pointer_button_down_on();
+        let size = if pressed { 54.0 } else { 58.0 };
+        let icon_rect = egui::Rect::from_center_size(
+            egui::pos2(rect.center().x, rect.top() + 12.0 + 29.0),
+            egui::vec2(size, size),
+        );
+        let tex = self.texture(ui.ctx(), id, !installed);
+        let painter = ui.painter();
+        if let Some(t) = tex {
+            let tint = if installed {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_white_alpha(150)
+            };
+            painter.image(
+                t.id(),
+                icon_rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                tint,
+            );
+        }
+        // Not installed: a small download mark on the corner; an update: an accent dot.
+        let corner = icon_rect.right_bottom() - egui::vec2(4.0, 4.0);
+        match state {
+            TileState::NotInstalled | TileState::Damaged => {
+                let fill = if state == TileState::Damaged {
+                    c.warning
+                } else {
+                    c.bg_overlay
+                };
+                painter.circle_filled(corner, 9.0, fill);
+                painter.circle_stroke(corner, 9.0, egui::Stroke::new(1.0, c.border_strong));
+                let ink = if state == TileState::Damaged {
+                    c.bg_base
+                } else {
+                    c.text_secondary
+                };
+                let s = egui::Stroke::new(1.6, ink);
+                painter.line_segment(
+                    [corner - egui::vec2(0.0, 4.5), corner + egui::vec2(0.0, 3.0)],
+                    s,
+                );
+                painter.line_segment(
+                    [
+                        corner + egui::vec2(-3.2, 0.0),
+                        corner + egui::vec2(0.0, 3.2),
+                    ],
+                    s,
+                );
+                painter.line_segment(
+                    [corner + egui::vec2(3.2, 0.0), corner + egui::vec2(0.0, 3.2)],
+                    s,
+                );
+            }
+            TileState::Update => {
+                painter.circle_filled(icon_rect.right_top() + egui::vec2(-4.0, 4.0), 5.0, c.accent);
+            }
+            TileState::Installed | TileState::Unavailable => {}
+        }
+        // Busy with this tool: a thin progress line under the icon.
+        if let Some(r) = self.running.as_ref().filter(|r| r.tool == id) {
+            let bar = egui::Rect::from_min_size(
+                egui::pos2(icon_rect.left() + 6.0, icon_rect.bottom() + 3.0),
+                egui::vec2(icon_rect.width() - 12.0, 3.0),
+            );
+            painter.rect_filled(bar, 1.5, c.bg_overlay);
+            #[allow(clippy::cast_precision_loss)]
+            let frac = if r.total == 0 {
+                0.15
+            } else {
+                (r.done as f32 / r.total as f32).clamp(0.05, 1.0)
+            };
+            painter.rect_filled(
+                egui::Rect::from_min_size(bar.min, egui::vec2(bar.width() * frac, bar.height())),
+                1.5,
+                c.accent,
+            );
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let name_color = if installed {
+            c.text_primary
+        } else {
+            c.text_muted
+        };
+        painter.text(
+            egui::pos2(rect.center().x, rect.bottom() - 18.0),
+            egui::Align2::CENTER_CENTER,
+            self.tool_name(id),
+            egui::FontId::proportional(12.0),
+            name_color,
+        );
+    }
+
+    /// The tile's right-click menu: only what fits the tool's state; unavailable entries say
+    /// why. Returns the chosen action.
+    fn tool_menu(&mut self, ui: &mut egui::Ui, id: &str, state: TileState) -> Option<MenuAction> {
+        let c = theme::Colors::get();
+        let busy = self.is_busy();
+        let busy_why = "Kim is busy with another install or uninstall";
+        let mut pick = None;
+        ui.set_min_width(190.0);
+        ui.label(
+            egui::RichText::new(self.tool_name(id))
+                .size(12.0)
+                .strong()
+                .color(c.text_secondary),
+        );
+        ui.separator();
+        match state {
+            TileState::Installed | TileState::Update => {
+                for (k, l) in launches(id).iter().enumerate() {
+                    if ui.button(l.label).clicked() {
+                        pick = Some(MenuAction::Open(k));
+                    }
+                }
+                match configure(id) {
+                    Configure::Program(_) => {
+                        if ui.button("Settings…").clicked() {
+                            pick = Some(MenuAction::Configure);
+                        }
+                    }
+                    Configure::Note(why) => {
+                        ui.add_enabled(false, egui::Button::new("Settings…"))
+                            .on_disabled_hover_text(why);
+                    }
+                }
+                if ui.button("Open installation folder").clicked() {
+                    pick = Some(MenuAction::Folder);
+                }
+                ui.separator();
+                if state == TileState::Update {
+                    let v = self
+                        .views
+                        .iter()
+                        .find(|v| v.id == id)
+                        .and_then(|v| v.latest_compatible.clone())
+                        .unwrap_or_default();
+                    if ui
+                        .add_enabled(!busy, egui::Button::new(format!("Update to {v}…")))
+                        .on_disabled_hover_text(busy_why)
+                        .clicked()
+                    {
+                        pick = Some(MenuAction::Install);
+                    }
+                }
+                if ui
+                    .add_enabled(!busy, egui::Button::new("Check for updates"))
+                    .on_disabled_hover_text(busy_why)
+                    .on_hover_text("Reads the catalog again; never downloads or installs anything")
+                    .clicked()
+                {
+                    pick = Some(MenuAction::CheckUpdates);
+                }
+                if ui
+                    .add_enabled(
+                        !busy,
+                        egui::Button::new(egui::RichText::new("Uninstall…").color(c.danger)),
+                    )
+                    .on_disabled_hover_text(busy_why)
+                    .clicked()
+                {
+                    pick = Some(MenuAction::Uninstall);
+                }
+            }
+            TileState::NotInstalled | TileState::Damaged => {
+                let label = if state == TileState::Damaged {
+                    "Repair…"
+                } else {
+                    "Install…"
+                };
+                if ui
+                    .add_enabled(!busy, egui::Button::new(label))
+                    .on_disabled_hover_text(busy_why)
+                    .clicked()
+                {
+                    pick = Some(MenuAction::Install);
+                }
+                if state == TileState::Damaged
+                    && ui
+                        .add_enabled(
+                            !busy,
+                            egui::Button::new(egui::RichText::new("Uninstall…").color(c.danger)),
+                        )
+                        .on_disabled_hover_text(busy_why)
+                        .clicked()
+                {
+                    pick = Some(MenuAction::Uninstall);
+                }
+            }
+            TileState::Unavailable => {
+                ui.add_enabled(false, egui::Button::new("Install…"))
+                    .on_disabled_hover_text(self.unavailable_reason(id));
+            }
+        }
+        ui.separator();
+        if ui.button("Information").clicked() {
+            pick = Some(MenuAction::Info);
+        }
+        pick
+    }
+
+    fn menu(&mut self, id: &str, a: MenuAction) {
+        self.selected = Some(id.to_string());
+        match a {
+            MenuAction::Open(k) => {
+                if let Some(l) = launches(id).get(k) {
+                    self.open(id, l);
+                }
+            }
+            MenuAction::Configure if id == "noeul" => self.configure_noeul(),
+            MenuAction::Configure => {
+                if let Configure::Program(l) = configure(id) {
+                    self.open(id, &l);
+                }
+            }
+            MenuAction::Folder => self.open_folder(id),
+            MenuAction::CheckUpdates => self.refresh_catalog(),
+            MenuAction::Install => self.install_prompt = Some(id.to_string()),
+            MenuAction::Uninstall => {
+                self.confirm = Some(ConfirmUninstall {
+                    tool: id.to_string(),
+                    ..Default::default()
+                });
+            }
+            MenuAction::Info => self.info = Some(id.to_string()),
+        }
+    }
+
+    /// Noeul's settings window belongs to the running Noeul: start it if needed (it hands over
+    /// to a running one), then ask it to open the window; the answer goes to the status line.
+    fn configure_noeul(&mut self) {
+        let Some(version) = self
+            .views
+            .iter()
+            .find(|v| v.id == "noeul")
+            .and_then(|v| v.installed_version.clone())
+        else {
+            return;
+        };
+        let exe = self
+            .backend
+            .paths
+            .tool_dir("noeul")
+            .join("versions")
+            .join(version)
+            .join("noeul.exe");
+        let tx = self.tx.clone();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            let run = |args: &[&str]| {
+                let mut c = std::process::Command::new(&exe);
+                c.args(args).stdin(std::process::Stdio::null());
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.creation_flags(0x0800_0000);
+                }
+                c.output()
+            };
+            let result = run(&["start", "--quiet", "--no-input"])
+                .and_then(|_| run(&["settings", "--json", "--no-input"]));
+            let banner = match result {
+                Ok(o) => {
+                    let doc: serde_json::Value =
+                        serde_json::from_slice(&o.stdout).unwrap_or_default();
+                    if doc["ok"] == true {
+                        Banner::Success("Noeul's settings are open.".into())
+                    } else {
+                        Banner::Error {
+                            message: doc["error"]["message"]
+                                .as_str()
+                                .unwrap_or("Noeul did not open its settings")
+                                .to_string(),
+                            code: doc["error"]["code"].as_str().unwrap_or("error").to_string(),
+                        }
+                    }
+                }
+                Err(e) => Banner::Error {
+                    message: format!("cannot start Noeul: {e}"),
+                    code: "io".into(),
+                },
+            };
+            let _ = tx.send(Msg::Notice(banner));
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+    }
+
+    /// Opens the installed version's folder in Explorer (the user asked for it).
+    fn open_folder(&mut self, id: &str) {
+        let Some(version) = self
+            .views
+            .iter()
+            .find(|v| v.id == id)
+            .and_then(|v| v.installed_version.clone())
+        else {
+            return;
+        };
+        let dir = self
+            .backend
+            .paths
+            .tool_dir(id)
+            .join("versions")
+            .join(version);
+        let explorer =
+            Path::new(&std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()))
+                .join("explorer.exe");
+        let arg = dir.display().to_string();
+        if let Err(e) = (self.launcher)(&explorer, &[arg.as_str()]) {
+            self.set_banner(Banner::Error {
+                message: format!("cannot open {}: {e}", dir.display()),
+                code: "io".into(),
+            });
+        }
+    }
+
+    fn unavailable_reason(&self, id: &str) -> String {
+        let Some(v) = self.views.iter().find(|v| v.id == id) else {
+            return "This tool is not in the catalog.".into();
+        };
+        if let Some(r) = &v.incompatible_reason {
+            return format!("Not installable on this PC: {r}");
+        }
+        match v.availability {
+            Availability::Planned => format!(
+                "No signed release of {} has been published yet. On a development PC, \
+                 `cargo xtask local-mirror` builds installable packages next to kim.exe.",
+                v.name
+            ),
+            Availability::Preview => {
+                "Only preview releases exist; choose the Preview channel in Settings.".into()
+            }
+            Availability::Available => "No release on this channel.".into(),
+        }
+    }
+
+    /// One line for what Kim is doing or just did; results fade after a few seconds, errors
+    /// stay until clicked.
+    fn status_line(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        let c = theme::Colors::get();
+        let now = ui.input(|i| i.time);
+        let (text, color) = if let Some(r) = &self.running {
+            (
+                format!("{} {}…", r.verb, self.tool_name(&r.tool)),
+                c.text_secondary,
+            )
+        } else if self.refreshing {
+            ("Reading the catalog…".to_string(), c.text_secondary)
+        } else if let Some(b) = &self.banner {
+            let key = format!("{b:?}");
+            if self.banner_at.as_ref().is_none_or(|(k, _)| *k != key) {
+                self.banner_at = Some((key, now));
+            }
+            let shown_at = self.banner_at.as_ref().map_or(now, |(_, t)| *t);
+            let error = matches!(b, Banner::Error { .. });
+            if !error && now - shown_at > 6.0 {
+                self.banner = None;
+                self.banner_at = None;
+                return;
+            }
+            if !error {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+            }
+            match b {
+                Banner::Info(m) => (m.clone(), c.text_secondary),
+                Banner::Success(m) => (m.clone(), c.success),
+                Banner::Error { message, .. } => (message.clone(), c.danger),
+            }
+        } else {
+            return;
+        };
+        let resp = ui.interact(rect, egui::Id::unique("status-line"), egui::Sense::click());
+        let galley = ui.painter().layout(
+            text.clone(),
+            egui::FontId::proportional(11.0),
+            color,
+            rect.width(),
+        );
+        let pos = egui::pos2(
+            rect.left(),
+            rect.bottom() - galley.size().y.min(rect.height()),
+        );
+        ui.painter().with_clip_rect(rect).galley(pos, galley, color);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &text));
+        if resp.on_hover_text(text).clicked() {
+            self.banner = None;
+            self.banner_at = None;
+        }
+    }
+
+    fn set_banner(&mut self, b: Banner) {
+        self.banner = Some(b);
+        self.banner_at = None;
+    }
+
+    /// The small install confirmation: what will be installed, from where, and what the tool may
+    /// do on this computer (disclosed before the button, `KIM-SEC-006`).
+    fn install_dialog(&mut self, ctx: &egui::Context) {
+        let c = theme::Colors::get();
+        let Some(id) = self.install_prompt.clone() else {
+            return;
+        };
+        let state = self.tile_state(&id);
+        let view = self.views.iter().find(|v| v.id == id).cloned();
+        let name = self.tool_name(&id);
+        let local = self
+            .loaded
+            .as_ref()
+            .is_some_and(|l| l.source == store::Source::Mirror);
+        let mut close = false;
+        let mut go = false;
+        let r = egui::Modal::new(egui::Id::unique("install-dialog")).show(ctx, |ui| {
+            ui.set_max_width(dialog_width(ctx));
+            ui.horizontal(|ui| {
+                if let Some(t) = self.texture(ctx, &id, false) {
+                    ui.add(egui::Image::new(&t).fit_to_exact_size(egui::vec2(36.0, 36.0)));
+                }
+                ui.vertical(|ui| {
+                    let title = match state {
+                        TileState::Damaged => format!("Repair {name}?"),
+                        TileState::Update => format!("Update {name}?"),
+                        _ => format!("Install {name}?"),
+                    };
+                    ui.label(egui::RichText::new(title).size(14.0).strong());
+                    if let Some(v) = &view {
+                        ui.label(
+                            egui::RichText::new(&v.summary)
+                                .size(11.0)
+                                .color(c.text_secondary),
+                        );
+                    }
+                });
+            });
+            ui.add_space(6.0);
+            let installable = matches!(
+                state,
+                TileState::NotInstalled | TileState::Damaged | TileState::Update
+            );
+            if installable {
+                if let Some(v) = view.as_ref().and_then(|v| v.latest_compatible.clone()) {
+                    let from = if local {
+                        "a package built on this PC (local preview, not a published release)"
+                    } else {
+                        "the signed catalog"
+                    };
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Version {v} from {from}. For your user only, never as administrator."
+                        ))
+                        .size(11.0)
+                        .color(c.text_muted),
+                    );
+                }
+                if let Some(d) = self.details.get(&id).filter(|d| !d.permissions.is_empty()) {
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("It may")
+                            .size(11.0)
+                            .color(c.text_secondary),
+                    );
+                    // Scrolls inside the dialog so its buttons stay in a small window.
+                    let room = (ctx.content_rect().height() - 150.0).max(36.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(room)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            for p in &d.permissions {
+                                let label = p.label.map_or_else(|| p.id.clone(), str::to_string);
+                                let opt = if p.opt_in {
+                                    " (only after you turn it on)"
+                                } else {
+                                    ""
+                                };
+                                ui.label(
+                                    egui::RichText::new(format!("· {label}{opt}"))
+                                        .size(11.0)
+                                        .color(c.text_muted),
+                                );
+                            }
+                        });
+                }
+            } else {
+                ui.label(
+                    egui::RichText::new(self.unavailable_reason(&id))
+                        .size(11.0)
+                        .color(c.text_muted),
+                );
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    close = true;
+                }
+                if installable {
+                    let blocked = if self.is_busy() {
+                        Some("Kim is busy with another install or uninstall")
+                    } else if self.settings.offline_mode && !local {
+                        Some("Offline mode is on (Settings)")
+                    } else {
+                        None
+                    };
+                    let label = match state {
+                        TileState::Damaged => "Repair",
+                        TileState::Update => "Update",
+                        _ => "Install",
+                    };
+                    let b = egui::Button::new(
+                        egui::RichText::new(label).color(c.text_on_accent).strong(),
+                    )
+                    .fill(c.accent);
+                    let resp = ui.add_enabled(blocked.is_none(), b);
+                    if let Some(why) = blocked {
+                        resp.on_disabled_hover_text(why);
+                    } else if resp.clicked() {
+                        go = true;
+                    }
+                }
+            });
+        });
+        if r.should_close() {
+            close = true;
+        }
+        if go {
+            self.install_prompt = None;
+            self.start_install(&id);
+        } else if close {
+            self.install_prompt = None;
+        }
+    }
+
+    /// Information: version, release stage and what the catalog and Kim know about the tool.
+    fn info_dialog(&mut self, ctx: &egui::Context) {
+        let c = theme::Colors::get();
+        let Some(id) = self.info.clone() else { return };
+        let view = self.views.iter().find(|v| v.id == id).cloned();
+        let info = self.details.get(&id).cloned();
+        let tool = self
+            .loaded
+            .as_ref()
+            .and_then(|l| l.catalog.tool(&id))
+            .cloned();
+        let mut close = false;
+        let max_h = (ctx.content_rect().height() - 60.0).max(160.0);
+        let width = (ctx.content_rect().width() - 48.0).clamp(220.0, 520.0);
+        let r = egui::Modal::new(egui::Id::unique("info-dialog")).show(ctx, |ui| {
+            // A fixed width; long commands and paths wrap instead of widening the dialog.
+            ui.set_width(width);
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            let name = self.tool_name(&id);
+            ui.label(egui::RichText::new(&name).size(14.0).strong());
+            egui::ScrollArea::vertical()
+                .max_height(max_h - 70.0)
+                .show(ui, |ui| {
+                    if let (Some(v), Some(t)) = (&view, &tool) {
+                        ui.label(
+                            egui::RichText::new(&t.description)
+                                .size(11.0)
+                                .color(c.text_secondary),
+                        );
+                        ui.add_space(4.0);
+                        egui::Grid::new("info-meta")
+                            .num_columns(2)
+                            .spacing([16.0, 3.0])
+                            .show(ui, |ui| {
+                                let row = |ui: &mut egui::Ui, k: &str, val: String| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(k).size(11.0).color(c.text_muted),
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    );
+                                    ui.label(egui::RichText::new(val).size(11.0));
+                                    ui.end_row();
+                                };
+                                row(ui, "Status", status_label(v));
+                                row(
+                                    ui,
+                                    "Installed",
+                                    v.installed_version.clone().unwrap_or_else(|| "—".into()),
+                                );
+                                row(
+                                    ui,
+                                    "Newest",
+                                    v.latest_compatible
+                                        .clone()
+                                        .or(v.latest.clone())
+                                        .unwrap_or_else(|| "—".into()),
+                                );
+                                row(ui, "Release", release_label(v.availability).into());
+                                row(ui, "Support", support_label(t.support).into());
+                                row(ui, "License", t.license.clone());
+                            });
+                    }
+                    if let Some(d) = &info {
+                        tool_sections(ui, &name, d);
+                    }
+                });
+            ui.add_space(6.0);
+            if ui.button("Close").clicked() {
+                close = true;
+            }
+        });
+        if close || r.should_close() {
+            self.info = None;
+        }
+    }
+
+    /// The Settings panel (the gear): Kim's own settings, in four short sections.
+    fn settings_panel(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(20, 16))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Settings").size(15.0).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Done").clicked() {
+                            self.toggle_settings(Some(&ui.ctx().clone()));
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    for (tab, label) in [
+                        (SettingsTab::General, "General"),
+                        (SettingsTab::Shortcuts, "Shortcuts"),
+                        (SettingsTab::Catalog, "Catalog"),
+                        (SettingsTab::About, "About"),
+                    ] {
+                        if ui
+                            .selectable_label(self.settings_tab == tab, label)
+                            .clicked()
+                        {
+                            self.settings_tab = tab;
+                            self.capture = None;
+                        }
+                    }
+                });
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        match self.settings_tab {
+                            SettingsTab::General => self.settings_general(ui),
+                            SettingsTab::Shortcuts => self.settings_shortcuts(ui),
+                            SettingsTab::Catalog => self.settings_catalog(ui),
+                            SettingsTab::About => self.settings_about(ui),
+                        }
+                        if let Some(b) = &self.banner {
+                            ui.add_space(8.0);
+                            let (t, col) = match b {
+                                Banner::Info(m) => (m.clone(), c.text_secondary),
+                                Banner::Success(m) => (m.clone(), c.success),
+                                Banner::Error { message, .. } => (message.clone(), c.danger),
+                            };
+                            ui.label(egui::RichText::new(t).size(11.0).color(col));
+                        }
+                    });
+            });
+    }
+
+    fn settings_general(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        ui.label(egui::RichText::new("Appearance").strong());
+        ui.horizontal(|ui| {
+            let before = self.prefs.theme;
+            ui.selectable_value(&mut self.prefs.theme, ThemePref::System, "System");
+            ui.selectable_value(&mut self.prefs.theme, ThemePref::Dark, "Dark");
+            ui.selectable_value(&mut self.prefs.theme, ThemePref::Light, "Light");
+            if before != self.prefs.theme {
+                self.save_prefs();
+            }
+        });
+        ui.add_space(10.0);
+        ui.label(egui::RichText::new("Installing and updating").strong());
+        let mut changed = false;
+        changed |= ui
+            .checkbox(&mut self.settings.offline_mode, "Offline mode")
+            .on_hover_text(
+                "Refuse every network operation. Packages built on this PC still install.",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.settings.check_updates_on_launch,
+                "Check for updates when Kim starts",
+            )
+            .on_hover_text("Only shows available updates. Never downloads or installs anything.")
+            .changed();
+        if changed {
+            self.save_settings();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Channel");
+            let before = self.channel;
+            ui.selectable_value(&mut self.channel, Channel::Stable, "Stable");
+            ui.selectable_value(&mut self.channel, Channel::Preview, "Preview");
+            if before != self.channel {
+                self.reload();
+            }
+        });
+        ui.label(
+            egui::RichText::new(
+                "Kim never installs, updates or removes a tool by itself: only when you choose to.",
+            )
+            .size(11.0)
+            .color(c.text_muted),
+        );
+    }
+
+    fn settings_shortcuts(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        if self.shortcuts.is_off() {
+            ui.colored_label(
+                c.warning,
+                "All shortcuts are off for this window (--no-hotkeys or KIM_NO_HOTKEYS).",
+            );
+        }
+        if let Some(p) = &self.shortcuts.problem {
+            ui.colored_label(c.warning, p);
+        }
+        let cli = kim_cli();
+        let mut act = None;
+        egui::Grid::new("settings-shortcuts")
+            .num_columns(3)
+            .spacing([14.0, 6.0])
+            .show(ui, |ui| {
+                for r in self.shortcuts.rows() {
+                    ui.label(egui::RichText::new(&r.title).size(12.0));
+                    let capturing = self.capture.as_deref() == Some(r.action.as_str());
+                    let keys = if capturing {
+                        "Press keys… (Esc cancels)".to_string()
+                    } else {
+                        r.keys.clone()
+                    };
+                    ui.label(egui::RichText::new(keys).monospace().size(12.0));
+                    if shortcuts::is_bindable(&r.action) {
+                        ui.horizontal(|ui| {
+                            let why = "Changing shortcuts needs kim.exe next to this window";
+                            if ui
+                                .add_enabled(
+                                    cli.is_some() && !capturing,
+                                    egui::Button::new("Change").small(),
+                                )
+                                .on_disabled_hover_text(why)
+                                .clicked()
+                            {
+                                act = Some((r.action.clone(), "change"));
+                            }
+                            if ui
+                                .add_enabled(cli.is_some(), egui::Button::new("Off").small())
+                                .on_disabled_hover_text(why)
+                                .on_hover_text("Turn this shortcut off")
+                                .clicked()
+                            {
+                                act = Some((r.action.clone(), "disable"));
+                            }
+                            if ui
+                                .add_enabled(cli.is_some(), egui::Button::new("Reset").small())
+                                .on_disabled_hover_text(why)
+                                .on_hover_text("Back to Kim's default")
+                                .clicked()
+                            {
+                                act = Some((r.action.clone(), "reset"));
+                            }
+                        });
+                    } else {
+                        ui.label(egui::RichText::new(&r.state).size(11.0).color(c.text_muted));
+                    }
+                    ui.end_row();
+                }
+            });
+        match act {
+            Some((action, "change")) => self.capture = Some(action),
+            Some((action, verb)) => self.hotkeys_cli(&["hotkeys", verb, &action]),
+            None => {}
+        }
+        ui.add_space(6.0);
+        ui.label(
+            egui::RichText::new("Shortcuts work only while this window has focus. Saved in hotkeys.json; `kim hotkeys …` changes the same file.")
+                .size(11.0)
+                .color(c.text_muted),
+        );
+    }
+
+    /// While a shortcut is being changed: the next key press with its modifiers becomes it.
+    fn capture_key(&mut self, ctx: &egui::Context) {
+        let Some(action) = self.capture.clone() else {
+            return;
+        };
+        // Capture stops when the window loses focus (HOTKEY_CONTRACT §11.2).
+        if ctx.input(|i| !i.focused) {
+            self.capture = None;
+            return;
+        }
+        let mut done = None;
+        ctx.input_mut(|i| {
+            i.events.retain(|e| match e {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
+                    if *key == egui::Key::Escape && modifiers.is_none() {
+                        done = Some(None);
+                    } else if let Some(t) = shortcuts::chord_text(*key, *modifiers) {
+                        done = Some(Some(t));
+                    }
+                    false
+                }
+                _ => true,
+            });
+        });
+        match done {
+            Some(Some(keys)) => {
+                self.capture = None;
+                self.hotkeys_cli(&["hotkeys", "set", &action, &keys]);
+            }
+            Some(None) => self.capture = None,
+            None => {}
+        }
+    }
+
+    /// Runs `kim hotkeys …` (the same checks and file as the CLI), headless, then re-reads the
+    /// shortcuts.
+    fn hotkeys_cli(&mut self, args: &[&str]) {
+        let Some(cli) = kim_cli() else { return };
+        let mut cmd = std::process::Command::new(cli);
+        cmd.args(args)
+            .args(["--json", "--no-input"])
+            .stdin(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        let out = cmd.output();
+        let doc: Option<serde_json::Value> = out
+            .as_ref()
+            .ok()
+            .and_then(|o| serde_json::from_slice(&o.stdout).ok());
+        match doc {
+            Some(d) if d["ok"] == true => {
+                self.shortcuts.reload();
+                self.set_banner(Banner::Success("Shortcut saved.".into()));
+            }
+            Some(d) => self.set_banner(Banner::Error {
+                message: d["error"]["message"]
+                    .as_str()
+                    .unwrap_or("the shortcut was not changed")
+                    .to_string(),
+                code: d["error"]["code"].as_str().unwrap_or("error").to_string(),
+            }),
+            None => self.set_banner(Banner::Error {
+                message: "kim.exe did not answer; the shortcut was not changed".into(),
+                code: "io".into(),
+            }),
+        }
+    }
+
+    fn settings_catalog(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        if let Some(l) = &self.loaded {
+            let src = match l.source {
+                store::Source::Bundled => "built into Kim",
+                store::Source::Cache => "downloaded earlier",
+                store::Source::Mirror => "packages built on this PC (local preview)",
+            };
+            egui::Grid::new("catalog-meta")
+                .num_columns(2)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    let row = |ui: &mut egui::Ui, k: &str, v: String| {
+                        ui.label(egui::RichText::new(k).size(11.0).color(c.text_muted));
+                        ui.label(egui::RichText::new(v).size(12.0));
+                        ui.end_row();
+                    };
+                    row(
+                        ui,
+                        "Catalog",
+                        format!("v{} · {src}", l.catalog.catalog_version),
+                    );
+                    row(ui, "Signed by", l.signer.key_id.clone());
+                    row(ui, "Expires", l.catalog.expires_at.clone());
+                    row(ui, "Source", kim::redact::url(&self.backend.catalog_source));
+                });
+            if l.stale {
+                ui.colored_label(
+                    c.warning,
+                    "The catalog has expired; refresh it when online.",
+                );
+            }
+        }
+        ui.add_space(6.0);
+        let local = self.mirror.is_some();
+        let blocked = if self.is_busy() {
+            Some("Kim is busy")
+        } else if self.settings.offline_mode && !local {
+            Some("Offline mode is on")
+        } else {
+            None
+        };
+        let resp = ui.add_enabled(blocked.is_none(), egui::Button::new("Refresh now"));
+        if let Some(why) = blocked {
+            resp.on_disabled_hover_text(why);
+        } else if resp
+            .on_hover_text("Reads the signed catalog again. Never installs anything.")
+            .clicked()
+        {
+            self.refresh_catalog();
+        }
+    }
+
+    fn settings_about(&mut self, ui: &mut egui::Ui) {
+        let c = theme::Colors::get();
+        ui.horizontal(|ui| {
+            if let Some(t) = self.texture(ui.ctx(), "kim", false) {
+                ui.add(egui::Image::new(&t).fit_to_exact_size(egui::vec2(40.0, 40.0)));
+            }
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new(format!("Kim {}", kim::KIM_VERSION)).strong());
+                ui.label(
+                    egui::RichText::new("A tiny home for Subak, Noeul and Ddalgak.")
+                        .size(11.0)
+                        .color(c.text_secondary),
+                );
+            });
+        });
+        ui.add_space(6.0);
+        for (k, v) in [
+            (
+                "Programs",
+                self.backend.paths.programs.display().to_string(),
+            ),
+            (
+                "Kim's data",
+                self.backend.paths.kim_data.display().to_string(),
+            ),
+        ] {
+            ui.label(
+                egui::RichText::new(format!("{k}: {v}"))
+                    .size(11.0)
+                    .color(c.text_muted),
+            );
+        }
+        ui.label(
+            egui::RichText::new("Local-first: no account, no telemetry, no automatic installs or updates. MIT OR Apache-2.0.")
+                .size(11.0)
+                .color(c.text_muted),
+        );
+    }
+}
+
+/// ADR 0090: the launcher's tiles, in this order.
+pub const LAUNCHER_TOOLS: [&str; 3] = ["subak", "noeul", "ddalgak"];
+
+/// What a tile shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileState {
+    /// Installed and its program is on disk: full colour, a click starts it.
+    Installed,
+    /// Installed, a newer compatible release exists (an accent dot).
+    Update,
+    /// Installable: grey, a click asks before installing.
+    NotInstalled,
+    /// Kim's record exists but the program is missing or broken: grey with a warning mark.
+    Damaged,
+    /// Nothing to install here (no release, or not for this PC): grey; the menu says why.
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuAction {
+    Open(usize),
+    Configure,
+    Folder,
+    CheckUpdates,
+    Install,
+    Uninstall,
+    Info,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SettingsTab {
+    #[default]
+    General,
+    Shortcuts,
+    Catalog,
+    About,
+}
+
+/// The theme choice (Settings → General), kept in `manager.json` next to Kim's settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemePref {
+    #[default]
+    System,
+    Dark,
+    Light,
+}
+
+/// Kim Manager's own preferences (ADR 0090): only how the window looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    pub theme: ThemePref,
+}
+
+/// How a tool is configured from its menu.
+enum Configure {
+    Program(Launch),
+    Note(&'static str),
+}
+
+fn configure(id: &str) -> Configure {
+    match id {
+        "noeul" => Configure::Program(Launch {
+            label: "Settings…",
+            program: "noeul.exe",
+            args: &["settings"],
+            also: &[],
+            hint: "Noeul's settings open in its own window (Noeul must be running).",
+        }),
+        "ddalgak" => Configure::Program(Launch {
+            label: "Settings…",
+            program: "ddalgak-editor.exe",
+            args: &[],
+            also: &[],
+            hint: "",
+        }),
+        _ => Configure::Note(
+            "Subak keeps its settings in its config file: `subak config show`, `subak config set <key> <value>`",
+        ),
+    }
+}
+
+/// A dialog's width: at most 340 points, and always inside a small window.
+fn dialog_width(ctx: &egui::Context) -> f32 {
+    (ctx.content_rect().width() - 48.0).clamp(220.0, 340.0)
+}
+
+/// The `kim.exe` next to this window (for `kim hotkeys …`).
+fn kim_cli() -> Option<PathBuf> {
+    let p = std::env::current_exe().ok()?.with_file_name("kim.exe");
+    p.is_file().then_some(p)
+}
+
+/// The icon of a tile (256 px, from assets/).
+fn icon_png(id: &str) -> Option<&'static [u8]> {
+    Some(match id {
+        "subak" => include_bytes!("../../../assets/subak/subak-256.png"),
+        "noeul" => include_bytes!("../../../assets/noeul/noeul-256.png"),
+        "ddalgak" => include_bytes!("../../../assets/ddalgak/ddalgak-256.png"),
+        "kim" => include_bytes!("../../../assets/icon/kim-128.png"),
+        _ => return None,
+    })
+}
+
+/// Grey for a tool that is not installed: luminance, slightly lifted.
+pub fn desaturate(rgba: &mut [u8]) {
+    for px in rgba.as_chunks_mut::<4>().0 {
+        let l = (0.2126 * f32::from(px[0]) + 0.7152 * f32::from(px[1]) + 0.0722 * f32::from(px[2]))
+            .mul_add(0.85, 20.0)
+            .clamp(0.0, 255.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let l = l as u8;
+        px[0] = l;
+        px[1] = l;
+        px[2] = l;
+    }
+}
+
+/// The gear: a ring with eight teeth (a painted shape, never a font glyph).
+fn paint_gear(p: &egui::Painter, center: egui::Pos2, r: f32, col: egui::Color32) {
+    let s = egui::Stroke::new(2.0, col);
+    for k in 0..8 {
+        #[allow(clippy::cast_precision_loss)]
+        let a = k as f32 * std::f32::consts::FRAC_PI_4;
+        let d = egui::vec2(a.cos(), a.sin());
+        p.line_segment(
+            [center + d * (r - 1.0), center + d * (r + 3.0)],
+            egui::Stroke::new(2.6, col),
+        );
+    }
+    p.circle_stroke(center, r - 1.0, s);
+    p.circle_stroke(center, r * 0.35, egui::Stroke::new(1.6, col));
+}
+
+impl KimManagerApp {
     /// The shortcut list (§11.1): every action with its keys and state, fixed keys included.
     /// Changing shortcuts is done with `kim hotkeys …`; the in-window binding editor is a later
     /// step (docs/HOTKEY_CONTRACT.md §11.2).
@@ -745,7 +2199,7 @@ impl KimManagerApp {
         let rows = self.shortcuts.rows();
         let mut close = false;
         let r = egui::Modal::new(egui::Id::unique("keyboard-shortcuts")).show(ctx, |ui| {
-            ui.set_max_width(560.0);
+            ui.set_max_width((ctx.content_rect().width() - 48.0).clamp(220.0, 560.0));
             ui.label(
                 egui::RichText::new("Keyboard shortcuts")
                     .size(15.0)
@@ -793,382 +2247,20 @@ impl KimManagerApp {
         }
     }
 
-    fn header(&mut self, ui: &mut egui::Ui) {
-        let c = theme::Colors::get();
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new("Kim")
-                    .size(15.0)
-                    .strong()
-                    .color(c.text_primary),
-            );
-            if let Some(l) = &self.loaded {
-                let src = match l.source {
-                    store::Source::Bundled => "bundled",
-                    store::Source::Cache => "cached",
-                    store::Source::Mirror => "local mirror",
-                };
-                let stale = if l.stale { " · stale" } else { "" };
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Catalog v{} ({src}){stale}",
-                        l.catalog.catalog_version
-                    ))
-                    .size(11.0)
-                    .color(c.text_muted),
-                );
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let busy = self.is_busy();
-                if ui
-                    .add_enabled(
-                        !busy && !self.settings.offline_mode,
-                        egui::Button::new("Refresh catalog"),
-                    )
-                    .on_hover_text("Explicitly fetch the signed catalog. Never installs anything.")
-                    .clicked()
-                {
-                    self.refresh_catalog();
-                }
-                egui::ComboBox::from_label("Channel")
-                    .selected_text(match self.channel {
-                        Channel::Stable => "Stable",
-                        Channel::Preview => "Preview",
-                    })
-                    .show_ui(ui, |ui| {
-                        let before = self.channel;
-                        ui.selectable_value(&mut self.channel, Channel::Stable, "Stable");
-                        ui.selectable_value(&mut self.channel, Channel::Preview, "Preview");
-                        if before != self.channel {
-                            self.reload();
-                        }
-                    });
-            });
-        });
-    }
-
-    fn tool_list(&mut self, ui: &mut egui::Ui) {
-        let c = theme::Colors::get();
-        if let Some(e) = &self.load_error {
-            ui.colored_label(c.danger, format!("Cannot load the catalog: {e}"));
-            return;
-        }
-        let mut clicked = None;
-        for v in &self.views {
-            let selected = self.selected.as_deref() == Some(v.id.as_str());
-            let label = status_label(v);
-            let (rect, resp) = ui
-                .allocate_exact_size(egui::vec2(ui.available_width(), 48.0), egui::Sense::click());
-            let a11y = format!("{}, {label}", v.name);
-            resp.widget_info(|| {
-                egui::WidgetInfo::selected(egui::Role::Button, true, selected, a11y.clone())
-            });
-            if ui.is_rect_visible(rect) {
-                let painter = ui.painter();
-                let fill = if selected {
-                    c.accent_soft
-                } else if resp.hovered() {
-                    c.bg_hover
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-                painter.rect_filled(rect, 6.0, fill);
-                if selected {
-                    let marker = egui::Rect::from_min_size(
-                        rect.left_top() + egui::vec2(0.0, 10.0),
-                        egui::vec2(2.0, rect.height() - 20.0),
-                    );
-                    painter.rect_filled(marker, 1.0, c.accent);
-                }
-                if resp.has_focus() {
-                    painter.rect_stroke(
-                        rect,
-                        6.0,
-                        egui::Stroke::new(2.0, c.focus),
-                        egui::StrokeKind::Inside,
-                    );
-                }
-                paint_status_shape(
-                    painter,
-                    rect.left_center() + egui::vec2(16.0, 0.0),
-                    v.status,
-                );
-                let x = rect.left() + 32.0;
-                painter.text(
-                    egui::pos2(x, rect.top() + 8.0),
-                    egui::Align2::LEFT_TOP,
-                    &v.name,
-                    egui::FontId::proportional(13.0),
-                    c.text_primary,
-                );
-                painter.text(
-                    egui::pos2(rect.right() - 8.0, rect.top() + 9.0),
-                    egui::Align2::RIGHT_TOP,
-                    &label,
-                    egui::FontId::proportional(11.0),
-                    status_color(v.status),
-                );
-                painter.text(
-                    egui::pos2(x, rect.top() + 27.0),
-                    egui::Align2::LEFT_TOP,
-                    &v.summary,
-                    egui::FontId::proportional(11.0),
-                    c.text_muted,
-                );
-            }
-            if resp.clicked() {
-                clicked = Some(v.id.clone());
-            }
-        }
-        if let Some(id) = clicked {
-            self.selected = Some(id);
-            self.banner = None;
-        }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            let mut changed = false;
-            changed |= ui
-                .checkbox(&mut self.settings.offline_mode, "Offline mode")
-                .on_hover_text("Refuse every network operation.")
-                .changed();
-            changed |= ui
-                .checkbox(
-                    &mut self.settings.check_updates_on_launch,
-                    "Check for updates when Kim starts",
-                )
-                .on_hover_text(
-                    "Only shows available updates. Never downloads or installs anything.",
-                )
-                .changed();
-            if changed {
-                self.save_settings();
-            }
-            ui.label(
-                egui::RichText::new("Settings")
-                    .size(11.0)
-                    .color(c.text_muted),
-            );
-        });
-    }
-
-    fn details(&mut self, ui: &mut egui::Ui) {
-        let c = theme::Colors::get();
-        if let Some(b) = self.banner.clone() {
-            let (fill, text) = match &b {
-                Banner::Info(m) => (c.bg_overlay, m.clone()),
-                Banner::Success(m) => (c.bg_overlay, m.clone()),
-                Banner::Error { message, code } => (c.bg_overlay, format!("{message}  ({code})")),
-            };
-            let color = match b {
-                Banner::Info(_) => c.text_secondary,
-                Banner::Success(_) => c.success,
-                Banner::Error { .. } => c.danger,
-            };
-            egui::Frame::new()
-                .fill(fill)
-                .stroke(egui::Stroke::new(1.0, color))
-                .corner_radius(6)
-                .inner_margin(12)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.colored_label(color, text);
-                        if ui.small_button("Dismiss").clicked() {
-                            self.banner = None;
-                        }
-                    });
-                });
-            ui.add_space(12.0);
-        }
-        let Some(id) = self.selected.clone() else {
-            ui.label("Select a tool.");
-            return;
-        };
-        let Some(view) = self.views.iter().find(|v| v.id == id).cloned() else {
-            return;
-        };
-        let tool = self
-            .loaded
-            .as_ref()
-            .and_then(|l| l.catalog.tool(&id))
-            .cloned();
-        let info = self.details.get(&id).cloned();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(&view.name)
-                        .size(15.0)
-                        .strong()
-                        .color(c.text_primary),
-                );
-                if let Some(t) = &tool {
-                    ui.label(egui::RichText::new(&t.description).color(c.text_secondary));
-                    ui.add_space(8.0);
-                    egui::Grid::new("meta")
-                        .num_columns(2)
-                        .spacing([24.0, 6.0])
-                        .show(ui, |ui| {
-                            let row = |ui: &mut egui::Ui, k: &str, v: String| {
-                                ui.label(egui::RichText::new(k).size(11.0).color(c.text_muted));
-                                ui.label(egui::RichText::new(v).color(c.text_primary));
-                                ui.end_row();
-                            };
-                            row(ui, "Status", status_label(&view));
-                            row(ui, "Release", release_label(view.availability).into());
-                            row(ui, "Support", support_label(t.support).into());
-                            row(
-                                ui,
-                                "Installed",
-                                view.installed_version.clone().unwrap_or_else(|| "—".into()),
-                            );
-                            row(
-                                ui,
-                                "Newest",
-                                view.latest_compatible
-                                    .clone()
-                                    .or(view.latest.clone())
-                                    .unwrap_or_else(|| "—".into()),
-                            );
-                            row(ui, "License", t.license.clone());
-                            if let Some(r) = info.as_ref().and_then(|d| d.runs.as_ref()) {
-                                row(
-                                    ui,
-                                    "Runs",
-                                    r.label.map_or_else(|| r.id.clone(), str::to_string),
-                                );
-                            }
-                        });
-                    if let Some(reason) = &view.incompatible_reason {
-                        ui.colored_label(c.warning, format!("Not installable here: {reason}"));
-                    }
-                    if let Some(note) = &view.note {
-                        ui.colored_label(c.text_muted, note);
-                    }
-                }
-                ui.add_space(16.0);
-
-                if let Some(r) = &self.running {
-                    ui.label(
-                        egui::RichText::new(format!("{} {} — {:?}", r.verb, r.tool, r.phase))
-                            .color(c.text_secondary),
-                    );
-                    #[allow(clippy::cast_precision_loss)]
-                    let frac = if r.total == 0 {
-                        0.0
-                    } else {
-                        r.done as f32 / r.total as f32
-                    };
-                    ui.add(
-                        egui::ProgressBar::new(frac)
-                            .desired_height(4.0)
-                            .fill(c.accent),
-                    );
-                    if ui.button("Cancel").clicked() {
-                        self.cancel();
-                    }
-                    return;
-                }
-                if view.id == "kim" {
-                    ui.label(
-                        egui::RichText::new(
-                            "This is Kim itself. It does not install or update itself.",
-                        )
-                        .color(c.text_muted),
-                    );
-                    return;
-                }
-                self.actions(ui, &view);
-                if let Some(d) = &info {
-                    ui.add_space(8.0);
-                    tool_sections(ui, &view.name, d);
-                }
-            });
-    }
-
-    /// The explicit Install / Update / Repair / Uninstall buttons, or why there is nothing to
-    /// install. Every one of them only starts what the user pressed (`KIM-SEC-001`).
-    fn actions(&mut self, ui: &mut egui::Ui, view: &ToolView) {
-        let c = theme::Colors::get();
-        ui.horizontal(|ui| {
-            let primary = match view.status {
-                ToolStatus::Available => view
-                    .latest_compatible
-                    .as_ref()
-                    .map(|v| format!("Install {v}")),
-                ToolStatus::UpdateAvailable => view
-                    .latest_compatible
-                    .as_ref()
-                    .map(|v| format!("Update to {v}")),
-                ToolStatus::Damaged => Some("Repair".to_string()),
-                _ => None,
-            };
-            if let Some(label) = primary {
-                let button =
-                    egui::Button::new(egui::RichText::new(label).color(c.text_on_accent).strong())
-                        .fill(c.accent);
-                let local = self
-                    .loaded
-                    .as_ref()
-                    .is_some_and(|l| l.source == store::Source::Mirror);
-                if ui
-                    .add_enabled(!self.settings.offline_mode || local, button)
-                    .clicked()
-                {
-                    self.start_install(&view.id);
-                }
-            }
-            // ADR 0089: start an installed tool's window or notification-area app.
-            if matches!(
-                view.status,
-                ToolStatus::Installed | ToolStatus::UpdateAvailable
-            ) {
-                for launch in launches(&view.id) {
-                    let button = egui::Button::new(
-                        egui::RichText::new(launch.label)
-                            .color(c.text_on_accent)
-                            .strong(),
-                    )
-                    .fill(c.accent);
-                    if ui.add(button).clicked() {
-                        self.open(&view.id, launch);
-                    }
-                }
-            }
-            if matches!(
-                view.status,
-                ToolStatus::Installed | ToolStatus::UpdateAvailable | ToolStatus::Damaged
-            ) && ui
-                .button(egui::RichText::new("Uninstall…").color(c.danger))
-                .clicked()
-            {
-                self.confirm = Some(ConfirmUninstall {
-                    tool: view.id.clone(),
-                    ..Default::default()
-                });
-            }
-        });
-        if view.status == ToolStatus::Unreleased {
-            let why = match view.availability {
-                Availability::Planned => format!(
-                    "Nothing to install yet: no signed release of {} has been published.",
-                    view.name
-                ),
-                Availability::Preview => {
-                    "Only preview releases exist. Choose the Preview channel to see them.".into()
-                }
-                Availability::Available => "No release on this channel.".into(),
-            };
-            ui.label(egui::RichText::new(why).color(c.text_muted));
-        }
-    }
-
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let c = theme::Colors::get();
         let mut close = false;
         let mut go = None;
+        let name = self
+            .confirm
+            .as_ref()
+            .map(|c| self.tool_name(&c.tool))
+            .unwrap_or_default();
+        let width = dialog_width(ctx);
         if let Some(conf) = &mut self.confirm {
             egui::Modal::new(egui::Id::unique("confirm-uninstall")).show(ctx, |ui| {
-                ui.set_max_width(440.0);
-                ui.label(egui::RichText::new(format!("Uninstall {}?", conf.tool)).size(15.0).strong());
+                ui.set_max_width(width);
+                ui.label(egui::RichText::new(format!("Uninstall {name}?")).size(14.0).strong());
                 ui.label("Program files are removed. Your settings and data are kept unless you choose otherwise.");
                 ui.checkbox(&mut conf.purge, "Also delete this tool's settings and data");
                 if conf.purge {
@@ -1266,32 +2358,29 @@ fn tool_sections(ui: &mut egui::Ui, name: &str, d: &Details) {
     }
     if let Some(s) = &d.shortcuts {
         heading(ui, "Keyboard shortcuts");
-        egui::Grid::new("tool-shortcuts")
-            .num_columns(3)
-            .spacing([24.0, 4.0])
-            .show(ui, |ui| {
-                for a in &s.actions {
-                    let keys = if a.keys.is_empty() {
-                        "not set".to_string()
-                    } else {
-                        a.keys.join(", ")
-                    };
-                    ui.label(egui::RichText::new(keys).monospace());
-                    ui.label(egui::RichText::new(&a.title).color(c.text_primary));
-                    let scope = match a.scope.as_str() {
-                        "global" => "system-wide while it runs".to_string(),
-                        "app" => format!("inside {name}"),
-                        other => other.to_string(),
-                    };
-                    let fixed = if a.bindable { "" } else { " · fixed" };
-                    ui.label(
-                        egui::RichText::new(format!("{scope}{fixed}"))
-                            .size(11.0)
-                            .color(c.text_muted),
-                    );
-                    ui.end_row();
-                }
+        // One wrapping row per action (a table would widen a small window).
+        for a in &s.actions {
+            let keys = if a.keys.is_empty() {
+                "not set".to_string()
+            } else {
+                a.keys.join(", ")
+            };
+            let scope = match a.scope.as_str() {
+                "global" => "system-wide while it runs".to_string(),
+                "app" => format!("inside {name}"),
+                other => other.to_string(),
+            };
+            let fixed = if a.bindable { "" } else { " · fixed" };
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new(keys).monospace());
+                ui.label(egui::RichText::new(&a.title).color(c.text_primary));
+                ui.label(
+                    egui::RichText::new(format!("{scope}{fixed}"))
+                        .size(11.0)
+                        .color(c.text_muted),
+                );
             });
+        }
         let id = d
             .manage
             .as_ref()
@@ -1351,14 +2440,16 @@ fn tool_sections(ui: &mut egui::Ui, name: &str, d: &Details) {
     }
     if let Some(i) = &d.install {
         heading(ui, "Install location");
-        ui.label(
-            egui::RichText::new(format!("Program files: {}", i.program_dir.display()))
-                .color(c.text_secondary),
-        );
+        // Paths have no spaces to wrap at: shortened to the width, whole on hover.
+        let path_line = |ui: &mut egui::Ui, text: String| {
+            ui.add(egui::Label::new(egui::RichText::new(&text).color(c.text_secondary)).truncate())
+                .on_hover_text(text);
+        };
+        path_line(ui, format!("Program files: {}", i.program_dir.display()));
         for dir in &i.user_data_dirs {
-            ui.label(
-                egui::RichText::new(format!("Your data (kept on uninstall): {}", dir.display()))
-                    .color(c.text_secondary),
+            path_line(
+                ui,
+                format!("Your data (kept on uninstall): {}", dir.display()),
             );
         }
         muted(ui, "For your user only · never as administrator".into());
@@ -1378,46 +2469,5 @@ fn tool_sections(ui: &mut egui::Ui, name: &str, d: &Details) {
                 m.install, m.update, m.uninstall
             ),
         );
-    }
-}
-
-/// Status marks are painted shapes, never font glyphs (DESIGN_SYSTEM §3.1): filled circle =
-/// installed, ring with dot = update, ring = available, triangle = problem, small dot = none.
-fn paint_status_shape(p: &egui::Painter, center: egui::Pos2, s: ToolStatus) {
-    let col = status_color(s);
-    let r = 4.0;
-    match s {
-        ToolStatus::Installed => {
-            p.circle_filled(center, r, col);
-        }
-        ToolStatus::UpdateAvailable => {
-            p.circle_stroke(center, r + 1.0, egui::Stroke::new(1.5, col));
-            p.circle_filled(center, 2.0, col);
-        }
-        ToolStatus::Available => {
-            p.circle_stroke(center, r, egui::Stroke::new(1.5, col));
-        }
-        ToolStatus::Incompatible | ToolStatus::Damaged => {
-            let pts = vec![
-                center + egui::vec2(0.0, -r - 1.0),
-                center + egui::vec2(r + 1.0, r),
-                center + egui::vec2(-r - 1.0, r),
-            ];
-            p.add(egui::Shape::convex_polygon(pts, col, egui::Stroke::NONE));
-        }
-        ToolStatus::Unreleased => {
-            p.circle_filled(center, 2.0, col);
-        }
-    }
-}
-
-fn status_color(s: ToolStatus) -> egui::Color32 {
-    let c = theme::Colors::get();
-    match s {
-        ToolStatus::Installed => c.success,
-        ToolStatus::UpdateAvailable => c.accent,
-        ToolStatus::Available => c.info,
-        ToolStatus::Incompatible | ToolStatus::Damaged => c.warning,
-        ToolStatus::Unreleased => c.text_muted,
     }
 }

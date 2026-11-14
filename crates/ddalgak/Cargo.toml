@@ -78,3 +78,6 @@ windows-sys = { version = "0.61.2", features = [
 # tests/cli.rs validates `ddalgak --json` output with xtask/src/jsonschema.rs and rewrites
 # machine-specific names in the blessed examples (all regex features).
 regex = "1.13.1"
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

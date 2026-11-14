@@ -136,7 +136,7 @@ What a catalog **cannot** declare, because Kim decides it (and shows it next to 
   install, or with a note saying why the installed manifest could not be used (`KIM-FR-052`).
 
 Before every install or update the plan discloses the declared `permissions` and the release's
-`dependencies` (`kim install <tool> --dry-run`, and Kim Manager's details pane before the button
+`dependencies` (`kim install <tool> --dry-run`, and Kim Manager's install dialog before the button
 is pressed; `KIM-SEC-006`). Disclosure is not consent: the install still starts only from the
 user's explicit action, and a missing dependency is never installed for the user.
 

@@ -20,6 +20,7 @@ workspace = true
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 kim = { version = "0.0.1", path = "../kim" }
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
 [dev-dependencies]

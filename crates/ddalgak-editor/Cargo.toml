@@ -44,3 +44,6 @@ windows-sys = { version = "0.61.2", features = [
 [dev-dependencies]
 # Headless flow tests (no window, no GPU), as Kim Manager's (ADR 0014).
 egui_kittest = "=0.37.0"
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

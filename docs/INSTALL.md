@@ -31,8 +31,11 @@ cargo xtask local-mirror --key <catalog key file>   # writes kim-local\ (package
 ```
 
 A double-click on `kim.exe` (no arguments, its own console) opens the Kim window with the
-packages in `kim-local\`: select Subak, Noeul or Ddalgak, press **Install**, then **Open Subak**,
-**Start Noeul**, **Start Ddalgak** or **Open rule editor**. Nothing is downloaded; the mirror is
+packages in `kim-local\` ([ADR 0090](adr/0090-kim-minimal-launcher.md)): three icons, Subak,
+Noeul and Ddalgak, grey until installed. Click one and confirm **Install**; it turns colourful,
+and a click starts it (Subak's window; Noeul in the notification area, `F1` captures; Ddalgak's
+tray app and rule editor). Right-click a tool for Install, Settings, its folder, updates,
+Uninstall and Information; the gear in the lower-right corner opens Kim's settings. Nothing is downloaded; the mirror is
 used for that session only and never replaces Kim's catalog cache. From a terminal, `kim` stays
 the headless CLI (`kim --help`).
 

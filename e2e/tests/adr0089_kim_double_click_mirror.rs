@@ -29,6 +29,13 @@ fn adr0089_kim_from_a_build_icons_headless_start_and_local_mirror() {
             "assets/subak/subak.ico",
             "Subak",
         ),
+        // ADR 0090: Noeul's and Ddalgak's own icons.
+        (bin("noeul"), "assets/noeul/noeul.ico", "Noeul"),
+        (
+            bin("ddalgak").with_file_name("ddalgak-gui.exe"),
+            "assets/ddalgak/ddalgak.ico",
+            "Ddalgak",
+        ),
     ] {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let images = kim_winres::parse_ico(&std::fs::read(root.join(ico)).unwrap()).unwrap();

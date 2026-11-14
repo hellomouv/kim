@@ -234,6 +234,27 @@ impl Shortcuts {
     }
 }
 
+/// ADR 0090: the contract text of a key press (`Ctrl+Shift+R`, `F5`) for the shortcut editor in
+/// Settings; `None` for a lone modifier or a key the contract has no name for.
+pub fn chord_text(key: egui::Key, modifiers: egui::Modifiers) -> Option<String> {
+    logical_key(key).map(|key| {
+        Chord {
+            mods: mods(modifiers),
+            key,
+        }
+        .to_string()
+    })
+}
+
+/// ADR 0090: whether `action` is one of Kim Manager's own, changeable actions (the reserved
+/// navigation keys are listed but fixed).
+pub fn is_bindable(action: &str) -> bool {
+    kh::manifest()
+        .actions
+        .iter()
+        .any(|a| a.id == action && a.bindable)
+}
+
 fn mods(m: egui::Modifiers) -> Mods {
     let on = |b: bool| if b { Side::Any } else { Side::None };
     Mods {

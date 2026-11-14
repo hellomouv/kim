@@ -2,6 +2,15 @@
 
 use eframe::egui;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// ADR 0090: whether the light theme (`kim-light`) is in use; dark (`kim-dark`) otherwise.
+static LIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Whether the light theme is in use.
+pub fn is_light() -> bool {
+    LIGHT.load(Ordering::Relaxed)
+}
 
 const TOKENS: &str = include_str!("../../../design/tokens.json");
 
@@ -27,8 +36,8 @@ pub struct Colors {
     pub info: egui::Color32,
 }
 
-fn color(tokens: &serde_json::Value, name: &str) -> egui::Color32 {
-    let hex = tokens["themes"]["kim-dark"]["color"][name]
+fn color(tokens: &serde_json::Value, theme: &str, name: &str) -> egui::Color32 {
+    let hex = tokens["themes"][theme]["color"][name]
         .as_str()
         .unwrap_or("#ff00ff");
     let v = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0xff00ff);
@@ -37,39 +46,61 @@ fn color(tokens: &serde_json::Value, name: &str) -> egui::Color32 {
 }
 
 impl Colors {
+    /// The colours of the theme in use.
     pub fn get() -> Self {
-        static COLORS: OnceLock<Colors> = OnceLock::new();
-        *COLORS.get_or_init(|| {
+        static DARK: OnceLock<Colors> = OnceLock::new();
+        static LIGHT_COLORS: OnceLock<Colors> = OnceLock::new();
+        if is_light() {
+            *LIGHT_COLORS.get_or_init(|| Self::load("kim-light"))
+        } else {
+            *DARK.get_or_init(|| Self::load("kim-dark"))
+        }
+    }
+
+    fn load(theme: &str) -> Self {
+        {
             let t: serde_json::Value =
                 serde_json::from_str(TOKENS).expect("design/tokens.json is valid");
+            let color = |name: &str| color(&t, theme, name);
             Colors {
-                bg_base: color(&t, "bg.base"),
-                bg_raised: color(&t, "bg.raised"),
-                bg_overlay: color(&t, "bg.overlay"),
-                bg_hover: color(&t, "bg.hover"),
-                bg_selected: color(&t, "bg.selected"),
-                border_subtle: color(&t, "border.subtle"),
-                border_strong: color(&t, "border.strong"),
-                text_primary: color(&t, "text.primary"),
-                text_secondary: color(&t, "text.secondary"),
-                text_muted: color(&t, "text.muted"),
-                text_on_accent: color(&t, "text.on-accent"),
-                accent: color(&t, "accent"),
-                accent_soft: color(&t, "accent.soft"),
-                focus: color(&t, "focus.ring"),
-                success: color(&t, "status.success"),
-                warning: color(&t, "status.warning"),
-                danger: color(&t, "status.danger"),
-                info: color(&t, "status.info"),
+                bg_base: color("bg.base"),
+                bg_raised: color("bg.raised"),
+                bg_overlay: color("bg.overlay"),
+                bg_hover: color("bg.hover"),
+                bg_selected: color("bg.selected"),
+                border_subtle: color("border.subtle"),
+                border_strong: color("border.strong"),
+                text_primary: color("text.primary"),
+                text_secondary: color("text.secondary"),
+                text_muted: color("text.muted"),
+                text_on_accent: color("text.on-accent"),
+                accent: color("accent"),
+                accent_soft: color("accent.soft"),
+                focus: color("focus.ring"),
+                success: color("status.success"),
+                warning: color("status.warning"),
+                danger: color("status.danger"),
+                info: color("status.info"),
             }
-        })
+        }
     }
 }
 
-/// Applies the dark theme, compact spacing and the Korean/symbol font fallback chain.
+/// Applies the dark theme and the Korean/symbol font fallback chain.
 pub fn apply(ctx: &egui::Context) {
+    set_light(ctx, false);
+    fonts(ctx);
+}
+
+/// ADR 0090: switches between the dark and the light theme (design tokens).
+pub fn set_light(ctx: &egui::Context, light: bool) {
+    LIGHT.store(light, Ordering::Relaxed);
     let c = Colors::get();
-    let mut v = egui::Visuals::dark();
+    let mut v = if light {
+        egui::Visuals::light()
+    } else {
+        egui::Visuals::dark()
+    };
     v.panel_fill = c.bg_base;
     v.window_fill = c.bg_overlay;
     v.extreme_bg_color = c.bg_base;
@@ -87,8 +118,11 @@ pub fn apply(ctx: &egui::Context) {
     v.widgets.active.bg_fill = c.bg_selected;
     v.widgets.active.weak_bg_fill = c.bg_selected;
     v.widgets.hovered.bg_stroke = egui::Stroke::new(2.0, c.focus);
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, c.text_primary);
     ctx.set_visuals(v);
+}
 
+fn fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     for (name, file) in [("malgun", "malgun.ttf"), ("symbol", "seguisym.ttf")] {
         if let Ok(bytes) = std::fs::read(format!(r"C:\Windows\Fonts\{file}")) {

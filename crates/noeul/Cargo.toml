@@ -96,3 +96,6 @@ windows-sys = { version = "0.61.2", features = [
 # tests compile xtask/src/jsonschema.rs (the schema-check validator), which needs `regex`;
 # already in the workspace lock, test-only, never shipped.
 regex = "1.13.1"
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

@@ -234,5 +234,7 @@ the broken file as `hotkeys.json.bak`. A file written by a newer Kim is read-onl
 (`hotkeys_from_newer_version`, 5). `kim-manager --no-hotkeys` or `KIM_NO_HOTKEYS=1` starts Kim
 Manager with every shortcut off.
 
-**Not yet:** an in-window binding editor with keyboard capture (contract §11.2). Until then the
-shortcut list (F1) shows the keys and the CLI changes them.
+**In the window** (ADR 0090): Settings (the gear) → *Shortcuts* lists the same actions with
+**Change** (press the new keys; `Esc` cancels), **Off** and **Reset**; they run `kim hotkeys
+set/disable/reset` with the `kim.exe` next to the window, so the checks and the file are the
+same. Sequences and the typed syntax are set with the CLI.

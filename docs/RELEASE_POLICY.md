@@ -27,7 +27,7 @@ Requirements: `KIM-SEC-001…006`, `KIM-FR-001`, `KIM-FR-002`, `KIM-FR-005…009
    permissions the catalog declares for the tool, e.g. *registers system-wide shortcuts*,
    *captures the screen*, *installs a low-level keyboard hook (only after you turn it on)*,
    *injects keyboard and mouse input* (`plan.permissions`, human `permits` lines; Kim Manager
-   shows them in the details pane before the Install button is pressed). Disclosure never
+   shows them in the install dialog before the Install button is pressed). Disclosure never
    replaces the explicit action (`KIM-SEC-006`, [CATALOG_FORMAT §2.1](CATALOG_FORMAT.md)).
 5. **Kim never stops a running program.** Uninstall is refused (`tool_running`, exit 7) while any
    program from the tool's directory runs; an update installs side-by-side, leaves the running

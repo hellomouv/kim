@@ -2,7 +2,8 @@
 //! without disturbing the desktop: the window is off-screen, not activated, not in the taskbar.
 //!
 //!     cargo run --release -p kim-manager --example preview -- --screenshot shot.bmp --idle 30
-//!     cargo run --release -p kim-manager --example preview -- --select noeul --screenshot n.bmp
+//!     cargo run --release -p kim-manager --example preview -- --select settings --screenshot s.bmp
+//!     (`--select info` opens the install prompt of a tool that is not installed)
 //!
 //! Sample data lives in a temp directory (a test-signed catalog and one fake install record); the
 //! real per-user locations are never touched. Not shipped.
@@ -67,6 +68,15 @@ fn sample_backend() -> Backend {
     std::fs::write(paths.catalog_cache_dir().join("catalog.json.sig"), sig).expect("write");
     std::fs::create_dir_all(paths.tool_dir("notes")).expect("dir");
     std::fs::write(paths.install_record("notes"), br#"{"version":"1.0.0"}"#).expect("write");
+    // Subak installed (its window program on disk), so the launcher shows one coloured tile.
+    let v = paths.tool_dir("subak").join("versions").join("0.1.0");
+    std::fs::create_dir_all(&v).expect("dir");
+    std::fs::write(v.join("subak-gui.exe"), b"").expect("write");
+    std::fs::write(
+        paths.install_record("subak"),
+        br#"{"schema":"kim.install","schema_version":1,"tool":"subak","version":"0.1.0","entrypoint":"subak-gui.exe","installed_at":"2026-11-14T00:00:00Z","sha256":"00","source_url":"https://example.invalid","catalog_version":900,"previous_version":null}"#,
+    )
+    .expect("write");
     let public: &'static str = Box::leak(signature::public_key_hex(&SEED).into_boxed_str());
     let id: &'static str = Box::leak(
         signature::key_id(&signature::unhex::<32>(public).expect("hex")).into_boxed_str(),
@@ -128,12 +138,12 @@ fn main() -> eframe::Result {
     };
     let shot = flag("--screenshot").map(std::path::PathBuf::from);
     let idle = Duration::from_secs(flag("--idle").and_then(|s| s.parse().ok()).unwrap_or(5));
-    // `--select noeul` shows that tool's details instead of the first one.
+    // `--select settings` opens Settings; `--select info` the install prompt for Noeul.
     let select = flag("--select");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Kim (preview)")
-            .with_inner_size([900.0, 560.0])
+            .with_inner_size([368.0, 224.0])
             .with_position([-6000.0, -6000.0])
             .with_active(false)
             .with_taskbar(false),
@@ -151,8 +161,11 @@ fn main() -> eframe::Result {
                 ctx.request_repaint();
             });
             let mut app = KimManagerApp::new(sample_backend(), Some(&cc.egui_ctx));
-            if let Some(id) = &select {
-                app.select(id);
+            match select.as_deref() {
+                Some("settings") => app.toggle_settings(None),
+                Some("info") => app.activate("noeul"),
+                Some(id) => app.select(id),
+                None => {}
             }
             Ok(Box::new(Preview {
                 app,

@@ -150,7 +150,21 @@ motion column above is the earlier plan, superseded there for Subak.
 Tool install status uses the same shapes with `status.*` colors: installed (filled), update
 available (ring + dot), incompatible (triangle), not installed (nothing).
 
-### 3.2 Kim Catalog (Kim Manager)
+### 3.2 Kim Manager: the launcher (ADR 0090)
+
+Since ADR 0090 the main window is a launcher, not a catalog: one `bg.base` surface, three
+tiles from the upper-left corner (Subak, Noeul, Ddalgak; 88 × 100 points, the icon 58, the name
+12 px below), a painted gear (lower-right, 22 points from both edges) and one status line
+(11 px, lower-left; results fade after 6 s, errors stay until clicked). Window 368 × 224
+(minimum 336 × 196), growing to 580 × 460 for Settings or Information. Installed tiles are full
+colour; not installed ones are luminance-grey with a download mark on a `bg.overlay` disc; *needs
+repair* has the mark on `status.warning`; an update is an `accent` dot. Hover: `bg.hover` at
+70 %, radius 12; pressed: the icon shrinks to 54. Dialogs are at most 340 wide (inside the
+window); the right-click menu is egui's context menu. Settings: *General*, *Shortcuts*,
+*Catalog*, *About* as selectable labels; the theme follows the system or is fixed to
+`kim-dark` / `kim-light`.
+
+The two-pane catalog below is **superseded** (kept as the record of Step 06–47):
 
 - Two-pane layout: list (min 320) | details. Window min 720×480.
 - **Row** (48 high): 32 px tool icon · name (emphasis) · one-line description (muted) · version
