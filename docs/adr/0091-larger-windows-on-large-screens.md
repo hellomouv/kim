@@ -42,7 +42,10 @@ taskbar), in steps of 25 %, never smaller than before:
 4. A rebuilt package of the same version (the local mirror) is not an update, so an installed
    tool's right-click menu gains **Reinstall…**: the install dialog (titled *Reinstall …?*, the
    permissions as before) installs the same version again, verified like any install, keeping
-   the user's data (`PlanOptions.reinstall`, as Repair). It is refused while the tool runs.
+   the user's data (`PlanOptions.reinstall`, as Repair). A running program keeps running from
+   its folder, set aside (`kept_in_use`); the new files are used at its next start. When the
+   running program holds its folder (Ddalgak's tray app does), the reinstall is refused with
+   nothing changed (`tool_running`), and the user quits it first (checked on the real profile).
 5. Nothing changes Windows' display scaling or any other desktop setting. Test windows (the
    off-screen test modes) keep their fixed sizes, so the existing tests are unaffected.
 
